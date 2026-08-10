@@ -13,7 +13,7 @@ import { pool } from "./server/postgres";
 import { authenticate, requireAdmin, requireUser } from "./server/auth";
 import { installPlatformRoutes } from "./server/platformRoutes";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 if (process.env.OTP_GATEWAY === "mock")
   throw new Error("Mock OTP gateway is forbidden in Production");
 const app = express();
@@ -49,12 +49,10 @@ const rateLimit =
     if (!current || current.reset <= now)
       requests.set(key, { count: 1, reset: now + windowMs });
     else if (++current.count > limit)
-      return res
-        .status(429)
-        .json({
-          success: false,
-          error: "تعداد درخواست‌ها بیش از حد مجاز است.",
-        });
+      return res.status(429).json({
+        success: false,
+        error: "تعداد درخواست‌ها بیش از حد مجاز است.",
+      });
     next();
   };
 const asyncRoute =
@@ -62,13 +60,11 @@ const asyncRoute =
   (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
 const otpPending = (_req: express.Request, res: express.Response) =>
-  res
-    .status(503)
-    .json({
-      success: false,
-      code: "OTP_PENDING_APPROVAL",
-      error: "ورود پیامکی در حال فعال‌سازی است.",
-    });
+  res.status(503).json({
+    success: false,
+    code: "OTP_PENDING_APPROVAL",
+    error: "ورود پیامکی در حال فعال‌سازی است.",
+  });
 
 app.get("/healthz", (_req, res) =>
   res.json({ status: "ok", otp: "pending_approval" }),
@@ -87,13 +83,11 @@ app.post("/api/auth/register", otpPending);
 app.get("/api/auth/me", (req, res) =>
   req.authUser
     ? res.json({ success: true, user: req.authUser })
-    : res
-        .status(503)
-        .json({
-          success: false,
-          code: "OTP_PENDING_APPROVAL",
-          error: "ورود پیامکی در حال فعال‌سازی است.",
-        }),
+    : res.status(503).json({
+        success: false,
+        code: "OTP_PENDING_APPROVAL",
+        error: "ورود پیامکی در حال فعال‌سازی است.",
+      }),
 );
 
 app.post(
@@ -168,17 +162,20 @@ app.use(
     res: express.Response,
     _next: express.NextFunction,
   ) => {
-    const status = error instanceof UpstreamAnalysisError ? 502 : 500;
+    const status =
+      error instanceof SyntaxError && "body" in error
+        ? 400
+        : error instanceof UpstreamAnalysisError
+          ? 502
+          : 500;
     console.error("[request-error]", {
       name: error instanceof Error ? error.name : "Unknown",
       status,
     });
-    res
-      .status(status)
-      .json({
-        success: false,
-        error: "در انجام درخواست خطایی رخ داد. دوباره تلاش کنید.",
-      });
+    res.status(status).json({
+      success: false,
+      error: "در انجام درخواست خطایی رخ داد. دوباره تلاش کنید.",
+    });
   },
 );
 app.listen(port, "127.0.0.1", () =>

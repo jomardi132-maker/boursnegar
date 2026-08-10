@@ -26,7 +26,7 @@ import {
 } from "./server/auth";
 import { installPlatformRoutes } from "./server/platformRoutes";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === "production";
@@ -533,23 +533,26 @@ async function start() {
       const code = (error as any)?.code;
       const type = (error as any)?.type;
       const status =
-        error instanceof UpstreamAnalysisError
-          ? 502
-          : message === "NO_CREDIT"
-            ? 402
-            : message === "NOT_FOUND"
-              ? 404
-              : [
-                    "ALREADY_DECIDED",
-                    "CAMPAIGN_UNAVAILABLE",
-                    "INVALID_BALANCE",
-                  ].includes(message)
-                ? 409
-                : message === "OTP_DISABLED"
-                  ? 503
-                  : type === "entity.parse.failed" || code === "LIMIT_FILE_SIZE"
-                    ? 400
-                    : 500;
+        error instanceof SyntaxError && "body" in error
+          ? 400
+          : error instanceof UpstreamAnalysisError
+            ? 502
+            : message === "NO_CREDIT"
+              ? 402
+              : message === "NOT_FOUND"
+                ? 404
+                : [
+                      "ALREADY_DECIDED",
+                      "CAMPAIGN_UNAVAILABLE",
+                      "INVALID_BALANCE",
+                    ].includes(message)
+                  ? 409
+                  : message === "OTP_DISABLED"
+                    ? 503
+                    : type === "entity.parse.failed" ||
+                        code === "LIMIT_FILE_SIZE"
+                      ? 400
+                      : 500;
       console.error("[request-error]", {
         name: error instanceof Error ? error.name : "UnknownError",
         status,
