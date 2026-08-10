@@ -11,6 +11,7 @@ import { createServer as createViteServer } from 'vite';
 import { generateRealHealthCard, UpstreamAnalysisError } from './server/realAnalysisAdapter';
 import { pool, withTransaction } from './server/postgres';
 import { authenticate, createOtp, normalizeIranMobile, requireAdmin, requireCsrf, requireUser, revokeSession, setSessionCookie, verifyOtp } from './server/auth';
+import { installPlatformRoutes } from './server/platformRoutes';
 
 dotenv.config();
 const app = express();
@@ -127,6 +128,7 @@ app.get('/api/admin/users', requireUser, requireAdmin, asyncRoute(async (req, re
   const users = await pool.query(`SELECT u.id,u.mobile_e164,u.status,r.code AS role,coalesce(c.balance,0) AS credits,u.created_at FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE $1='' OR u.mobile_e164 LIKE '%'||$1||'%' ORDER BY u.created_at DESC LIMIT 100`, [q]);
   res.json({ success: true, users: users.rows });
 }));
+installPlatformRoutes(app);
 
 const distPath = path.join(process.cwd(), 'dist');
 async function start() {
@@ -142,4 +144,3 @@ async function start() {
 }
 start().catch((error) => { console.error('[startup-error]', error instanceof Error ? error.message : 'unknown'); process.exit(1); });
 export { app };
-

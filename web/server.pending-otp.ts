@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { generateRealHealthCard, UpstreamAnalysisError } from './server/realAnalysisAdapter';
 import { pool } from './server/postgres';
 import { authenticate, requireAdmin, requireUser } from './server/auth';
+import { installPlatformRoutes } from './server/platformRoutes';
 
 dotenv.config();
 if (process.env.OTP_GATEWAY === 'mock') throw new Error('Mock OTP gateway is forbidden in Production');
@@ -53,6 +54,7 @@ app.get('/api/admin/stats', requireUser, requireAdmin, asyncRoute(async (_req,re
   const result=await pool.query(`SELECT (SELECT count(*) FROM users) AS users,(SELECT count(*) FROM analysis_history) AS analyses`);
   res.json({success:true,stats:result.rows[0]});
 }));
+installPlatformRoutes(app);
 
 const dist=path.join(process.cwd(),'dist');
 app.use(express.static(dist,{index:false,maxAge:'1h'}));
@@ -63,4 +65,3 @@ app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.N
   res.status(status).json({success:false,error:'در انجام درخواست خطایی رخ داد. دوباره تلاش کنید.'});
 });
 app.listen(port,'127.0.0.1',()=>console.log(`[boursnegar] pending-otp mode on 127.0.0.1:${port}`));
-
