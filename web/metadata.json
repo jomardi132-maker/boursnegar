@@ -1,0 +1,6 @@
+{
+  "name": "کارت سلامت بنیادی بورس",
+  "description": "سامانه تحلیل بنیادی نمادهای بورس تهران بر پایه داده‌های رسمی کدال و بازار",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
