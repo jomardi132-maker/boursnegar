@@ -19,10 +19,21 @@ import type {
   ExplanationCard,
   QuestionCard,
 } from '../src/types';
+import { pool } from './postgres';
 
 const PYTHON_API_BASE = process.env.PYTHON_API_BASE || 'http://localhost:8001';
 
 export class UpstreamAnalysisError extends Error {}
+
+async function referenceNumber(name: string) {
+  const keys=[`${name}_percent`,`${name}_source`,`${name}_as_of`];
+  const result=await pool.query(`SELECT key,value FROM system_settings WHERE key=ANY($1::text[])`,[keys]);
+  const values=Object.fromEntries(result.rows.map(row=>[row.key,row.value]));
+  const percent=Number(values[keys[0]]);
+  const source=typeof values[keys[1]]==='string'?values[keys[1]]:'';
+  const asOf=typeof values[keys[2]]==='string'?values[keys[2]]:'';
+  return Number.isFinite(percent)&&percent>=0&&source&&/^\d{4}-\d{2}-\d{2}$/.test(asOf)?{percent,source,asOf}:null;
+}
 
 // نگاشت دسته‌بندی صنعت تستمسی به enum داخلی فرانت‌اند
 const INDUSTRY_MAP: Record<string, IndustryType> = {
@@ -124,9 +135,10 @@ export async function generateRealHealthCard(
 
   // --- Question Cards (فقط با داده‌ی واقعی؛ اگر داده نبود صادقانه اعلام می‌کنیم) ---
   const questions: QuestionCard[] = [];
+  const bankReference=await referenceNumber('bank_deposit_rate');
 
-  if (ratios.earnings_yield_percent != null) {
-    const bankYield = 23.5; // نرخ سود سپرده بانکی مرجع - می‌توان بعداً پویا کرد
+  if (ratios.earnings_yield_percent != null && bankReference) {
+    const bankYield = bankReference.percent;
     const isBetter = ratios.earnings_yield_percent > bankYield;
     questions.push({
       id: 1,
@@ -135,11 +147,13 @@ export async function generateRealHealthCard(
       status: isBetter ? 'good' : 'mid',
       statusLabel: isBetter ? 'خوب' : 'متوسط',
       mainMetricValue: `P/E: ${peDisplay} | بازده سود: ${ratios.earnings_yield_percent}٪`,
-      comparisonDetail: `نرخ سود بانکی مرجع: ${bankYield}٪`,
+      comparisonDetail: `نرخ سود بانکی مرجع: ${bankYield}٪ · منبع: ${bankReference.source} · تاریخ داده: ${bankReference.asOf}`,
       summaryAnswer: isBetter
         ? `بله. با P/E فعلی معادل ${peDisplay}، بازده سودآوری این سهم از سود سپرده بانکی بالاتر است.`
         : `بازده این سهم (${ratios.earnings_yield_percent}٪) فاصله‌ی زیادی با سود بانکی ندارد؛ نیاز به بررسی بیشتر دارد.`,
     });
+  } else {
+    questions.push({id:1,title:'۱) آیا بازده سودآوری از سود بانکی بهتر است؟',subtitle:'مقایسه بازده معکوس P/E با نرخ رسمی و تاریخ‌دار سپرده بانکی',status:'mid',statusLabel:'نامشخص',mainMetricValue:ratios.earnings_yield_percent!=null?`بازده سود: ${ratios.earnings_yield_percent}٪`:'بازده سود در دسترس نیست',comparisonDetail:'نرخ سود بانکی مرجع دارای منبع و تاریخ در تنظیمات ثبت نشده است.',summaryAnswer:'تا زمان ثبت نرخ بانکی رسمی همراه با منبع و تاریخ، نتیجه‌گیری انجام نمی‌شود.'});
   }
 
   if (ratios.cash_to_profit_ratio_percent != null) {
@@ -167,6 +181,18 @@ export async function generateRealHealthCard(
       comparisonDetail: 'فرمت این گزارش خاص شامل ردیف صورت جریان وجه نقد به‌شکل قابل‌تشخیص نبود',
       summaryAnswer: 'برای این نماد، در گزارش فعلی امکان استخراج خودکار جریان نقد عملیاتی وجود نداشت.',
     });
+  }
+
+  const inflationReference=await referenceNumber('inflation_rate');
+  const comparison=raw.period_comparison;
+  if(comparison?.revenue_growth_percent!=null&&inflationReference){
+    const nominal=Number(comparison.revenue_growth_percent);
+    const real=((1+nominal/100)/(1+inflationReference.percent/100)-1)*100;
+    const better=real>0;
+    questions.push({id:3,title:'۳) آیا رشد واقعی شرکت از تورم بیشتر است؟',subtitle:`مقایسه درآمد ${comparison.period_label} جاری و دوره هم‌طول قبلی`,status:better?'good':'mid',statusLabel:better?'خوب':'متوسط',mainMetricValue:`رشد اسمی: ${nominal.toLocaleString('fa-IR',{maximumFractionDigits:1})}٪ · رشد واقعی: ${real.toLocaleString('fa-IR',{maximumFractionDigits:1})}٪`,comparisonDetail:`تورم مرجع: ${inflationReference.percent}٪ · منبع: ${inflationReference.source} · تاریخ داده: ${inflationReference.asOf} · کدال: ${comparison.previous_report} ← ${comparison.current_report}`,summaryAnswer:better?'رشد درآمد پس از تعدیل اثر تورم مثبت است.':'رشد درآمد پس از تعدیل اثر تورم مثبت نیست.'});
+  }else{
+    const reason=!comparison?raw.period_comparison_unavailable_reason||'داده دوره هم‌طول قبلی موجود نیست.':'نرخ تورم مرجع دارای منبع و تاریخ در تنظیمات ثبت نشده است.';
+    questions.push({id:3,title:'۳) آیا رشد واقعی شرکت از تورم بیشتر است؟',subtitle:'مقایسه دوره جاری با دوره هم‌طول قبلی و تورم مرجع',status:'mid',statusLabel:'نامشخص',mainMetricValue:'داده مقایسه‌ای کافی نیست',comparisonDetail:reason,summaryAnswer:'به‌دلیل نبود همه داده‌های مستند لازم، درباره رشد واقعی نتیجه‌گیری نمی‌شود.'});
   }
 
   // --- Status Banner (شش قلم، فقط اگر داده واقعی موجود باشه) ---

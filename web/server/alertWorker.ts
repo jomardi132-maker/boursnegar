@@ -83,7 +83,10 @@ async function main() {
       }
     }
 
+    let submittedThisRun=0;
+    const maxPerRun=Math.max(1,Math.min(Number(process.env.ALERT_SMS_MAX_PER_RUN||50),100));
     for (const alert of rows.rows) {
+      if(submittedThisRun>=maxPerRun) break;
       const data = snapshots.get(alert.symbol);
       if (!data) continue;
       const price = Number(data.live_price?.last_price);
@@ -115,7 +118,16 @@ async function main() {
               (alert.comparator === 'lte' && value! <= target));
       if (!triggered || alert.last_trigger_key === key) continue;
 
+      const deduplicationKey=`alert:${alert.id}:${key}`;
+      const claimed=await pool.query(
+        `INSERT INTO sms_delivery_attempts(user_id,mobile_e164,purpose,status,deduplication_key)
+         VALUES($1,$2,'alert','pending',$3) ON CONFLICT(deduplication_key) DO NOTHING RETURNING id`,
+        [alert.user_id,alert.mobile_e164,deduplicationKey],
+      );
+      if(!claimed.rowCount) continue;
+      const attemptId=claimed.rows[0].id;
       try {
+        submittedThisRun++;
         const providerId = await sendSms(alert.mobile_e164, message);
         await withTransaction(async (client) => {
           const updated = await client.query(
@@ -124,24 +136,13 @@ async function main() {
             [alert.id, key],
           );
           if (updated.rowCount !== 1) return;
-          await client.query(
-            `INSERT INTO sms_delivery_attempts
-               (user_id,mobile_e164,purpose,provider_message_id,status,deduplication_key)
-             VALUES($1,$2,'alert',$3,'submitted',$4)`,
-            [alert.user_id, alert.mobile_e164, providerId, `alert:${alert.id}:${key}`],
-          );
+          await client.query(`UPDATE sms_delivery_attempts SET provider_message_id=$2,status='submitted' WHERE id=$1`,[attemptId,providerId]);
         });
       } catch (error) {
         await pool
           .query(
-            `INSERT INTO sms_delivery_attempts
-               (user_id,mobile_e164,purpose,status,error_code)
-             VALUES($1,$2,'alert','failed',$3)`,
-            [
-              alert.user_id,
-              alert.mobile_e164,
-              error instanceof Error ? error.message.slice(0, 80) : 'UNKNOWN',
-            ],
+            `UPDATE sms_delivery_attempts SET status='failed',error_code=$2 WHERE id=$1`,
+            [attemptId,error instanceof Error ? error.message.slice(0, 80) : 'UNKNOWN'],
           )
           .catch(() => {});
       }

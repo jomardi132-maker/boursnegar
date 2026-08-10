@@ -203,6 +203,42 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     except codal_excel_parser.CodalExcelParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    # گزارش هم‌طول قبلی برای محاسبه رشد واقعی؛ شکست این بخش تحلیل اصلی را متوقف نمی‌کند.
+    title = candidate.get("Title") or ""
+    period_label = next((p for p in ("۱۲ ماهه", "۹ ماهه", "۶ ماهه", "۳ ماهه") if p in title), None)
+    comparison = None
+    comparison_unavailable_reason = "گزارش دوره هم‌طول قبلی دارای فایل اکسل پیدا نشد."
+    if period_label:
+        previous = next(
+            (rec for rec in letters if rec is not candidate and rec.get("HasExcel") and period_label in (rec.get("Title") or "")),
+            None,
+        )
+        if previous:
+            previous_url = previous.get("ExcelUrl") or ""
+            if previous_url.startswith("/"):
+                previous_url = f"https://excel.codal.ir{previous_url}"
+            try:
+                previous_parsed = codal_excel_parser.fetch_and_parse(previous_url)
+                current_revenue = parsed["metrics"].get("revenue")
+                previous_revenue = previous_parsed["metrics"].get("revenue")
+                current_profit = parsed["metrics"].get("net_profit")
+                previous_profit = previous_parsed["metrics"].get("net_profit")
+                comparison = {
+                    "period_label": period_label,
+                    "current_report": candidate.get("TracingNo"),
+                    "previous_report": previous.get("TracingNo"),
+                    "current_revenue": current_revenue,
+                    "previous_revenue": previous_revenue,
+                    "revenue_growth_percent": ((current_revenue / previous_revenue) - 1) * 100 if current_revenue is not None and previous_revenue not in (None, 0) else None,
+                    "current_net_profit": current_profit,
+                    "previous_net_profit": previous_profit,
+                    "net_profit_growth_percent": ((current_profit / previous_profit) - 1) * 100 if current_profit is not None and previous_profit not in (None, 0) else None,
+                    "source": "صورت‌های مالی رسمی کدال",
+                }
+                comparison_unavailable_reason = None
+            except (codal_excel_parser.CodalExcelDownloadError, codal_excel_parser.CodalExcelParseError):
+                comparison_unavailable_reason = "فایل گزارش دوره هم‌طول قبلی قابل دریافت یا استخراج نبود."
+
     # ۵. محاسبه‌ی نسبت‌ها
     live_pe = live_data.get("pe_ratio") if live_data else None
     industry_category = live_data.get("market_category") if live_data else None
@@ -246,6 +282,8 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "financial_metrics": parsed["metrics"],
         "financial_metrics_found": parsed["found_items"],
         "financial_metrics_missing": parsed["missing_items"],
+        "period_comparison": comparison,
+        "period_comparison_unavailable_reason": comparison_unavailable_reason,
         "ratios": ratios,
         "health": health,
     }

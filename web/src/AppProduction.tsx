@@ -6,11 +6,13 @@ import { StatusBanner } from './components/StatusBanner';
 import { GoldenSummaryBanner } from './components/GoldenSummaryBanner';
 import { ExplanationCardsGrid } from './components/ExplanationCardsGrid';
 import { ConclusionAndSources } from './components/ConclusionAndSources';
+import { AccountDashboard } from './components/AccountDashboard';
+import './dashboard.css';
 
-type User = { id: string; mobile: string; role: 'user' | 'admin'; credits: number };
+export type User = { id: string; mobile: string; role: 'user' | 'admin'; credits: number };
 const csrfStorage = 'boursnegar_csrf';
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
+export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: 'same-origin', ...init, headers: { ...(init?.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(sessionStorage.getItem(csrfStorage) ? { 'x-csrf-token': sessionStorage.getItem(csrfStorage)! } : {}), ...init?.headers } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'در انجام درخواست خطایی رخ داد.');
@@ -39,6 +41,7 @@ export function AppProduction() {
   const [result, setResult] = useState<StockHealthCardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   useEffect(() => { api<{ user: User }>('/api/auth/me').then((r) => setUser(r.user)).catch(() => setUser(null)); }, []);
   const questions = useMemo(() => result ? completeQuestions(result) : null, [result]);
 
@@ -59,7 +62,7 @@ export function AppProduction() {
   return <div className="app-shell" dir="rtl">
     <header className="topbar"><a className="brand" href="#top" aria-label="بورس‌نگار"><span className="brand-mark"><BarChart3 /></span><span><b>بورس‌نگار</b><small>تحلیل بنیادی شفاف</small></span></a>
       <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
-      <div className="header-actions">{user ? <><span className="credit-pill">{user.credits.toLocaleString('fa-IR')} اعتبار</span><button className="icon-button" onClick={logout} aria-label="خروج"><LogOut /></button></> : <button className="button ghost" onClick={() => setAuthOpen(true)}>ورود با موبایل</button>}<button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="منو">{menuOpen ? <X /> : <Menu />}</button></div>
+      <div className="header-actions">{user ? <><button className="credit-pill dashboard-trigger" onClick={()=>setDashboardOpen(true)}>{user.credits.toLocaleString('fa-IR')} اعتبار · پنل من</button><button className="icon-button" onClick={logout} aria-label="خروج"><LogOut /></button></> : <button className="button ghost" onClick={() => setAuthOpen(true)}>ورود با موبایل</button>}<button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="منو">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
     <main id="top">
       <section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> داده واقعی بازار تهران و کدال</span><h1>صورت‌های مالی را<br/><em>قابل فهم</em> ببینید.</h1><p>سه پرسش بنیادی، منابع قابل ردگیری و نتیجه‌ای محتاطانه؛ بدون داده ساختگی و بدون توصیه قطعی خرید یا فروش.</p>
@@ -73,7 +76,7 @@ export function AppProduction() {
       {questions && <section id="analysis" className="analysis-wrap"><div className="analysis-title"><span>گزارش بنیادی</span><h2>{questions.header.fullName} <small>{questions.header.symbol}</small></h2><p>گزارش {questions.header.reportDate} · {questions.header.dataStamp.source}</p></div><QuestionCardsRow questions={questions.questions}/><StatusBanner metrics={questions.statusBanner}/><GoldenSummaryBanner summary={questions.goldenSummary}/><ExplanationCardsGrid cards={questions.explanationCards}/><ConclusionAndSources conclusion={questions.conclusion}/></section>}
       <section className="trust-section" id="trust"><div><span className="eyebrow"><span/> تعهد بورس‌نگار</span><h2>ابهام را پنهان نمی‌کنیم.</h2></div><p>هرجا داده کافی نباشد، وضعیت «نامشخص» همراه با دلیل دقیق نمایش داده می‌شود. این سامانه ابزار آموزشی و تحلیلی است و توصیه سرمایه‌گذاری محسوب نمی‌شود.</p></section>
     </main><footer><b>بورس‌نگار</b><span>تحلیل بنیادی شفاف برای بازار سرمایه ایران</span><small>© ۱۴۰۵ — مسئولیت تصمیم نهایی سرمایه‌گذاری با کاربر است.</small></footer>
-    {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</div>;
+    {dashboardOpen&&user&&<AccountDashboard user={user} onClose={()=>setDashboardOpen(false)} onCredits={(credits)=>setUser({...user,credits})}/>} {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</div>;
 }
 
 function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin: (u: User, csrf: string) => void }) {

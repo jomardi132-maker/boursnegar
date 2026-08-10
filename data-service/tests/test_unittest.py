@@ -16,6 +16,13 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertNotIn("gemini", source.lower())
         self.assertNotIn("anthropic", source.lower())
 
+    def test_comparable_period_is_real_and_graceful(self):
+        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        self.assertIn("period_comparison", source)
+        self.assertIn("previous_revenue", source)
+        self.assertIn("revenue_growth_percent", source)
+        self.assertNotIn("random", source.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

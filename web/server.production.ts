@@ -114,8 +114,16 @@ fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ storage: multer.diskStorage({ destination: uploadDir, filename: (_req, file, cb) => cb(null, `${crypto.randomUUID()}${file.mimetype === 'application/pdf' ? '.pdf' : file.mimetype === 'image/png' ? '.png' : '.jpg'}`) }), limits: { fileSize: 4 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => cb(null, ['image/jpeg','image/png','application/pdf'].includes(file.mimetype)) });
 app.post('/api/payments', rateLimit('upload', 5, 3_600_000), requireUser, requireCsrf, upload.single('receipt'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: 'رسید معتبر لازم است.' });
+  const signature=fs.readFileSync(req.file.path).subarray(0,8);
+  const validSignature=req.file.mimetype==='application/pdf'?signature.subarray(0,5).toString()==='%PDF-':req.file.mimetype==='image/png'?signature.equals(Buffer.from([137,80,78,71,13,10,26,10])):signature[0]===255&&signature[1]===216&&signature[2]===255;
+  if(!validSignature){fs.unlink(req.file.path,()=>{});return res.status(400).json({success:false,error:'محتوای فایل رسید با نوع اعلام‌شده مطابقت ندارد.'});}
   const body = z.object({ planId: z.string().uuid(), amountToman: z.coerce.number().int().positive(), trackingNumber: z.string().min(4).max(80), paidAt: z.string().datetime() }).safeParse(req.body);
   if (!body.success) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ success: false, error: 'اطلاعات پرداخت معتبر نیست.' }); }
+  const plan = await pool.query(`SELECT price_toman,active FROM plans WHERE id=$1`, [body.data.planId]);
+  if (!plan.rows[0]?.active || Number(plan.rows[0].price_toman) !== body.data.amountToman) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ success: false, error: 'مبلغ پرداخت با پلن انتخاب‌شده مطابقت ندارد.' });
+  }
   const result = await pool.query(`INSERT INTO payment_submissions(user_id,plan_id,amount_toman,tracking_number,paid_at,receipt_storage_key,receipt_mime) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,status,created_at`, [req.authUser!.id, body.data.planId, body.data.amountToman, body.data.trackingNumber, body.data.paidAt, req.file.filename, req.file.mimetype]);
   res.status(201).json({ success: true, payment: result.rows[0] });
 }));
