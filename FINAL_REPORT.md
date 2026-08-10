@@ -5,10 +5,10 @@
 ## وضعیت Production
 
 - دامنه `https://boursnegar.ir` سالم و پاسخ‌گو است.
-- release فعال Node: `/var/www/boursnegar-releases/20260810T141800Z-2b13ac5`
+- release فعال Node: `/var/www/boursnegar-releases/20260810T143600Z-0b683ed`
 - PM2: پردازش `bourse-app` آنلاین، بدون restart ناپایدار.
 - FastAPI: سرویس `boursnegar-data-service.service` فعال و health موفق.
-- PostgreSQL: readiness موفق؛ migrationهای `001_core` و `002_legacy_imports` فعال؛ ۸۱ رکورد legacy مهاجرت داده شده‌اند.
+- PostgreSQL: readiness موفق؛ migrationهای `001_core`، `002_legacy_imports` و `003_campaign_redemptions` فعال؛ ۸۱ رکورد legacy مهاجرت داده شده‌اند.
 - worker هشدار: سرویس oneshot و timer پنج‌دقیقه‌ای نصب و سالم است؛ با `ALERT_WORKER_ENABLED=false` و `SMS_ENABLED=false` هیچ ارسالی انجام نمی‌دهد.
 - تحلیل عمومی فعال است. نمادهای `فولاد`، `فملی` و `شپنا` هرکدام HTTP 200 و دقیقاً سه پرسش بنیادی برگرداندند.
 
@@ -19,7 +19,9 @@
 - PostgreSQL برای کاربران، هویت موبایل، نشست‌ها، پلن‌ها، اشتراک، اعتبار، ledger، تاریخچه، پرداخت، referral، کمپین، هشدار، پیامک، audit و settings.
 - پنج اعتبار خوش‌آمدگویی؛ کسر اعتبار فقط بعد از تحلیل موفق؛ ledger append-only و idempotent.
 - پرداخت دستی با تطبیق مبلغ پلن، محدودیت اندازه/نوع و بررسی magic bytes واقعی JPG/PNG/PDF؛ تأیید/رد ادمین transactional.
+- مشاهده رسید فقط برای Admin، با مسیر کنترل‌شده و `Cache-Control: private, no-store` انجام می‌شود.
 - referral، پاداش، کمپین‌ها، پلن‌های قابل تنظیم، هشدار قیمت/P/E/کدال و جلوگیری از ارسال تکراری.
+- کمپین به پرداخت و ledger متصل است؛ بازه زمانی، ظرفیت، استفاده یک‌باره هر کاربر و جلوگیری از تأیید تکراری در دیتابیس enforce می‌شوند.
 - داشبورد responsive کاربر و مدیر برای نمای کلی، تاریخچه، پرداخت، معرفی، هشدار، آمار، کاربران، پرداخت‌ها، کمپین‌ها، تنظیمات، SMS و audit.
 - تحلیل deterministic بر پایه BrsApi و کدال؛ سؤال سوم از گزارش هم‌طول قبلی استفاده می‌کند و در نبود داده مستند صریحاً «نامشخص» می‌ماند.
 - نرخ بانکی و تورم فقط وقتی استفاده می‌شوند که مقدار، منبع و تاریخ معتبر در `system_settings` ثبت شده باشد؛ هیچ عدد ساختگی یا قدیمی hard-code نشده است.
@@ -45,18 +47,20 @@ ADMIN_API_KEY=SET
 - backup جامع اولیه: `/var/backups/boursnegar/20260810T130231Z`
 - backup پیش از release قابلیت‌ها: `/var/backups/boursnegar/20260810T140006Z`
 - backup پیش از اصلاح OTP: `/var/backups/boursnegar/20260810T141657Z-otpfix`
+- backup پیش از migration کمپین: `/var/backups/boursnegar/20260810T143300Z-campaigns`
 - backupهای جدید شامل checksum و PostgreSQL dump هستند و با permission محدود نگهداری می‌شوند.
 
 ## آزمون‌ها
 
 - TypeScript typecheck/lint: موفق.
-- Vitest: ۳۷ تست موفق.
+- Vitest: ۳۸ تست موفق.
 - Python compile و unittest: ۳ تست موفق.
 - build نسخه Production، نسخه Pending و worker: موفق.
-- staging PostgreSQL مستقل: migration دوباره‌پذیر، OTP mock، کد شش‌رقمی، expiry، پنج تلاش و lockout، session، پنج اعتبار، دو مصرف هم‌زمان و ledger غیرقابل‌ویرایش: موفق (`integration-smoke: PASS`).
+- staging PostgreSQL مستقل: سه migration، OTP mock، کد شش‌رقمی، expiry، پنج تلاش و lockout، session، پنج اعتبار، دو مصرف هم‌زمان، ledger غیرقابل‌ویرایش، authorization واقعی HTTP، upload spoofed/valid، مشاهده امن رسید، تأیید و منع تأیید مجدد پرداخت و campaign redemption/capacity: موفق (`integration-smoke: PASS`).
 - authorization مسیرهای account/admin و CSRF مسیرهای تغییردهنده: موفق.
 - upload validation و تطبیق مبلغ پلن: موفق.
 - QA مرورگر Production: RTL، متن فارسی، جست‌وجو با صفحه‌کلید، تحلیل واقعی، سه کارت، خطای ورودی نامعتبر، نبود console error و نبود overflow افقی: موفق.
+- viewport واقعی موبایل `375×812`، تبلت `768×1024` و دسکتاپ بررسی شد؛ تحلیل موبایل/تبلت سه کارت و بدون overflow افقی بود.
 - health دامنه، Node، FastAPI، PM2، PostgreSQL و worker timer: موفق.
 
 ## کاوه‌نگار و مانع بیرونی
@@ -73,6 +77,8 @@ ADMIN_API_KEY=SET
 ## Commitهای نهایی
 
 ```text
+f0f9033 feat: expose campaign offers in account payments
+0b683ed feat: complete campaign and admin payment workflows
 2b13ac5 fix: persist OTP failure lockouts transactionally
 fbad8f8 test: add transactional integration smoke coverage
 a54bc98 feat: complete account admin and sourced analysis workflows
