@@ -1,154 +1,537 @@
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import express from 'express';
-import cookieParser from 'cookie-parser';
-import helmet from 'helmet';
-import multer from 'multer';
-import { z } from 'zod';
-import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
-import { generateRealHealthCard, UpstreamAnalysisError } from './server/realAnalysisAdapter';
-import { pool, withTransaction } from './server/postgres';
-import { authenticate, createOtp, normalizeIranMobile, requireAdmin, requireCsrf, requireUser, revokeSession, setSessionCookie, verifyOtp } from './server/auth';
-import { installPlatformRoutes } from './server/platformRoutes';
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import express from "express";
+import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import multer from "multer";
+import { z } from "zod";
+import dotenv from "dotenv";
+import { createServer as createViteServer } from "vite";
+import {
+  generateRealHealthCard,
+  UpstreamAnalysisError,
+} from "./server/realAnalysisAdapter";
+import { pool, withTransaction } from "./server/postgres";
+import {
+  authenticate,
+  createOtp,
+  normalizeIranMobile,
+  requireAdmin,
+  requireCsrf,
+  requireUser,
+  revokeSession,
+  setSessionCookie,
+  verifyOtp,
+} from "./server/auth";
+import { installPlatformRoutes } from "./server/platformRoutes";
 
 dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const isProduction = process.env.NODE_ENV === 'production';
-app.disable('x-powered-by');
-app.set('trust proxy', 1);
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'"] } }, crossOriginEmbedderPolicy: false }));
-app.use(express.json({ limit: '256kb' }));
-app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+const isProduction = process.env.NODE_ENV === "production";
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 app.use(cookieParser());
 app.use(authenticate);
 
 type Bucket = { count: number; resetAt: number };
 const buckets = new Map<string, Bucket>();
-function rateLimit(name: string, limit: number, windowMs: number): express.RequestHandler {
+function rateLimit(
+  name: string,
+  limit: number,
+  windowMs: number,
+): express.RequestHandler {
   return (req, res, next) => {
     const key = `${name}:${req.ip}`;
     const now = Date.now();
     const bucket = buckets.get(key);
-    if (!bucket || bucket.resetAt <= now) buckets.set(key, { count: 1, resetAt: now + windowMs });
-    else if (++bucket.count > limit) return res.status(429).json({ success: false, error: 'تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.' });
+    if (!bucket || bucket.resetAt <= now)
+      buckets.set(key, { count: 1, resetAt: now + windowMs });
+    else if (++bucket.count > limit)
+      return res.status(429).json({
+        success: false,
+        error: "تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.",
+      });
     next();
   };
 }
-const asyncRoute = (handler: express.RequestHandler): express.RequestHandler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+const asyncRoute =
+  (handler: express.RequestHandler): express.RequestHandler =>
+  (req, res, next) =>
+    Promise.resolve(handler(req, res, next)).catch(next);
 const otpRequestSchema = z.object({ mobile: z.string().min(10).max(20) });
-const otpVerifySchema = z.object({ requestId: z.string().uuid(), mobile: z.string(), code: z.string().regex(/^\d{6}$/), referralCode: z.string().max(16).optional() });
-const analyzeSchema = z.object({ query: z.string().min(1).max(32), reportMode: z.enum(['audited', 'latest_codal']).default('audited') });
+const otpVerifySchema = z.object({
+  requestId: z.string().uuid(),
+  mobile: z.string(),
+  code: z.string().regex(/^\d{6}$/),
+  referralCode: z.string().max(16).optional(),
+});
+const analyzeSchema = z.object({
+  query: z.string().min(1).max(32),
+  reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
+});
 
-async function sendOtp(mobile: string, code: string): Promise<void> {
-  if (process.env.OTP_GATEWAY === 'mock') {
-    if (isProduction) throw new Error('Mock OTP gateway is forbidden in production');
-    return;
+async function sendOtp(mobile: string, code: string): Promise<string> {
+  if (process.env.OTP_GATEWAY === "mock") {
+    if (isProduction)
+      throw new Error("Mock OTP gateway is forbidden in production");
+    return "mock";
   }
+  if (
+    process.env.OTP_PENDING_APPROVAL === "true" ||
+    process.env.OTP_ENABLED !== "true" ||
+    process.env.OTP_GATEWAY !== "kavenegar"
+  )
+    throw new Error("OTP_DISABLED");
   const apiKey = process.env.KAVENEGAR_API_KEY;
   const template = process.env.KAVENEGAR_OTP_TEMPLATE;
-  if (!apiKey || !template) throw new Error('OTP gateway is not configured');
+  if (!apiKey || !template) throw new Error("OTP gateway is not configured");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
-    const response = await fetch(`https://api.kavenegar.com/v1/${encodeURIComponent(apiKey)}/verify/lookup.json?receptor=${encodeURIComponent(`0${mobile.slice(3)}`)}&token=${code}&template=${encodeURIComponent(template)}`, { signal: controller.signal });
-    if (!response.ok) throw new Error('OTP delivery failed');
-  } finally { clearTimeout(timeout); }
+    const response = await fetch(
+      `https://api.kavenegar.com/v1/${encodeURIComponent(apiKey)}/verify/lookup.json?receptor=${encodeURIComponent(`0${mobile.slice(3)}`)}&token=${code}&template=${encodeURIComponent(template)}`,
+      { signal: controller.signal },
+    );
+    if (!response.ok) throw new Error("OTP delivery failed");
+    const payload: any = await response.json();
+    if (payload?.return?.status !== 200)
+      throw new Error("OTP_PROVIDER_REJECTED");
+    return String(payload.entries?.[0]?.messageid || "");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
-app.get('/readyz', asyncRoute(async (_req, res) => { await pool.query('SELECT 1'); res.json({ status: 'ready' }); }));
-app.post('/api/auth/otp/request', rateLimit('otp', 5, 600_000), asyncRoute(async (req, res) => {
-  const parsed = otpRequestSchema.safeParse(req.body);
-  const mobile = parsed.success ? normalizeIranMobile(parsed.data.mobile) : null;
-  if (!mobile) return res.status(400).json({ success: false, error: 'شماره موبایل معتبر نیست.' });
-  const otp = await createOtp(mobile, req.ip || '127.0.0.1');
-  try { await sendOtp(mobile, otp.code); } catch (error) { await pool.query(`UPDATE otp_requests SET consumed_at=now() WHERE id=$1`, [otp.requestId]); throw error; }
-  res.status(202).json({ success: true, requestId: otp.requestId, expiresInSeconds: 120 });
-}));
-app.post('/api/auth/otp/verify', rateLimit('verify', 10, 600_000), asyncRoute(async (req, res) => {
-  const parsed = otpVerifySchema.safeParse(req.body);
-  const mobile = parsed.success ? normalizeIranMobile(parsed.data.mobile) : null;
-  if (!parsed.success || !mobile) return res.status(400).json({ success: false, error: 'اطلاعات ورود معتبر نیست.' });
-  try {
-    const result = await verifyOtp(parsed.data.requestId, mobile, parsed.data.code, req.ip || '127.0.0.1', req.header('user-agent') || '', parsed.data.referralCode);
-    setSessionCookie(res, result.sessionToken);
-    res.json({ success: true, csrfToken: result.csrfToken, user: result.user });
-  } catch { res.status(400).json({ success: false, error: 'کد واردشده معتبر نیست یا منقضی شده است.' }); }
-}));
-app.get('/api/auth/me', requireUser, (req, res) => res.json({ success: true, user: req.authUser }));
-app.post('/api/auth/logout', requireUser, requireCsrf, asyncRoute(async (req, res) => { await revokeSession(req, res); res.json({ success: true }); }));
+app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
+app.get(
+  "/readyz",
+  asyncRoute(async (_req, res) => {
+    await pool.query("SELECT 1");
+    res.json({ status: "ready" });
+  }),
+);
+app.post(
+  "/api/auth/otp/request",
+  rateLimit("otp", 5, 600_000),
+  asyncRoute(async (req, res) => {
+    const parsed = otpRequestSchema.safeParse(req.body);
+    const mobile = parsed.success
+      ? normalizeIranMobile(parsed.data.mobile)
+      : null;
+    if (!mobile)
+      return res
+        .status(400)
+        .json({ success: false, error: "شماره موبایل معتبر نیست." });
+    const otp = await createOtp(mobile, req.ip || "127.0.0.1");
+    try {
+      const providerId = await sendOtp(mobile, otp.code);
+      await pool.query(
+        `INSERT INTO sms_delivery_attempts(mobile_e164,purpose,provider_message_id,status,deduplication_key) VALUES($1,'otp',$2,'submitted',$3)`,
+        [mobile, providerId, `otp:${otp.requestId}`],
+      );
+    } catch (error) {
+      await pool.query(
+        `UPDATE otp_requests SET consumed_at=now() WHERE id=$1`,
+        [otp.requestId],
+      );
+      await pool
+        .query(
+          `INSERT INTO sms_delivery_attempts(mobile_e164,purpose,status,error_code,deduplication_key) VALUES($1,'otp','failed',$2,$3) ON CONFLICT(deduplication_key) DO NOTHING`,
+          [
+            mobile,
+            error instanceof Error ? error.message.slice(0, 80) : "UNKNOWN",
+            `otp:${otp.requestId}`,
+          ],
+        )
+        .catch(() => {});
+      throw error;
+    }
+    res
+      .status(202)
+      .json({ success: true, requestId: otp.requestId, expiresInSeconds: 120 });
+  }),
+);
+app.post(
+  "/api/auth/otp/verify",
+  rateLimit("verify", 10, 600_000),
+  asyncRoute(async (req, res) => {
+    const parsed = otpVerifySchema.safeParse(req.body);
+    const mobile = parsed.success
+      ? normalizeIranMobile(parsed.data.mobile)
+      : null;
+    if (!parsed.success || !mobile)
+      return res
+        .status(400)
+        .json({ success: false, error: "اطلاعات ورود معتبر نیست." });
+    try {
+      const result = await verifyOtp(
+        parsed.data.requestId,
+        mobile,
+        parsed.data.code,
+        req.ip || "127.0.0.1",
+        req.header("user-agent") || "",
+        parsed.data.referralCode,
+      );
+      setSessionCookie(res, result.sessionToken);
+      res.json({
+        success: true,
+        csrfToken: result.csrfToken,
+        user: result.user,
+      });
+    } catch {
+      res.status(400).json({
+        success: false,
+        error: "کد واردشده معتبر نیست یا منقضی شده است.",
+      });
+    }
+  }),
+);
+app.get("/api/auth/me", requireUser, (req, res) =>
+  res.json({ success: true, user: req.authUser }),
+);
+app.post(
+  "/api/auth/logout",
+  requireUser,
+  requireCsrf,
+  asyncRoute(async (req, res) => {
+    await revokeSession(req, res);
+    res.json({ success: true });
+  }),
+);
 
-app.post('/api/analyze', rateLimit('analyze', 12, 60_000), requireUser, requireCsrf, asyncRoute(async (req, res) => {
-  const parsed = analyzeSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ success: false, error: 'نماد یا حالت گزارش معتبر نیست.' });
-  const symbol = parsed.data.query.trim().replace(/^نماد\s+/, '');
-  if (!/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/.test(symbol)) return res.status(400).json({ success: false, error: 'نماد واردشده معتبر نیست.' });
-  const data = await generateRealHealthCard(symbol, parsed.data.reportMode);
-  const key = String(req.header('idempotency-key') || crypto.randomUUID()).slice(0, 128);
-  const saved = await withTransaction(async (client) => {
-    const credit = await client.query(`SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`, [req.authUser!.id]);
-    const balance = credit.rows[0]?.balance ?? 0;
-    if (balance < 1) throw new Error('NO_CREDIT');
-    const history = await client.query(`INSERT INTO analysis_history(user_id,symbol,report_mode,result,source_metadata) VALUES($1,$2,$3,$4,$5) RETURNING id,created_at`, [req.authUser!.id, symbol, parsed.data.reportMode, data, { source: 'BrsApi/Codal', reportDate: data.header.reportDate }]);
-    await client.query(`UPDATE analysis_credits SET balance=balance-1,updated_at=now() WHERE user_id=$1`, [req.authUser!.id]);
-    await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,-1,$2,'analysis','analysis_history',$3,$4)`, [req.authUser!.id, balance - 1, history.rows[0].id, `analysis:${req.authUser!.id}:${key}`]);
-    return { ...history.rows[0], remainingCredits: balance - 1 };
-  });
-  res.json({ success: true, data, analysis: saved });
-}));
-app.get('/api/account/analyses', requireUser, asyncRoute(async (req, res) => {
-  const result = await pool.query(`SELECT id,symbol,report_mode,result,created_at FROM analysis_history WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.authUser!.id]);
-  res.json({ success: true, analyses: result.rows });
-}));
-app.get('/api/account/credits', requireUser, asyncRoute(async (req, res) => {
-  const result = await pool.query(`SELECT balance FROM analysis_credits WHERE user_id=$1`, [req.authUser!.id]);
-  const ledger = await pool.query(`SELECT id,delta,balance_after,reason,created_at FROM credit_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.authUser!.id]);
-  res.json({ success: true, balance: result.rows[0]?.balance ?? 0, ledger: ledger.rows });
-}));
+app.post(
+  "/api/analyze",
+  rateLimit("analyze", 12, 60_000),
+  requireUser,
+  requireCsrf,
+  asyncRoute(async (req, res) => {
+    const parsed = analyzeSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res
+        .status(400)
+        .json({ success: false, error: "نماد یا حالت گزارش معتبر نیست." });
+    const symbol = parsed.data.query.trim().replace(/^نماد\s+/, "");
+    if (!/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/.test(symbol))
+      return res
+        .status(400)
+        .json({ success: false, error: "نماد واردشده معتبر نیست." });
+    const data = await generateRealHealthCard(symbol, parsed.data.reportMode);
+    const key = String(
+      req.header("idempotency-key") || crypto.randomUUID(),
+    ).slice(0, 128);
+    const saved = await withTransaction(async (client) => {
+      const credit = await client.query(
+        `SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`,
+        [req.authUser!.id],
+      );
+      const balance = credit.rows[0]?.balance ?? 0;
+      if (balance < 1) throw new Error("NO_CREDIT");
+      const history = await client.query(
+        `INSERT INTO analysis_history(user_id,symbol,report_mode,result,source_metadata) VALUES($1,$2,$3,$4,$5) RETURNING id,created_at`,
+        [
+          req.authUser!.id,
+          symbol,
+          parsed.data.reportMode,
+          data,
+          { source: "BrsApi/Codal", reportDate: data.header.reportDate },
+        ],
+      );
+      await client.query(
+        `UPDATE analysis_credits SET balance=balance-1,updated_at=now() WHERE user_id=$1`,
+        [req.authUser!.id],
+      );
+      await client.query(
+        `INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,-1,$2,'analysis','analysis_history',$3,$4)`,
+        [
+          req.authUser!.id,
+          balance - 1,
+          history.rows[0].id,
+          `analysis:${req.authUser!.id}:${key}`,
+        ],
+      );
+      return { ...history.rows[0], remainingCredits: balance - 1 };
+    });
+    res.json({ success: true, data, analysis: saved });
+  }),
+);
+app.get(
+  "/api/account/analyses",
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const result = await pool.query(
+      `SELECT id,symbol,report_mode,result,created_at FROM analysis_history WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      [req.authUser!.id],
+    );
+    res.json({ success: true, analyses: result.rows });
+  }),
+);
+app.get(
+  "/api/account/credits",
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const result = await pool.query(
+      `SELECT balance FROM analysis_credits WHERE user_id=$1`,
+      [req.authUser!.id],
+    );
+    const ledger = await pool.query(
+      `SELECT id,delta,balance_after,reason,created_at FROM credit_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`,
+      [req.authUser!.id],
+    );
+    res.json({
+      success: true,
+      balance: result.rows[0]?.balance ?? 0,
+      ledger: ledger.rows,
+    });
+  }),
+);
 
-const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'));
+const uploadDir = path.resolve(
+  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads"),
+);
 fs.mkdirSync(uploadDir, { recursive: true });
-const upload = multer({ storage: multer.diskStorage({ destination: uploadDir, filename: (_req, file, cb) => cb(null, `${crypto.randomUUID()}${file.mimetype === 'application/pdf' ? '.pdf' : file.mimetype === 'image/png' ? '.png' : '.jpg'}`) }), limits: { fileSize: 4 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => cb(null, ['image/jpeg','image/png','application/pdf'].includes(file.mimetype)) });
-app.post('/api/payments', rateLimit('upload', 5, 3_600_000), requireUser, requireCsrf, upload.single('receipt'), asyncRoute(async (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, error: 'رسید معتبر لازم است.' });
-  const signature=fs.readFileSync(req.file.path).subarray(0,8);
-  const validSignature=req.file.mimetype==='application/pdf'?signature.subarray(0,5).toString()==='%PDF-':req.file.mimetype==='image/png'?signature.equals(Buffer.from([137,80,78,71,13,10,26,10])):signature[0]===255&&signature[1]===216&&signature[2]===255;
-  if(!validSignature){fs.unlink(req.file.path,()=>{});return res.status(400).json({success:false,error:'محتوای فایل رسید با نوع اعلام‌شده مطابقت ندارد.'});}
-  const body = z.object({ planId: z.string().uuid(), amountToman: z.coerce.number().int().positive(), trackingNumber: z.string().min(4).max(80), paidAt: z.string().datetime() }).safeParse(req.body);
-  if (!body.success) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ success: false, error: 'اطلاعات پرداخت معتبر نیست.' }); }
-  const plan = await pool.query(`SELECT price_toman,active FROM plans WHERE id=$1`, [body.data.planId]);
-  if (!plan.rows[0]?.active || Number(plan.rows[0].price_toman) !== body.data.amountToman) {
-    fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ success: false, error: 'مبلغ پرداخت با پلن انتخاب‌شده مطابقت ندارد.' });
-  }
-  const result = await pool.query(`INSERT INTO payment_submissions(user_id,plan_id,amount_toman,tracking_number,paid_at,receipt_storage_key,receipt_mime) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,status,created_at`, [req.authUser!.id, body.data.planId, body.data.amountToman, body.data.trackingNumber, body.data.paidAt, req.file.filename, req.file.mimetype]);
-  res.status(201).json({ success: true, payment: result.rows[0] });
-}));
-app.get('/api/admin/stats', requireUser, requireAdmin, asyncRoute(async (_req, res) => {
-  const stats = await pool.query(`SELECT (SELECT count(*) FROM users) AS users,(SELECT count(*) FROM analysis_history) AS analyses,(SELECT count(*) FROM payment_submissions WHERE status='pending') AS pending_payments,(SELECT coalesce(sum(amount_toman),0) FROM payment_submissions WHERE status='approved') AS revenue_toman`);
-  res.json({ success: true, stats: stats.rows[0] });
-}));
-app.get('/api/admin/users', requireUser, requireAdmin, asyncRoute(async (req, res) => {
-  const q = String(req.query.q || '').slice(0, 32);
-  const users = await pool.query(`SELECT u.id,u.mobile_e164,u.status,r.code AS role,coalesce(c.balance,0) AS credits,u.created_at FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE $1='' OR u.mobile_e164 LIKE '%'||$1||'%' ORDER BY u.created_at DESC LIMIT 100`, [q]);
-  res.json({ success: true, users: users.rows });
-}));
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (_req, file, cb) =>
+      cb(
+        null,
+        `${crypto.randomUUID()}${file.mimetype === "application/pdf" ? ".pdf" : file.mimetype === "image/png" ? ".png" : ".jpg"}`,
+      ),
+  }),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) =>
+    cb(
+      null,
+      ["image/jpeg", "image/png", "application/pdf"].includes(file.mimetype),
+    ),
+});
+app.post(
+  "/api/payments",
+  rateLimit("upload", 5, 3_600_000),
+  requireUser,
+  requireCsrf,
+  upload.single("receipt"),
+  asyncRoute(async (req, res) => {
+    if (!req.file)
+      return res
+        .status(400)
+        .json({ success: false, error: "رسید معتبر لازم است." });
+    const signature = fs.readFileSync(req.file.path).subarray(0, 8);
+    const validSignature =
+      req.file.mimetype === "application/pdf"
+        ? signature.subarray(0, 5).toString() === "%PDF-"
+        : req.file.mimetype === "image/png"
+          ? signature.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+          : signature[0] === 255 &&
+            signature[1] === 216 &&
+            signature[2] === 255;
+    if (!validSignature) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({
+        success: false,
+        error: "محتوای فایل رسید با نوع اعلام‌شده مطابقت ندارد.",
+      });
+    }
+    const body = z
+      .object({
+        planId: z.string().uuid().optional(),
+        campaignId: z.string().uuid().optional(),
+        amountToman: z.coerce.number().int().positive(),
+        trackingNumber: z.string().min(4).max(80),
+        paidAt: z.string().datetime(),
+      })
+      .refine((v) => Boolean(v.planId) !== Boolean(v.campaignId))
+      .safeParse(req.body);
+    if (!body.success) {
+      fs.unlink(req.file.path, () => {});
+      return res
+        .status(400)
+        .json({ success: false, error: "اطلاعات پرداخت معتبر نیست." });
+    }
+    const offer = body.data.planId
+      ? await pool.query(`SELECT price_toman,active FROM plans WHERE id=$1`, [
+          body.data.planId,
+        ])
+      : await pool.query(
+          `SELECT price_toman,active,starts_at,ends_at,capacity,(SELECT count(*) FROM promotion_redemptions WHERE promotion_id=promotions.id) AS used FROM promotions WHERE id=$1`,
+          [body.data.campaignId],
+        );
+    const selected = offer.rows[0];
+    const campaignAvailable =
+      !body.data.campaignId ||
+      (selected &&
+        new Date(selected.starts_at) <= new Date() &&
+        new Date(selected.ends_at) > new Date() &&
+        (selected.capacity == null ||
+          Number(selected.used) < Number(selected.capacity)));
+    if (
+      !selected?.active ||
+      !campaignAvailable ||
+      Number(selected.price_toman) !== body.data.amountToman
+    ) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({
+        success: false,
+        error: "مبلغ پرداخت با پلن انتخاب‌شده مطابقت ندارد.",
+      });
+    }
+    const result = await pool.query(
+      `INSERT INTO payment_submissions(user_id,plan_id,promotion_id,amount_toman,tracking_number,paid_at,receipt_storage_key,receipt_mime) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,status,created_at`,
+      [
+        req.authUser!.id,
+        body.data.planId ?? null,
+        body.data.campaignId ?? null,
+        body.data.amountToman,
+        body.data.trackingNumber,
+        body.data.paidAt,
+        req.file.filename,
+        req.file.mimetype,
+      ],
+    );
+    res.status(201).json({ success: true, payment: result.rows[0] });
+  }),
+);
+app.get(
+  "/api/admin/stats",
+  requireUser,
+  requireAdmin,
+  asyncRoute(async (_req, res) => {
+    const stats = await pool.query(
+      `SELECT (SELECT count(*) FROM users) AS users,(SELECT count(*) FROM analysis_history) AS analyses,(SELECT count(*) FROM payment_submissions WHERE status='pending') AS pending_payments,(SELECT coalesce(sum(amount_toman),0) FROM payment_submissions WHERE status='approved') AS revenue_toman`,
+    );
+    res.json({ success: true, stats: stats.rows[0] });
+  }),
+);
+app.get(
+  "/api/admin/users",
+  requireUser,
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const q = String(req.query.q || "").slice(0, 32);
+    const users = await pool.query(
+      `SELECT u.id,u.mobile_e164,u.status,r.code AS role,coalesce(c.balance,0) AS credits,u.created_at FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE $1='' OR u.mobile_e164 LIKE '%'||$1||'%' ORDER BY u.created_at DESC LIMIT 100`,
+      [q],
+    );
+    res.json({ success: true, users: users.rows });
+  }),
+);
+app.get(
+  "/api/admin/payments/:id/receipt",
+  requireUser,
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const found = await pool.query(
+      `SELECT receipt_storage_key,receipt_mime FROM payment_submissions WHERE id=$1`,
+      [req.params.id],
+    );
+    const receipt = found.rows[0];
+    if (!receipt)
+      return res.status(404).json({ success: false, error: "رسید پیدا نشد." });
+    if (
+      path.basename(receipt.receipt_storage_key) !== receipt.receipt_storage_key
+    )
+      return res
+        .status(400)
+        .json({ success: false, error: "مسیر رسید معتبر نیست." });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.type(receipt.receipt_mime);
+    res.sendFile(receipt.receipt_storage_key, { root: uploadDir });
+  }),
+);
 installPlatformRoutes(app);
 
-const distPath = path.join(process.cwd(), 'dist');
+const distPath = path.join(process.cwd(), "dist");
 async function start() {
-  if (!isProduction) app.use((await createViteServer({ server: { middlewareMode: true }, appType: 'spa' })).middlewares);
-  else { app.use(express.static(distPath, { index: false, maxAge: '1h' })); app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html'))); }
-  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    const message = error instanceof Error ? error.message : '';
-    const status = error instanceof UpstreamAnalysisError ? 502 : message === 'NO_CREDIT' ? 402 : 500;
-    console.error('[request-error]', { name: error instanceof Error ? error.name : 'UnknownError', status });
-    res.status(status).json({ success: false, error: status === 402 ? 'اعتبار تحلیل شما کافی نیست.' : 'در انجام درخواست خطایی رخ داد. دوباره تلاش کنید.' });
-  });
-  app.listen(PORT, '127.0.0.1', () => console.log(`[boursnegar] listening on 127.0.0.1:${PORT}`));
+  if (!isProduction)
+    app.use(
+      (
+        await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        })
+      ).middlewares,
+    );
+  else {
+    app.use(express.static(distPath, { index: false, maxAge: "1h" }));
+    app.get("*", (_req, res) =>
+      res.sendFile(path.join(distPath, "index.html")),
+    );
+  }
+  app.use(
+    (
+      error: unknown,
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction,
+    ) => {
+      const message = error instanceof Error ? error.message : "";
+      const code = (error as any)?.code;
+      const type = (error as any)?.type;
+      const status =
+        error instanceof UpstreamAnalysisError
+          ? 502
+          : message === "NO_CREDIT"
+            ? 402
+            : message === "NOT_FOUND"
+              ? 404
+              : [
+                    "ALREADY_DECIDED",
+                    "CAMPAIGN_UNAVAILABLE",
+                    "INVALID_BALANCE",
+                  ].includes(message)
+                ? 409
+                : message === "OTP_DISABLED"
+                  ? 503
+                  : type === "entity.parse.failed" || code === "LIMIT_FILE_SIZE"
+                    ? 400
+                    : 500;
+      console.error("[request-error]", {
+        name: error instanceof Error ? error.name : "UnknownError",
+        status,
+        ...(isProduction?{}:{message}),
+      });
+      res.status(status).json({
+        success: false,
+        error:
+          status === 402
+            ? "اعتبار تحلیل شما کافی نیست."
+            : status === 409
+              ? "این عملیات قبلاً انجام شده یا دیگر قابل انجام نیست."
+              : status === 503
+                ? "ورود پیامکی در حال فعال‌سازی است."
+                : status === 400
+                  ? "ساختار درخواست یا فایل معتبر نیست."
+                  : "در انجام درخواست خطایی رخ داد. دوباره تلاش کنید.",
+      });
+    },
+  );
+  app.listen(PORT, "127.0.0.1", () =>
+    console.log(`[boursnegar] listening on 127.0.0.1:${PORT}`),
+  );
 }
-start().catch((error) => { console.error('[startup-error]', error instanceof Error ? error.message : 'unknown'); process.exit(1); });
+start().catch((error) => {
+  console.error(
+    "[startup-error]",
+    error instanceof Error ? error.message : "unknown",
+  );
+  process.exit(1);
+});
 export { app };
