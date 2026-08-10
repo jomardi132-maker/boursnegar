@@ -41,6 +41,14 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
     setBusy(true);
     setError("");
     try {
+      if (next === "payments") {
+        const [plans, campaigns] = await Promise.all([
+          api<any>("/api/plans"),
+          api<any>("/api/campaigns"),
+        ]);
+        setData({ plans: plans.plans, campaigns: campaigns.campaigns });
+        return;
+      }
       const url =
         next === "overview"
           ? "/api/account/overview"
@@ -50,9 +58,7 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
               ? "/api/account/referrals"
               : next === "alerts"
                 ? "/api/alerts"
-                : next === "payments"
-                  ? "/api/plans"
-                  : "/api/admin/stats";
+                : "/api/admin/stats";
       setData(await api(url));
     } catch (e) {
       setError(e instanceof Error ? e.message : "خطا در دریافت اطلاعات");
@@ -221,7 +227,8 @@ function TabContent({
       />
     );
   if (tab === "alerts") return <Alerts data={data} reload={reload} />;
-  if (tab === "payments") return <Plans plans={data.plans || []} />;
+  if (tab === "payments")
+    return <Plans plans={data.plans || []} campaigns={data.campaigns || []} />;
   return <AdminPanel />;
 }
 function List({
@@ -255,13 +262,22 @@ const statusFa = (s: string) =>
     rejected: "ردشده",
     rewarded: "پاداش‌داده‌شده",
   })[s] || s;
-function Plans({ plans }: { plans: any[] }) {
+function Plans({ plans, campaigns }: { plans: any[]; campaigns: any[] }) {
   const [selected, setSelected] = useState<any>(null);
+  const offers = [
+    ...plans.map((p) => ({ ...p, offerType: "plan" })),
+    ...campaigns.map((c) => ({
+      ...c,
+      offerType: "campaign",
+      analysis_credits: c.credit_amount,
+      duration_days: 0,
+    })),
+  ];
   return (
     <section className="dashboard-section">
       <h3>پلن‌های فعال</h3>
       <div className="plan-grid">
-        {plans.map((p) => (
+        {offers.map((p) => (
           <article key={p.id}>
             <b>{p.title_fa}</b>
             <strong>
@@ -300,7 +316,7 @@ function PaymentForm({ plan, done }: { plan: any; done: () => void }) {
     e.preventDefault();
     if (!file) return;
     const body = new FormData();
-    body.set("planId", plan.id);
+    body.set(plan.offerType === "campaign" ? "campaignId" : "planId", plan.id);
     body.set("amountToman", String(plan.price_toman));
     body.set("trackingNumber", tracking);
     body.set("paidAt", new Date(paidAt).toISOString());
