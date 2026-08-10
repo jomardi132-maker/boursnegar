@@ -20,7 +20,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     totalRevenueToman: 173250000, // 173 Million Tomans
     smsGateway: {
       provider: 'kavenegar',
-      apiKey: 'kavenegar_live_key_9837210xxxx',
+      apiKey: '',
       lineNumber: '10008000',
       otpPatternCode: 'bourse_otp_pattern',
     },
