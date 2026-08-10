@@ -1,0 +1,145 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import express from 'express';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import multer from 'multer';
+import { z } from 'zod';
+import dotenv from 'dotenv';
+import { createServer as createViteServer } from 'vite';
+import { generateRealHealthCard, UpstreamAnalysisError } from './server/realAnalysisAdapter';
+import { pool, withTransaction } from './server/postgres';
+import { authenticate, createOtp, normalizeIranMobile, requireAdmin, requireCsrf, requireUser, revokeSession, setSessionCookie, verifyOtp } from './server/auth';
+
+dotenv.config();
+const app = express();
+const PORT = Number(process.env.PORT || 3000);
+const isProduction = process.env.NODE_ENV === 'production';
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'"] } }, crossOriginEmbedderPolicy: false }));
+app.use(express.json({ limit: '256kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+app.use(cookieParser());
+app.use(authenticate);
+
+type Bucket = { count: number; resetAt: number };
+const buckets = new Map<string, Bucket>();
+function rateLimit(name: string, limit: number, windowMs: number): express.RequestHandler {
+  return (req, res, next) => {
+    const key = `${name}:${req.ip}`;
+    const now = Date.now();
+    const bucket = buckets.get(key);
+    if (!bucket || bucket.resetAt <= now) buckets.set(key, { count: 1, resetAt: now + windowMs });
+    else if (++bucket.count > limit) return res.status(429).json({ success: false, error: 'تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.' });
+    next();
+  };
+}
+const asyncRoute = (handler: express.RequestHandler): express.RequestHandler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+const otpRequestSchema = z.object({ mobile: z.string().min(10).max(20) });
+const otpVerifySchema = z.object({ requestId: z.string().uuid(), mobile: z.string(), code: z.string().regex(/^\d{6}$/), referralCode: z.string().max(16).optional() });
+const analyzeSchema = z.object({ query: z.string().min(1).max(32), reportMode: z.enum(['audited', 'latest_codal']).default('audited') });
+
+async function sendOtp(mobile: string, code: string): Promise<void> {
+  if (process.env.OTP_GATEWAY === 'mock') {
+    if (isProduction) throw new Error('Mock OTP gateway is forbidden in production');
+    return;
+  }
+  const apiKey = process.env.KAVENEGAR_API_KEY;
+  const template = process.env.KAVENEGAR_OTP_TEMPLATE;
+  if (!apiKey || !template) throw new Error('OTP gateway is not configured');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(`https://api.kavenegar.com/v1/${encodeURIComponent(apiKey)}/verify/lookup.json?receptor=${encodeURIComponent(`0${mobile.slice(3)}`)}&token=${code}&template=${encodeURIComponent(template)}`, { signal: controller.signal });
+    if (!response.ok) throw new Error('OTP delivery failed');
+  } finally { clearTimeout(timeout); }
+}
+
+app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+app.get('/readyz', asyncRoute(async (_req, res) => { await pool.query('SELECT 1'); res.json({ status: 'ready' }); }));
+app.post('/api/auth/otp/request', rateLimit('otp', 5, 600_000), asyncRoute(async (req, res) => {
+  const parsed = otpRequestSchema.safeParse(req.body);
+  const mobile = parsed.success ? normalizeIranMobile(parsed.data.mobile) : null;
+  if (!mobile) return res.status(400).json({ success: false, error: 'شماره موبایل معتبر نیست.' });
+  const otp = await createOtp(mobile, req.ip || '127.0.0.1');
+  try { await sendOtp(mobile, otp.code); } catch (error) { await pool.query(`UPDATE otp_requests SET consumed_at=now() WHERE id=$1`, [otp.requestId]); throw error; }
+  res.status(202).json({ success: true, requestId: otp.requestId, expiresInSeconds: 120 });
+}));
+app.post('/api/auth/otp/verify', rateLimit('verify', 10, 600_000), asyncRoute(async (req, res) => {
+  const parsed = otpVerifySchema.safeParse(req.body);
+  const mobile = parsed.success ? normalizeIranMobile(parsed.data.mobile) : null;
+  if (!parsed.success || !mobile) return res.status(400).json({ success: false, error: 'اطلاعات ورود معتبر نیست.' });
+  try {
+    const result = await verifyOtp(parsed.data.requestId, mobile, parsed.data.code, req.ip || '127.0.0.1', req.header('user-agent') || '', parsed.data.referralCode);
+    setSessionCookie(res, result.sessionToken);
+    res.json({ success: true, csrfToken: result.csrfToken, user: result.user });
+  } catch { res.status(400).json({ success: false, error: 'کد واردشده معتبر نیست یا منقضی شده است.' }); }
+}));
+app.get('/api/auth/me', requireUser, (req, res) => res.json({ success: true, user: req.authUser }));
+app.post('/api/auth/logout', requireUser, requireCsrf, asyncRoute(async (req, res) => { await revokeSession(req, res); res.json({ success: true }); }));
+
+app.post('/api/analyze', rateLimit('analyze', 12, 60_000), requireUser, requireCsrf, asyncRoute(async (req, res) => {
+  const parsed = analyzeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: 'نماد یا حالت گزارش معتبر نیست.' });
+  const symbol = parsed.data.query.trim().replace(/^نماد\s+/, '');
+  if (!/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/.test(symbol)) return res.status(400).json({ success: false, error: 'نماد واردشده معتبر نیست.' });
+  const data = await generateRealHealthCard(symbol, parsed.data.reportMode);
+  const key = String(req.header('idempotency-key') || crypto.randomUUID()).slice(0, 128);
+  const saved = await withTransaction(async (client) => {
+    const credit = await client.query(`SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`, [req.authUser!.id]);
+    const balance = credit.rows[0]?.balance ?? 0;
+    if (balance < 1) throw new Error('NO_CREDIT');
+    const history = await client.query(`INSERT INTO analysis_history(user_id,symbol,report_mode,result,source_metadata) VALUES($1,$2,$3,$4,$5) RETURNING id,created_at`, [req.authUser!.id, symbol, parsed.data.reportMode, data, { source: 'BrsApi/Codal', reportDate: data.header.reportDate }]);
+    await client.query(`UPDATE analysis_credits SET balance=balance-1,updated_at=now() WHERE user_id=$1`, [req.authUser!.id]);
+    await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,-1,$2,'analysis','analysis_history',$3,$4)`, [req.authUser!.id, balance - 1, history.rows[0].id, `analysis:${req.authUser!.id}:${key}`]);
+    return { ...history.rows[0], remainingCredits: balance - 1 };
+  });
+  res.json({ success: true, data, analysis: saved });
+}));
+app.get('/api/account/analyses', requireUser, asyncRoute(async (req, res) => {
+  const result = await pool.query(`SELECT id,symbol,report_mode,result,created_at FROM analysis_history WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.authUser!.id]);
+  res.json({ success: true, analyses: result.rows });
+}));
+app.get('/api/account/credits', requireUser, asyncRoute(async (req, res) => {
+  const result = await pool.query(`SELECT balance FROM analysis_credits WHERE user_id=$1`, [req.authUser!.id]);
+  const ledger = await pool.query(`SELECT id,delta,balance_after,reason,created_at FROM credit_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.authUser!.id]);
+  res.json({ success: true, balance: result.rows[0]?.balance ?? 0, ledger: ledger.rows });
+}));
+
+const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'));
+fs.mkdirSync(uploadDir, { recursive: true });
+const upload = multer({ storage: multer.diskStorage({ destination: uploadDir, filename: (_req, file, cb) => cb(null, `${crypto.randomUUID()}${file.mimetype === 'application/pdf' ? '.pdf' : file.mimetype === 'image/png' ? '.png' : '.jpg'}`) }), limits: { fileSize: 4 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => cb(null, ['image/jpeg','image/png','application/pdf'].includes(file.mimetype)) });
+app.post('/api/payments', rateLimit('upload', 5, 3_600_000), requireUser, requireCsrf, upload.single('receipt'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, error: 'رسید معتبر لازم است.' });
+  const body = z.object({ planId: z.string().uuid(), amountToman: z.coerce.number().int().positive(), trackingNumber: z.string().min(4).max(80), paidAt: z.string().datetime() }).safeParse(req.body);
+  if (!body.success) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ success: false, error: 'اطلاعات پرداخت معتبر نیست.' }); }
+  const result = await pool.query(`INSERT INTO payment_submissions(user_id,plan_id,amount_toman,tracking_number,paid_at,receipt_storage_key,receipt_mime) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,status,created_at`, [req.authUser!.id, body.data.planId, body.data.amountToman, body.data.trackingNumber, body.data.paidAt, req.file.filename, req.file.mimetype]);
+  res.status(201).json({ success: true, payment: result.rows[0] });
+}));
+app.get('/api/admin/stats', requireUser, requireAdmin, asyncRoute(async (_req, res) => {
+  const stats = await pool.query(`SELECT (SELECT count(*) FROM users) AS users,(SELECT count(*) FROM analysis_history) AS analyses,(SELECT count(*) FROM payment_submissions WHERE status='pending') AS pending_payments,(SELECT coalesce(sum(amount_toman),0) FROM payment_submissions WHERE status='approved') AS revenue_toman`);
+  res.json({ success: true, stats: stats.rows[0] });
+}));
+app.get('/api/admin/users', requireUser, requireAdmin, asyncRoute(async (req, res) => {
+  const q = String(req.query.q || '').slice(0, 32);
+  const users = await pool.query(`SELECT u.id,u.mobile_e164,u.status,r.code AS role,coalesce(c.balance,0) AS credits,u.created_at FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE $1='' OR u.mobile_e164 LIKE '%'||$1||'%' ORDER BY u.created_at DESC LIMIT 100`, [q]);
+  res.json({ success: true, users: users.rows });
+}));
+
+const distPath = path.join(process.cwd(), 'dist');
+async function start() {
+  if (!isProduction) app.use((await createViteServer({ server: { middlewareMode: true }, appType: 'spa' })).middlewares);
+  else { app.use(express.static(distPath, { index: false, maxAge: '1h' })); app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html'))); }
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const message = error instanceof Error ? error.message : '';
+    const status = error instanceof UpstreamAnalysisError ? 502 : message === 'NO_CREDIT' ? 402 : 500;
+    console.error('[request-error]', { name: error instanceof Error ? error.name : 'UnknownError', status });
+    res.status(status).json({ success: false, error: status === 402 ? 'اعتبار تحلیل شما کافی نیست.' : 'در انجام درخواست خطایی رخ داد. دوباره تلاش کنید.' });
+  });
+  app.listen(PORT, '127.0.0.1', () => console.log(`[boursnegar] listening on 127.0.0.1:${PORT}`));
+}
+start().catch((error) => { console.error('[startup-error]', error instanceof Error ? error.message : 'unknown'); process.exit(1); });
+export { app };
+
