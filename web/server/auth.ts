@@ -43,7 +43,7 @@ export async function createOtp(mobile: string, ip: string): Promise<{ requestId
 }
 
 export async function verifyOtp(requestId: string, mobile: string, code: string, ip: string, userAgent: string, referralCode?: string) {
-  return withTransaction(async (client) => {
+  const outcome=await withTransaction(async (client) => {
     const found = await client.query(`SELECT * FROM otp_requests WHERE id=$1 FOR UPDATE`, [requestId]);
     const otp = found.rows[0];
     const supplied = sha256(`${mobile}:${code}:${required('OTP_PEPPER')}`);
@@ -52,7 +52,7 @@ export async function verifyOtp(requestId: string, mobile: string, code: string,
       await client.query(`UPDATE otp_requests SET attempts=attempts+1, consumed_at=CASE WHEN $2 THEN now() ELSE consumed_at END, locked_until=CASE WHEN NOT $2 AND attempts+1>=max_attempts THEN now()+interval '15 minutes' ELSE locked_until END WHERE id=$1`, [requestId, valid]);
       await client.query(`INSERT INTO otp_attempts(otp_request_id,success,attempt_ip) VALUES($1,$2,$3::inet)`, [requestId, valid, ip]);
     }
-    if (!valid) throw new Error('INVALID_OTP');
+    if (!valid) return { invalid: true as const };
 
     let user = (await client.query(`SELECT u.id,u.mobile_e164,r.code AS role FROM users u JOIN roles r ON r.id=u.role_id WHERE u.mobile_e164=$1`, [mobile])).rows[0];
     let created = false;
@@ -71,8 +71,10 @@ export async function verifyOtp(requestId: string, mobile: string, code: string,
     const csrfToken = randomToken();
     const session = await client.query(`INSERT INTO sessions(user_id,token_hash,csrf_hash,expires_at,created_ip,user_agent_hash) VALUES($1,$2,$3,now()+interval '${SESSION_DAYS} days',$4::inet,$5) RETURNING id`, [user.id, sha256(sessionToken), sha256(csrfToken), ip, sha256(userAgent)]);
     const credits = (await client.query(`SELECT balance FROM analysis_credits WHERE user_id=$1`, [user.id])).rows[0]?.balance ?? 0;
-    return { sessionToken, csrfToken, created, user: { id: user.id, mobile, role: user.role, credits }, sessionId: session.rows[0].id };
+    return { invalid:false as const,sessionToken, csrfToken, created, user: { id: user.id, mobile, role: user.role, credits }, sessionId: session.rows[0].id };
   });
+  if(outcome.invalid)throw new Error('INVALID_OTP');
+  return outcome;
 }
 
 export function setSessionCookie(res: Response, token: string) {
