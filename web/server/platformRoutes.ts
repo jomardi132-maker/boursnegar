@@ -103,19 +103,20 @@ export function installPlatformRoutes(app: express.Express) {
     }),
   );
 
-  const alertSchema = z
-    .object({
-      symbol: z.string().regex(/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/),
-      kind: z.enum(["price", "pe", "codal"]),
-      comparator: z.enum(["gte", "lte"]).optional(),
-      targetValue: z.number().positive().optional(),
-    })
-    .superRefine((v, c) => {
-      if (v.kind === "codal" && v.targetValue != null)
-        c.addIssue({ code: "custom", message: "targetValue forbidden" });
-      if (v.kind !== "codal" && v.targetValue == null)
-        c.addIssue({ code: "custom", message: "targetValue required" });
-    });
+  const alertBaseSchema = z.object({
+    symbol: z.string().regex(/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/),
+    kind: z.enum(["price", "pe", "codal"]),
+    comparator: z.enum(["gte", "lte"]).optional(),
+    targetValue: z.number().positive().optional(),
+  });
+  const alertSchema = alertBaseSchema.superRefine((v, c) => {
+    if (v.kind === "codal" && v.targetValue != null)
+      c.addIssue({ code: "custom", message: "targetValue forbidden" });
+    if (v.kind !== "codal" && v.targetValue == null)
+      c.addIssue({ code: "custom", message: "targetValue required" });
+    if (v.kind !== "codal" && v.comparator == null)
+      c.addIssue({ code: "custom", message: "comparator required" });
+  });
   app.get(
     "/api/alerts",
     requireUser,
@@ -156,14 +157,59 @@ export function installPlatformRoutes(app: express.Express) {
     requireUser,
     requireCsrf,
     asyncRoute(async (req, res) => {
-      const p = z.object({ active: z.boolean() }).safeParse(req.body);
+      const p = alertBaseSchema
+        .extend({ active: z.boolean() })
+        .partial()
+        .refine((value) => Object.keys(value).length > 0)
+        .safeParse(req.body);
       if (!p.success)
         return res
           .status(400)
           .json({ success: false, error: "درخواست معتبر نیست." });
+      const current = await pool.query(
+        `SELECT symbol,kind,comparator,target_value,active FROM alerts WHERE id=$1 AND user_id=$2`,
+        [req.params.id, req.authUser!.id],
+      );
+      if (!current.rowCount)
+        return res
+          .status(404)
+          .json({ success: false, error: "هشدار پیدا نشد." });
+      const merged = {
+        symbol: p.data.symbol ?? current.rows[0].symbol,
+        kind: p.data.kind ?? current.rows[0].kind,
+        comparator:
+          p.data.kind === "codal"
+            ? undefined
+            : (p.data.comparator ?? current.rows[0].comparator),
+        targetValue:
+          p.data.kind === "codal"
+            ? undefined
+            : (p.data.targetValue ?? current.rows[0].target_value),
+      };
+      const validated = alertSchema.safeParse(merged);
+      if (!validated.success)
+        return res
+          .status(400)
+          .json({ success: false, error: "اطلاعات هشدار معتبر نیست." });
+      const v = validated.data;
+      const criteriaChanged =
+        v.symbol !== current.rows[0].symbol ||
+        v.kind !== current.rows[0].kind ||
+        v.comparator !== current.rows[0].comparator ||
+        Number(v.targetValue ?? 0) !==
+          Number(current.rows[0].target_value ?? 0);
       const r = await pool.query(
-        `UPDATE alerts SET active=$3 WHERE id=$1 AND user_id=$2 RETURNING id,active`,
-        [req.params.id, req.authUser!.id, p.data.active],
+        `UPDATE alerts SET symbol=$3,kind=$4,comparator=$5,target_value=$6,active=$7,last_trigger_key=CASE WHEN $8 THEN NULL ELSE last_trigger_key END WHERE id=$1 AND user_id=$2 RETURNING id,symbol,kind,comparator,target_value,active`,
+        [
+          req.params.id,
+          req.authUser!.id,
+          v.symbol,
+          v.kind,
+          v.kind === "codal" ? null : v.comparator,
+          v.kind === "codal" ? null : v.targetValue,
+          p.data.active ?? current.rows[0].active,
+          criteriaChanged,
+        ],
       );
       if (!r.rowCount)
         return res
@@ -219,7 +265,7 @@ export function installPlatformRoutes(app: express.Express) {
           .json({ success: false, error: "تصمیم معتبر نیست." });
       const result = await withTransaction(async (client) => {
         const found = await client.query(
-          `SELECT ps.*,p.analysis_credits AS plan_credits,p.duration_days,pr.credit_amount AS campaign_credits,pr.active AS campaign_active,pr.starts_at,pr.ends_at,pr.capacity FROM payment_submissions ps LEFT JOIN plans p ON p.id=ps.plan_id LEFT JOIN promotions pr ON pr.id=ps.promotion_id WHERE ps.id=$1 FOR UPDATE OF ps`,
+          `SELECT ps.*,p.analysis_credits AS plan_credits,p.duration_days,pr.credit_amount AS campaign_credits,pr.active AS campaign_active,pr.starts_at,pr.ends_at,pr.capacity,pr.rules,u.created_at AS user_created_at FROM payment_submissions ps JOIN users u ON u.id=ps.user_id LEFT JOIN plans p ON p.id=ps.plan_id LEFT JOIN promotions pr ON pr.id=ps.promotion_id WHERE ps.id=$1 FOR UPDATE OF ps`,
           [req.params.id],
         );
         const payment = found.rows[0];
@@ -234,6 +280,12 @@ export function installPlatformRoutes(app: express.Express) {
             !payment.campaign_active ||
             new Date(payment.starts_at) > new Date() ||
             new Date(payment.ends_at) <= new Date() ||
+            (payment.rules?.audience === "new_users" &&
+              new Date(payment.user_created_at) <
+                new Date(payment.starts_at)) ||
+            (payment.rules?.audience === "existing_users" &&
+              new Date(payment.user_created_at) >=
+                new Date(payment.starts_at)) ||
             (payment.capacity != null && count.rows[0].used >= payment.capacity)
           )
             throw new Error("CAMPAIGN_UNAVAILABLE");
@@ -412,6 +464,38 @@ export function installPlatformRoutes(app: express.Express) {
     }),
   );
   app.get(
+    "/api/admin/users/:id/activity",
+    requireUser,
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const [ledger, analyses, attempts, subscriptions] = await Promise.all([
+        pool.query(
+          `SELECT id,delta,balance_after,reason,reference_type,created_at FROM credit_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`,
+          [req.params.id],
+        ),
+        pool.query(
+          `SELECT id,symbol,report_mode,created_at FROM analysis_history WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`,
+          [req.params.id],
+        ),
+        pool.query(
+          `SELECT id,symbol,report_mode,success,error_code,created_at FROM analysis_attempts WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`,
+          [req.params.id],
+        ),
+        pool.query(
+          `SELECT s.id,s.status,s.starts_at,s.ends_at,p.code,p.title_fa FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.user_id=$1 ORDER BY s.created_at DESC LIMIT 50`,
+          [req.params.id],
+        ),
+      ]);
+      res.json({
+        success: true,
+        ledger: ledger.rows,
+        analyses: analyses.rows,
+        attempts: attempts.rows,
+        subscriptions: subscriptions.rows,
+      });
+    }),
+  );
+  app.get(
     "/api/account/ledger",
     requireUser,
     asyncRoute(async (req, res) => {
@@ -483,7 +567,12 @@ export function installPlatformRoutes(app: express.Express) {
       creditAmount: z.number().int().min(0).max(100000),
       priceToman: z.number().int().min(0).nullable().optional(),
       active: z.boolean(),
-      rules: z.record(z.string(), z.unknown()).default({}),
+      rules: z
+        .object({
+          audience: z.enum(["all", "new_users", "existing_users"]),
+          perUser: z.literal(1),
+        })
+        .default({ audience: "all", perUser: 1 }),
     })
     .refine((v) => new Date(v.endsAt) > new Date(v.startsAt));
   app.get(
@@ -495,6 +584,17 @@ export function installPlatformRoutes(app: express.Express) {
         `SELECT * FROM promotions ORDER BY starts_at DESC`,
       );
       res.json({ success: true, campaigns: r.rows });
+    }),
+  );
+  app.get(
+    "/api/admin/referrals",
+    requireUser,
+    requireAdmin,
+    asyncRoute(async (_req, res) => {
+      const r = await pool.query(
+        `SELECT r.id,r.status,r.created_at,r.rewarded_at,referrer.mobile_e164 AS referrer_mobile,referred.mobile_e164 AS referred_mobile FROM referrals r JOIN users referrer ON referrer.id=r.referrer_user_id JOIN users referred ON referred.id=r.referred_user_id ORDER BY r.created_at DESC LIMIT 200`,
+      );
+      res.json({ success: true, referrals: r.rows });
     }),
   );
   app.post(

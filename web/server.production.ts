@@ -88,6 +88,19 @@ const analyzeSchema = z.object({
   reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
 });
 
+async function recordAnalysisAttempt(
+  userId: string,
+  symbol: string,
+  reportMode: string,
+  success: boolean,
+  errorCode?: string,
+) {
+  await pool.query(
+    `INSERT INTO analysis_attempts(user_id,symbol,report_mode,success,error_code) VALUES($1,$2,$3,$4,$5)`,
+    [userId, symbol, reportMode, success, errorCode?.slice(0, 80) ?? null],
+  );
+}
+
 async function sendOtp(mobile: string, code: string): Promise<string> {
   if (process.env.OTP_GATEWAY === "mock") {
     if (isProduction)
@@ -233,43 +246,60 @@ app.post(
       return res
         .status(400)
         .json({ success: false, error: "نماد واردشده معتبر نیست." });
-    const data = await generateRealHealthCard(symbol, parsed.data.reportMode);
-    const key = String(
-      req.header("idempotency-key") || crypto.randomUUID(),
-    ).slice(0, 128);
-    const saved = await withTransaction(async (client) => {
-      const credit = await client.query(
-        `SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`,
-        [req.authUser!.id],
+    try {
+      const data = await generateRealHealthCard(symbol, parsed.data.reportMode);
+      const key = String(
+        req.header("idempotency-key") || crypto.randomUUID(),
+      ).slice(0, 128);
+      const saved = await withTransaction(async (client) => {
+        const credit = await client.query(
+          `SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`,
+          [req.authUser!.id],
+        );
+        const balance = credit.rows[0]?.balance ?? 0;
+        if (balance < 1) throw new Error("NO_CREDIT");
+        const history = await client.query(
+          `INSERT INTO analysis_history(user_id,symbol,report_mode,result,source_metadata) VALUES($1,$2,$3,$4,$5) RETURNING id,created_at`,
+          [
+            req.authUser!.id,
+            symbol,
+            parsed.data.reportMode,
+            data,
+            { source: "BrsApi/Codal", reportDate: data.header.reportDate },
+          ],
+        );
+        await client.query(
+          `UPDATE analysis_credits SET balance=balance-1,updated_at=now() WHERE user_id=$1`,
+          [req.authUser!.id],
+        );
+        await client.query(
+          `INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,-1,$2,'analysis','analysis_history',$3,$4)`,
+          [
+            req.authUser!.id,
+            balance - 1,
+            history.rows[0].id,
+            `analysis:${req.authUser!.id}:${key}`,
+          ],
+        );
+        return { ...history.rows[0], remainingCredits: balance - 1 };
+      });
+      await recordAnalysisAttempt(
+        req.authUser!.id,
+        symbol,
+        parsed.data.reportMode,
+        true,
       );
-      const balance = credit.rows[0]?.balance ?? 0;
-      if (balance < 1) throw new Error("NO_CREDIT");
-      const history = await client.query(
-        `INSERT INTO analysis_history(user_id,symbol,report_mode,result,source_metadata) VALUES($1,$2,$3,$4,$5) RETURNING id,created_at`,
-        [
-          req.authUser!.id,
-          symbol,
-          parsed.data.reportMode,
-          data,
-          { source: "BrsApi/Codal", reportDate: data.header.reportDate },
-        ],
+      res.json({ success: true, data, analysis: saved });
+    } catch (error) {
+      await recordAnalysisAttempt(
+        req.authUser!.id,
+        symbol,
+        parsed.data.reportMode,
+        false,
+        error instanceof Error ? error.message : "UNKNOWN",
       );
-      await client.query(
-        `UPDATE analysis_credits SET balance=balance-1,updated_at=now() WHERE user_id=$1`,
-        [req.authUser!.id],
-      );
-      await client.query(
-        `INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,-1,$2,'analysis','analysis_history',$3,$4)`,
-        [
-          req.authUser!.id,
-          balance - 1,
-          history.rows[0].id,
-          `analysis:${req.authUser!.id}:${key}`,
-        ],
-      );
-      return { ...history.rows[0], remainingCredits: balance - 1 };
-    });
-    res.json({ success: true, data, analysis: saved });
+      throw error;
+    }
   }),
 );
 app.get(
@@ -371,8 +401,8 @@ app.post(
           body.data.planId,
         ])
       : await pool.query(
-          `SELECT price_toman,active,starts_at,ends_at,capacity,(SELECT count(*) FROM promotion_redemptions WHERE promotion_id=promotions.id) AS used FROM promotions WHERE id=$1`,
-          [body.data.campaignId],
+          `SELECT p.price_toman,p.active,p.starts_at,p.ends_at,p.capacity,p.rules,(SELECT count(*) FROM promotion_redemptions WHERE promotion_id=p.id) AS used,u.created_at AS user_created_at FROM promotions p CROSS JOIN users u WHERE p.id=$1 AND u.id=$2`,
+          [body.data.campaignId, req.authUser!.id],
         );
     const selected = offer.rows[0];
     const campaignAvailable =
@@ -380,6 +410,14 @@ app.post(
       (selected &&
         new Date(selected.starts_at) <= new Date() &&
         new Date(selected.ends_at) > new Date() &&
+        !(
+          selected.rules?.audience === "new_users" &&
+          new Date(selected.user_created_at) < new Date(selected.starts_at)
+        ) &&
+        !(
+          selected.rules?.audience === "existing_users" &&
+          new Date(selected.user_created_at) >= new Date(selected.starts_at)
+        ) &&
         (selected.capacity == null ||
           Number(selected.used) < Number(selected.capacity)));
     if (
@@ -409,13 +447,22 @@ app.post(
     res.status(201).json({ success: true, payment: result.rows[0] });
   }),
 );
+app.use("/api/admin", rateLimit("admin", 120, 60_000));
 app.get(
   "/api/admin/stats",
   requireUser,
   requireAdmin,
   asyncRoute(async (_req, res) => {
     const stats = await pool.query(
-      `SELECT (SELECT count(*) FROM users) AS users,(SELECT count(*) FROM analysis_history) AS analyses,(SELECT count(*) FROM payment_submissions WHERE status='pending') AS pending_payments,(SELECT coalesce(sum(amount_toman),0) FROM payment_submissions WHERE status='approved') AS revenue_toman`,
+      `SELECT
+        (SELECT count(*) FROM users) AS users,
+        (SELECT count(*) FROM users WHERE created_at >= now()-interval '30 days') AS registrations_30d,
+        (SELECT count(*) FROM mobile_identities WHERE last_login_at >= now()-interval '30 days') AS active_users_30d,
+        (SELECT count(*) FROM analysis_attempts WHERE success) AS successful_analyses,
+        (SELECT count(*) FROM analysis_attempts WHERE NOT success) AS failed_analyses,
+        (SELECT count(*) FROM payment_submissions WHERE status='pending') AS pending_payments,
+        (SELECT coalesce(sum(amount_toman),0) FROM payment_submissions WHERE status='approved') AS revenue_toman,
+        (SELECT coalesce(-sum(delta),0) FROM credit_ledger WHERE delta<0 AND reason='analysis') AS credits_consumed`,
     );
     res.json({ success: true, stats: stats.rows[0] });
   }),
@@ -506,7 +553,7 @@ async function start() {
       console.error("[request-error]", {
         name: error instanceof Error ? error.name : "UnknownError",
         status,
-        ...(isProduction?{}:{message}),
+        ...(isProduction ? {} : { message }),
       });
       res.status(status).json({
         success: false,

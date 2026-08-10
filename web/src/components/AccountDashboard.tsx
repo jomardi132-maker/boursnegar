@@ -25,12 +25,7 @@ type Overview = {
   referralCode: string;
 };
 type Tab =
-  | "overview"
-  | "history"
-  | "payments"
-  | "referrals"
-  | "alerts"
-  | "admin";
+  "overview" | "history" | "payments" | "referrals" | "alerts" | "admin";
 
 export function AccountDashboard({ user, onClose, onCredits }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
@@ -384,6 +379,7 @@ function PaymentForm({ plan, done }: { plan: any; done: () => void }) {
 }
 function Alerts({ data, reload }: { data: any; reload: () => void }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
   async function toggle(a: any) {
     await api(`/api/alerts/${a.id}`, {
       method: "PATCH",
@@ -399,14 +395,22 @@ function Alerts({ data, reload }: { data: any; reload: () => void }) {
     <section className="dashboard-section">
       <div className="section-row">
         <h3>هشدارهای من</h3>
-        <button className="button primary" onClick={() => setOpen(!open)}>
+        <button
+          className="button primary"
+          onClick={() => {
+            setEditing(null);
+            setOpen(!open);
+          }}
+        >
           هشدار جدید
         </button>
       </div>
       {open && (
         <AlertForm
+          initial={editing}
           done={() => {
             setOpen(false);
+            setEditing(null);
             reload();
           }}
         />
@@ -428,6 +432,14 @@ function Alerts({ data, reload }: { data: any; reload: () => void }) {
                 : "هر اطلاعیه جدید"}
             </span>
             <div>
+              <button
+                onClick={() => {
+                  setEditing(a);
+                  setOpen(true);
+                }}
+              >
+                ویرایش
+              </button>
               <button onClick={() => toggle(a)}>
                 {a.active ? "غیرفعال‌کردن" : "فعال‌کردن"}
               </button>
@@ -439,18 +451,21 @@ function Alerts({ data, reload }: { data: any; reload: () => void }) {
     </section>
   );
 }
-function AlertForm({ done }: { done: () => void }) {
-  const [symbol, setSymbol] = useState("");
-  const [kind, setKind] = useState("price");
-  const [target, setTarget] = useState("");
+function AlertForm({ done, initial }: { done: () => void; initial?: any }) {
+  const [symbol, setSymbol] = useState(initial?.symbol || "");
+  const [kind, setKind] = useState(initial?.kind || "price");
+  const [comparator, setComparator] = useState(initial?.comparator || "gte");
+  const [target, setTarget] = useState(
+    initial?.target_value == null ? "" : String(initial.target_value),
+  );
   async function submit(e: FormEvent) {
     e.preventDefault();
-    await api("/api/alerts", {
-      method: "POST",
+    await api(initial ? `/api/alerts/${initial.id}` : "/api/alerts", {
+      method: initial ? "PATCH" : "POST",
       body: JSON.stringify({
         symbol,
         kind,
-        comparator: "gte",
+        ...(kind === "codal" ? {} : { comparator }),
         ...(kind === "codal" ? {} : { targetValue: Number(target) }),
       }),
     });
@@ -475,17 +490,27 @@ function AlertForm({ done }: { done: () => void }) {
         <option value="codal">اطلاعیه کدال</option>
       </select>
       {kind !== "codal" && (
-        <input
-          aria-label="مقدار هدف"
-          type="number"
-          min="0.01"
-          step="0.01"
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          required
-        />
+        <>
+          <select
+            aria-label="شرط هشدار"
+            value={comparator}
+            onChange={(e) => setComparator(e.target.value)}
+          >
+            <option value="gte">بیشتر یا مساوی</option>
+            <option value="lte">کمتر یا مساوی</option>
+          </select>
+          <input
+            aria-label="مقدار هدف"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            required
+          />
+        </>
       )}
-      <button>ثبت</button>
+      <button>{initial ? "ذخیره تغییرات" : "ثبت"}</button>
     </form>
   );
 }
@@ -504,11 +529,13 @@ function AdminPanel() {
               ? "/api/admin/plans"
               : section === "campaigns"
                 ? "/api/admin/campaigns"
-                : section === "settings"
-                  ? "/api/admin/settings"
-                  : section === "sms"
-                    ? "/api/admin/sms"
-                    : "/api/admin/audit",
+                : section === "referrals"
+                  ? "/api/admin/referrals"
+                  : section === "settings"
+                    ? "/api/admin/settings"
+                    : section === "sms"
+                      ? "/api/admin/sms"
+                      : "/api/admin/audit",
     ).then(setData);
   useEffect(() => {
     setData(null);
@@ -523,6 +550,7 @@ function AdminPanel() {
           ["payments", CreditCard, "پرداخت‌ها"],
           ["plans", CreditCard, "پلن‌ها"],
           ["campaigns", Megaphone, "کمپین‌ها"],
+          ["referrals", Users, "معرفی‌ها"],
           ["settings", Settings, "تنظیمات"],
           ["sms", Bell, "پیامک"],
           ["audit", Shield, "ممیزی"],
@@ -563,9 +591,13 @@ function AdminContent({
               {(
                 {
                   users: "کاربران",
-                  analyses: "تحلیل‌ها",
+                  registrations_30d: "ثبت‌نام ۳۰ روز اخیر",
+                  active_users_30d: "کاربران فعال ۳۰ روز اخیر",
+                  successful_analyses: "تحلیل‌های موفق",
+                  failed_analyses: "تحلیل‌های ناموفق",
                   pending_payments: "پرداخت در انتظار",
                   revenue_toman: "درآمد تأییدشده",
+                  credits_consumed: "اعتبار مصرف‌شده",
                 } as any
               )[k] || k}
             </small>
@@ -622,19 +654,7 @@ function AdminContent({
       </div>
     );
   if (section === "users")
-    return (
-      <div className="dashboard-list">
-        {(data.users || []).map((u: any) => (
-          <article key={u.id}>
-            <span>
-              <b>{u.mobile_e164}</b>
-              <br />
-              {u.role} · {u.credits} اعتبار · {u.status}
-            </span>
-          </article>
-        ))}
-      </div>
-    );
+    return <AdminUsers initial={data.users || []} reload={reload} />;
   if (section === "plans")
     return (
       <div className="dashboard-list">
@@ -689,6 +709,20 @@ function AdminContent({
         </div>
       </>
     );
+  if (section === "referrals")
+    return (
+      <div className="dashboard-list">
+        {(data.referrals || []).map((r: any) => (
+          <article key={r.id}>
+            <span>
+              <b>{r.referrer_mobile}</b> ← {r.referred_mobile}
+              <br />
+              {r.status} · {new Date(r.created_at).toLocaleString("fa-IR")}
+            </span>
+          </article>
+        ))}
+      </div>
+    );
   if (section === "sms")
     return (
       <>
@@ -721,9 +755,114 @@ function AdminContent({
     </div>
   );
 }
+function AdminUsers({
+  initial,
+  reload,
+}: {
+  initial: any[];
+  reload: () => void;
+}) {
+  const [users, setUsers] = useState(initial);
+  const [query, setQuery] = useState("");
+  const [activity, setActivity] = useState<Record<string, any>>({});
+  async function search(e: FormEvent) {
+    e.preventDefault();
+    const result: any = await api(
+      `/api/admin/users?q=${encodeURIComponent(query)}`,
+    );
+    setUsers(result.users || []);
+  }
+  async function updateUser(id: string, values: any) {
+    await api(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(values),
+    });
+    const result: any = await api(
+      `/api/admin/users?q=${encodeURIComponent(query)}`,
+    );
+    setUsers(result.users || []);
+  }
+  async function adjustCredits(id: string) {
+    const raw = window.prompt("مقدار تغییر اعتبار (مثبت یا منفی)");
+    if (raw == null) return;
+    const delta = Number(raw);
+    const note = window.prompt("دلیل تغییر اعتبار (حداقل ۳ حرف)");
+    if (!Number.isInteger(delta) || delta === 0 || !note || note.length < 3)
+      return;
+    await api(`/api/admin/users/${id}/credits`, {
+      method: "POST",
+      body: JSON.stringify({ delta, note }),
+    });
+    reload();
+  }
+  async function showActivity(id: string) {
+    if (activity[id]) {
+      setActivity((old) => ({ ...old, [id]: null }));
+      return;
+    }
+    const result = await api(`/api/admin/users/${id}/activity`);
+    setActivity((old) => ({ ...old, [id]: result }));
+  }
+  return (
+    <>
+      <form className="inline-form" onSubmit={search}>
+        <input
+          aria-label="جستجوی شماره موبایل"
+          placeholder="جستجوی شماره موبایل"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button>جستجو</button>
+      </form>
+      <div className="dashboard-list">
+        {users.map((u: any) => (
+          <article key={u.id}>
+            <span>
+              <b>{u.mobile_e164}</b>
+              <br />
+              {u.role} · {u.credits} اعتبار · {u.status}
+              {activity[u.id] && (
+                <small>
+                  <br />
+                  دفتر اعتبار: {activity[u.id].ledger.length} · تحلیل‌ها:{" "}
+                  {activity[u.id].analyses.length} · تلاش‌ها:{" "}
+                  {activity[u.id].attempts.length} · اشتراک‌ها:{" "}
+                  {activity[u.id].subscriptions.length}
+                </small>
+              )}
+            </span>
+            <div>
+              <select
+                aria-label="وضعیت کاربر"
+                value={u.status}
+                onChange={(e) => updateUser(u.id, { status: e.target.value })}
+              >
+                <option value="active">فعال</option>
+                <option value="suspended">تعلیق</option>
+              </select>
+              <select
+                aria-label="نقش کاربر"
+                value={u.role}
+                onChange={(e) => updateUser(u.id, { role: e.target.value })}
+              >
+                <option value="user">کاربر</option>
+                <option value="admin">مدیر</option>
+              </select>
+              <button onClick={() => adjustCredits(u.id)}>تغییر اعتبار</button>
+              <button onClick={() => showActivity(u.id)}>فعالیت</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+}
 function PlanEditor({ plan, reload }: { plan: any; reload: () => void }) {
+  const [title, setTitle] = useState(plan.title_fa);
+  const [duration, setDuration] = useState(String(plan.duration_days));
   const [price, setPrice] = useState(String(plan.price_toman));
   const [credits, setCredits] = useState(String(plan.analysis_credits));
+  const [active, setActive] = useState(Boolean(plan.active));
   return (
     <article>
       <span>
@@ -732,6 +871,18 @@ function PlanEditor({ plan, reload }: { plan: any; reload: () => void }) {
         {plan.code}
       </span>
       <div>
+        <input
+          aria-label="عنوان پلن"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <input
+          aria-label="مدت پلن"
+          type="number"
+          min="0"
+          value={duration}
+          onChange={(e) => setDuration(e.target.value)}
+        />
         <input
           aria-label="قیمت پلن"
           type="number"
@@ -751,11 +902,11 @@ function PlanEditor({ plan, reload }: { plan: any; reload: () => void }) {
             await api(`/api/admin/plans/${plan.id}`, {
               method: "PATCH",
               body: JSON.stringify({
-                titleFa: plan.title_fa,
-                durationDays: plan.duration_days,
+                titleFa: title,
+                durationDays: Number(duration),
                 priceToman: Number(price),
                 analysisCredits: Number(credits),
-                active: plan.active,
+                active,
               }),
             });
             reload();
@@ -763,6 +914,14 @@ function PlanEditor({ plan, reload }: { plan: any; reload: () => void }) {
         >
           ذخیره
         </button>
+        <label>
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
+          فعال
+        </label>
       </div>
     </article>
   );
@@ -772,22 +931,29 @@ function CampaignCreator({ reload }: { reload: () => void }) {
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [credits, setCredits] = useState("");
+  const [startsAt, setStartsAt] = useState(() =>
+    new Date().toISOString().slice(0, 16),
+  );
+  const [endsAt, setEndsAt] = useState(() =>
+    new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16),
+  );
+  const [capacity, setCapacity] = useState("");
+  const [audience, setAudience] = useState("all");
+  const [perUser, setPerUser] = useState("1");
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const now = new Date(),
-      end = new Date(now.getTime() + 30 * 86400000);
     await api("/api/admin/campaigns", {
       method: "POST",
       body: JSON.stringify({
         code: code.toUpperCase(),
         titleFa: title,
-        startsAt: now.toISOString(),
-        endsAt: end.toISOString(),
-        capacity: null,
+        startsAt: new Date(startsAt).toISOString(),
+        endsAt: new Date(endsAt).toISOString(),
+        capacity: capacity ? Number(capacity) : null,
         creditAmount: Number(credits),
         priceToman: Number(price),
         active: false,
-        rules: { audience: "all", perUser: 1 },
+        rules: { audience, perUser: Number(perUser) },
       }),
     });
     reload();
@@ -798,6 +964,49 @@ function CampaignCreator({ reload }: { reload: () => void }) {
         placeholder="کد کمپین"
         value={code}
         onChange={(e) => setCode(e.target.value)}
+        required
+      />
+      <label>
+        شروع
+        <input
+          type="datetime-local"
+          value={startsAt}
+          onChange={(e) => setStartsAt(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        پایان
+        <input
+          type="datetime-local"
+          value={endsAt}
+          onChange={(e) => setEndsAt(e.target.value)}
+          required
+        />
+      </label>
+      <input
+        type="number"
+        min="1"
+        placeholder="ظرفیت (اختیاری)"
+        value={capacity}
+        onChange={(e) => setCapacity(e.target.value)}
+      />
+      <select
+        aria-label="مخاطبان کمپین"
+        value={audience}
+        onChange={(e) => setAudience(e.target.value)}
+      >
+        <option value="all">همه کاربران</option>
+        <option value="new_users">کاربران جدید</option>
+        <option value="existing_users">کاربران فعلی</option>
+      </select>
+      <input
+        type="number"
+        min="1"
+        max="1"
+        placeholder="سقف هر کاربر"
+        value={perUser}
+        onChange={(e) => setPerUser(e.target.value)}
         required
       />
       <input
