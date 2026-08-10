@@ -105,8 +105,18 @@ async function main() {
     )
   ).rows[0];
   await import("../server.production");
-  await new Promise((resolve) => setTimeout(resolve, 200));
   const base = `http://127.0.0.1:${process.env.PORT || 3201}`;
+  let ready = false;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try {
+      if ((await fetch(`${base}/healthz`)).ok) {
+        ready = true;
+        break;
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!ready) throw new Error("HTTP_SERVER_NOT_READY");
   const cookie = `boursnegar_session=${verified.sessionToken}`;
   const csrf = verified.csrfToken;
   const jsonHeaders = {
