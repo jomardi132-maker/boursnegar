@@ -23,6 +23,12 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("revenue_growth_percent", source)
         self.assertNotIn("random", source.lower())
 
+    def test_persian_codal_dates_are_normalized_for_history_sync(self):
+        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        self.assertIn("_DATE_DIGITS", source)
+        self.assertIn("translate(_DATE_DIGITS)", source)
+        self.assertIn('"years": [1404, 1405]', source)
+
 
 if __name__ == "__main__":
     unittest.main()

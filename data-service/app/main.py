@@ -11,10 +11,11 @@ from app.services import tsetmc_service, codal_service, codal_excel_parser, rati
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Boursnegar Data Service", version="0.1.0")
+_DATE_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
 def _period_end_from_letter(letter: dict) -> str | None:
-    text = " ".join(str(letter.get(k) or "") for k in ("Title", "PublishDateTime"))
+    text = " ".join(str(letter.get(k) or "") for k in ("Title", "PublishDateTime")).translate(_DATE_DIGITS)
     match = re.search(r"14(?:04|05)[/\-]\d{1,2}[/\-]\d{1,2}", text)
     return match.group(0).replace("-", "/") if match else None
 
@@ -27,10 +28,14 @@ def _persist_letters(db: Session, company: models.Company, letters: list[dict]) 
         if not tracing_no:
             continue
         period_end = _period_end_from_letter(rec)
-        searchable = " ".join(str(rec.get(k) or "") for k in ("Title", "PublishDateTime"))
+        searchable = " ".join(str(rec.get(k) or "") for k in ("Title", "PublishDateTime")).translate(_DATE_DIGITS)
         if "1404" not in searchable and "1405" not in searchable and period_end is None:
             continue
-        if db.query(models.FinancialReport).filter(models.FinancialReport.tracing_no == tracing_no).first():
+        existing = db.query(models.FinancialReport).filter(models.FinancialReport.tracing_no == tracing_no).first()
+        if existing:
+            if period_end and not existing.period_end_date:
+                existing.period_end_date = period_end
+                existing.raw_json = rec
             continue
         title = rec.get("Title") or ""
         excel_url = rec.get("ExcelUrl") or None
