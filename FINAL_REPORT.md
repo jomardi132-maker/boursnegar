@@ -103,3 +103,77 @@ a54bc98 feat: complete account admin and sourced analysis workflows
 ## تصمیم خاموش‌کردن
 
 کامپیوتر خاموش نشد، زیرا قالب کاوه‌نگار `Rejected` شده و رفع آن به پنل/پشتیبانی کاوه‌نگار نیاز دارد. طبق دستور مالک، در وجود مانع یا نیاز به تأیید shutdown مجاز نیست. Production سالم و rollback-ready است؛ OTP و SMS خاموش‌اند و تحلیل عمومی فعال مانده است.
+# گزارش نهایی به‌روزرسانی ایمیل، طراحی و داده — ۲۰ مرداد ۱۴۰۵
+
+## نتیجه اجرایی
+
+- Production در `https://boursnegar.ir` سالم و فعال است.
+- احراز هویت اصلی از OTP کاوه‌نگار به ایمیل/رمز عبور منتقل شد: ثبت‌نام، ورود، نشست امن، CSRF و خروج واقعی فعال‌اند.
+- بازیابی رمز با توکن یک‌بارمصرف hash‌شده، انقضای ۳۰ دقیقه، مصرف یک‌باره و ابطال نشست‌های قبلی پیاده‌سازی شد. رمز فعلی هرگز ایمیل یا قابل بازیابی نمی‌شود.
+- ارسال واقعی لینک بازیابی هنوز فعال نیست: روی دامنه MX/SPF و روی سرور SMTP/MAIL credential وجود ندارد. endpoint پاسخ ضد-enumeration می‌دهد و readiness مقدار `mail=not_configured` را صادقانه گزارش می‌کند.
+- Kavenegar/OTP غیرفعال باقی ماند: `OTP_ENABLED=false`، `SMS_ENABLED=false`، `OTP_GATEWAY=disabled`. هیچ SMS واقعی ارسال نشد.
+- رابط با design system مهارت UI/UX Pro Max بازطراحی شد: تم dark editorial fintech، چیدمان نامتقارن، RTL، responsive، focus state، reduced motion و بدون overflow در عرض ۳۷۵px.
+- فونت رایج قبلی با Estedad Variable خودمیزبان و دارای OFL جایگزین شد؛ dependency به Google Fonts حذف شد.
+- همگام‌سازی گزارش‌های کدال ۱۴۰۴ و ۱۴۰۵ هنگام جست‌وجوی نماد پیاده‌سازی شد. برای «فولاد» اکنون ۲۳ گزارش دوره ۱۴۰۴ و ۱۷ گزارش دوره ۱۴۰۵ در PostgreSQL ثبت است.
+- فرمول `2/(P/E + P/D)` به‌عنوان محدوده قیمت/سیگنال اضافه نشد، چون از نظر ابعادی قیمت تولید نمی‌کند. موتور فعلی فقط نسبت‌های واقعی، earnings yield، ROE/ROA، کیفیت نقدی و مضارب صنعت‌محور را با وضعیت نامشخص هنگام کمبود داده نمایش می‌دهد.
+
+## امنیت و Secretها
+
+```text
+AUTH_SESSION_SECRET=SET
+OTP_PEPPER=SET
+PASSWORD_PEPPER=SET
+KAVENEGAR_API_KEY=SET (مقدار نمایش یا ثبت نشد)
+```
+
+- `.env` و backup جدید آن permission برابر 600 دارند.
+- hash رمز با scrypt و پارامتر `N=131072, r=8, p=1`، salt مستقل و pepper پایدار انجام می‌شود.
+- rate limit ورود/ثبت‌نام/بازیابی، قفل ۱۵ دقیقه‌ای پس از تلاش ناموفق، cookie دارای HttpOnly/Secure/SameSite و پیام‌های ضد-enumeration فعال‌اند.
+- `npm audit --omit=dev`: صفر آسیب‌پذیری.
+
+## Backup، migration و release
+
+- Backup محرمانه: `/var/backups/boursnegar/20260811T081207Z-emailauth`
+- محتوا: پروژه Node، FastAPI، `db.json`، dump سفارشی PostgreSQL و backup `.env`؛ فایل‌ها mode 600.
+- Backup `.env`: `/var/www/bourse-analyzer/.env.20260811T081537Z.bak` با mode 600.
+- Migration ابتدا روی restore مستقل `boursnegar_migration_test` اجرا و تأیید شد، سپس روی Production اعمال شد.
+- Migration فعال: `005_email_password_auth` شامل `email_identities` و `password_reset_tokens`.
+- Release فعال: `/var/www/boursnegar-releases/20260811T081537Z-emailauth`
+- rollback خودکار در اسکریپت deploy تعریف شد؛ به علت موفقیت health check اجرا نشد.
+
+## آزمون‌ها
+
+- TypeScript typecheck: PASS
+- Node/Vitest: ۸ فایل، ۴۲ تست PASS
+- Production build: PASS
+- Python compile: PASS
+- Python unittest: ۴ تست PASS
+- Migration روی restore واقعی: PASS
+- ثبت‌نام/ورود/خروج/Session/CSRF: PASS
+- پاسخ امن forgot-password: PASS (ارسال SMTP به علت نبود زیرساخت انجام نشد)
+- Authorization پنل Admin: PASS
+- مسیرهای عمومی و plans: PASS
+- تحلیل واقعی «فولاد»: دقیقاً سه سؤال PASS
+- Ledger: اعتبار ۵ به ۴ فقط پس از تحلیل موفق PASS
+- QA مرورگر محلی: desktop، modal، 375px، بدون overflow و بدون خطای console PASS
+- دسترسی عمومی دامنه: HTTP 200، asset versioned و health `ok` PASS
+
+## وضعیت سرویس‌ها
+
+- PM2 `bourse-app`: online، restart count release جدید برابر صفر.
+- `boursnegar-data-service.service`: active.
+- `https://boursnegar.ir/healthz`: `status=ok`, `auth=email_password`.
+- `https://boursnegar.ir/readyz`: `status=ready`, PostgreSQL آماده، `mail=not_configured`.
+
+## Commitها
+
+- `e82b1d9 feat: launch secure email auth and bold fintech UI`
+- `e14a74d fix: persist Persian-dated financial history`
+
+## مانع باقی‌مانده و تصمیم خاموش‌کردن
+
+برای فعال‌سازی واقعی «فراموشی رمز»، یک سرویس ایمیل تراکنشی لازم است و باید `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` تنظیم و رکوردهای DNS توصیه‌شده سرویس (SPF/DKIM و در صورت نیاز MX/DMARC) اضافه شوند. این کار بدون credential و دسترسی DNS قابل انجام امن نیست.
+
+طبق دستور کاربر که در صورت مانع/Secret مفقود کامپیوتر خاموش نشود، دستور shutdown اجرا نشد. Production سالم است و فقط ارسال outbound ایمیل باقی مانده است.
+
+---
