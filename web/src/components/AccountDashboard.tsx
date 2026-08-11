@@ -212,7 +212,7 @@ function TabContent({
         empty="هنوز کسی با کد شما ثبت‌نام نکرده است."
         render={(x: any) => (
           <>
-            <b>{x.mobile_e164}</b>
+            <b>{x.mobile_e164 || x.email || "—"}</b>
             <span>
               {statusFa(x.status)} ·{" "}
               {new Date(x.created_at).toLocaleDateString("fa-IR")}
@@ -612,7 +612,7 @@ function AdminContent({
         {(data.payments || []).map((p: any) => (
           <article key={p.id}>
             <span>
-              <b>{p.mobile_e164}</b>
+              <b>{p.email || p.mobile_e164 || "—"}</b>
               <br />
               {Number(p.amount_toman).toLocaleString("fa-IR")} تومان ·{" "}
               {p.tracking_number} · {p.plan_code || p.campaign_code}
@@ -818,7 +818,7 @@ function AdminUsers({
         {users.map((u: any) => (
           <article key={u.id}>
             <span>
-              <b>{u.mobile_e164}</b>
+              <b>{u.email || u.mobile_e164 || "—"}</b>
               <br />
               {u.role} · {u.credits} اعتبار · {u.status}
               {activity[u.id] && (

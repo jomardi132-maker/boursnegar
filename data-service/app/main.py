@@ -1,3 +1,5 @@
+import re
+
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,64 @@ from app.services import tsetmc_service, codal_service, codal_excel_parser, rati
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Boursnegar Data Service", version="0.1.0")
+
+
+def _period_end_from_letter(letter: dict) -> str | None:
+    text = " ".join(str(letter.get(k) or "") for k in ("Title", "PublishDateTime"))
+    match = re.search(r"14(?:04|05)[/\-]\d{1,2}[/\-]\d{1,2}", text)
+    return match.group(0).replace("-", "/") if match else None
+
+
+def _persist_letters(db: Session, company: models.Company, letters: list[dict]) -> int:
+    """ذخیره idempotent فراداده گزارش‌های ۱۴۰۴ و ۱۴۰۵ برای مقایسه‌های بعدی."""
+    inserted = 0
+    for rec in letters:
+        tracing_no = str(rec.get("TracingNo") or "")
+        if not tracing_no:
+            continue
+        period_end = _period_end_from_letter(rec)
+        searchable = " ".join(str(rec.get(k) or "") for k in ("Title", "PublishDateTime"))
+        if "1404" not in searchable and "1405" not in searchable and period_end is None:
+            continue
+        if db.query(models.FinancialReport).filter(models.FinancialReport.tracing_no == tracing_no).first():
+            continue
+        title = rec.get("Title") or ""
+        excel_url = rec.get("ExcelUrl") or None
+        if excel_url and excel_url.startswith("/"):
+            excel_url = f"https://excel.codal.ir{excel_url}"
+        detail_url = rec.get("Url") or None
+        if detail_url and detail_url.startswith("/"):
+            detail_url = f"https://codal.ir{detail_url}"
+        db.add(models.FinancialReport(
+            company_id=company.id, tracing_no=tracing_no, title=title,
+            letter_code=rec.get("LetterCode"), period_end_date=period_end,
+            publish_datetime=rec.get("PublishDateTime"),
+            is_audited=("حسابرسی شده" in title and "حسابرسی نشده" not in title),
+            excel_url=excel_url, detail_url=detail_url, raw_json=rec,
+        ))
+        inserted += 1
+    db.commit()
+    return inserted
+
+
+def _persist_parsed_metrics(db: Session, report: models.FinancialReport | None, parsed: dict) -> int:
+    if report is None:
+        return 0
+    inserted = 0
+    for item_name, item_value in parsed.get("metrics", {}).items():
+        if item_value is None:
+            continue
+        exists = db.query(models.FinancialLineItem).filter(
+            models.FinancialLineItem.report_id == report.id,
+            models.FinancialLineItem.item_name == item_name,
+        ).first()
+        if exists:
+            continue
+        statement = "cash_flow" if item_name == "operating_cash_flow" else "balance_sheet" if item_name.startswith("total_") else "income_statement"
+        db.add(models.FinancialLineItem(report_id=report.id, statement_type=statement, item_name=item_name, item_value=item_value))
+        inserted += 1
+    db.commit()
+    return inserted
 
 
 @app.get("/health")
@@ -64,7 +124,7 @@ def get_codal_reports(symbol: str, db: Session = Depends(get_db)):
     (idempotent - بر اساس tracing_no، تکراری ذخیره نمی‌شه).
     """
     try:
-        letters = codal_service.fetch_all_letters(symbol, max_pages=2)
+        letters = codal_service.fetch_all_letters(symbol, max_pages=4)
     except codal_service.CodalUnavailableError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -256,6 +316,12 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         company.company_name = candidate["CompanyName"]
         db.commit()
 
+    history_reports_added = _persist_letters(db, company, letters)
+    used_report = db.query(models.FinancialReport).filter(
+        models.FinancialReport.tracing_no == str(candidate.get("TracingNo") or "")
+    ).first()
+    history_line_items_added = _persist_parsed_metrics(db, used_report, parsed)
+
     ratio_row = models.FinancialRatio(
         company_id=company.id,
         pe_ratio=ratios.get("pe_ratio"),
@@ -286,4 +352,10 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "period_comparison_unavailable_reason": comparison_unavailable_reason,
         "ratios": ratios,
         "health": health,
+        "history_sync": {
+            "years": [1404, 1405],
+            "reports_added": history_reports_added,
+            "line_items_added": history_line_items_added,
+            "policy": "on_symbol_search",
+        },
     }

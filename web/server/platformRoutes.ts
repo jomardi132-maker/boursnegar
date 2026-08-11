@@ -87,17 +87,16 @@ export function installPlatformRoutes(app: express.Express) {
     requireUser,
     asyncRoute(async (req, res) => {
       const r = await pool.query(
-        `SELECT rf.id,rf.status,rf.created_at,rf.rewarded_at,u.mobile_e164 FROM referrals rf JOIN users u ON u.id=rf.referred_user_id WHERE rf.referrer_user_id=$1 ORDER BY rf.created_at DESC`,
+        `SELECT rf.id,rf.status,rf.created_at,rf.rewarded_at,u.mobile_e164,e.email FROM referrals rf JOIN users u ON u.id=rf.referred_user_id LEFT JOIN email_identities e ON e.user_id=u.id WHERE rf.referrer_user_id=$1 ORDER BY rf.created_at DESC`,
         [req.authUser!.id],
       );
       res.json({
         success: true,
         referrals: r.rows.map((x) => ({
           ...x,
-          mobile_e164: x.mobile_e164.replace(
-            /(\+989\d{2})\d{4}(\d{3})/,
-            "$1****$2",
-          ),
+          mobile_e164: x.mobile_e164
+            ? x.mobile_e164.replace(/(\+989\d{2})\d{4}(\d{3})/, "$1****$2")
+            : x.email?.replace(/^(.{2}).*(@.*)$/, "$1***$2") ?? "—",
         })),
       });
     }),
@@ -241,7 +240,7 @@ export function installPlatformRoutes(app: express.Express) {
         .catch("pending")
         .parse(req.query.status);
       const r = await pool.query(
-        `SELECT ps.id,ps.amount_toman,ps.tracking_number,ps.paid_at,ps.status,ps.created_at,u.mobile_e164,p.code AS plan_code,pr.code AS campaign_code FROM payment_submissions ps JOIN users u ON u.id=ps.user_id LEFT JOIN plans p ON p.id=ps.plan_id LEFT JOIN promotions pr ON pr.id=ps.promotion_id WHERE ps.status=$1 ORDER BY ps.created_at`,
+        `SELECT ps.id,ps.amount_toman,ps.tracking_number,ps.paid_at,ps.status,ps.created_at,u.mobile_e164,e.email,p.code AS plan_code,pr.code AS campaign_code FROM payment_submissions ps JOIN users u ON u.id=ps.user_id LEFT JOIN email_identities e ON e.user_id=u.id LEFT JOIN plans p ON p.id=ps.plan_id LEFT JOIN promotions pr ON pr.id=ps.promotion_id WHERE ps.status=$1 ORDER BY ps.created_at`,
         [status],
       );
       res.json({ success: true, payments: r.rows });

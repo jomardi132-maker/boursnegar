@@ -9,7 +9,7 @@ import { ConclusionAndSources } from './components/ConclusionAndSources';
 import { AccountDashboard } from './components/AccountDashboard';
 import './dashboard.css';
 
-export type User = { id: string; mobile: string; role: 'user' | 'admin'; credits: number };
+export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
 const csrfStorage = 'boursnegar_csrf';
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -43,6 +43,7 @@ export function AppProduction() {
   const [error, setError] = useState('');
   const [dashboardOpen, setDashboardOpen] = useState(false);
   useEffect(() => { api<{ user: User }>('/api/auth/me').then((r) => setUser(r.user)).catch(() => setUser(null)); }, []);
+  useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
   const questions = useMemo(() => result ? completeQuestions(result) : null, [result]);
 
   async function analyze(event: FormEvent) {
@@ -62,7 +63,7 @@ export function AppProduction() {
   return <div className="app-shell" dir="rtl">
     <header className="topbar"><a className="brand" href="#top" aria-label="بورس‌نگار"><span className="brand-mark"><BarChart3 /></span><span><b>بورس‌نگار</b><small>تحلیل بنیادی شفاف</small></span></a>
       <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
-      <div className="header-actions">{user ? <><button className="credit-pill dashboard-trigger" onClick={()=>setDashboardOpen(true)}>{user.credits.toLocaleString('fa-IR')} اعتبار · پنل من</button><button className="icon-button" onClick={logout} aria-label="خروج"><LogOut /></button></> : <button className="button ghost" onClick={() => setAuthOpen(true)}>ورود با موبایل</button>}<button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="منو">{menuOpen ? <X /> : <Menu />}</button></div>
+      <div className="header-actions">{user ? <><button className="credit-pill dashboard-trigger" onClick={()=>setDashboardOpen(true)}>{user.credits.toLocaleString('fa-IR')} اعتبار · پنل من</button><button className="icon-button" onClick={logout} aria-label="خروج"><LogOut /></button></> : <button className="button ghost" onClick={() => setAuthOpen(true)}>ورود / ثبت‌نام</button>}<button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="منو">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
     <main id="top">
       <section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> داده واقعی بازار تهران و کدال</span><h1>صورت‌های مالی را<br/><em>قابل فهم</em> ببینید.</h1><p>سه پرسش بنیادی، منابع قابل ردگیری و نتیجه‌ای محتاطانه؛ بدون داده ساختگی و بدون توصیه قطعی خرید یا فروش.</p>
@@ -80,7 +81,17 @@ export function AppProduction() {
 }
 
 function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin: (u: User, csrf: string) => void }) {
-  const [mobile,setMobile]=useState(''); const [code,setCode]=useState(''); const [requestId,setRequestId]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
-  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');try{if(!requestId){const r=await api<{requestId:string}>('/api/auth/otp/request',{method:'POST',body:JSON.stringify({mobile})});setRequestId(r.requestId);}else{const r=await api<{user:User;csrfToken:string}>('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({mobile,code,requestId})});onLogin(r.user,r.csrfToken);}}catch(e){setError(e instanceof Error?e.message:'خطا در ورود');}finally{setBusy(false)}}
-  return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><div className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="close" onClick={onClose} aria-label="بستن"><X/></button><span className="brand-mark"><ShieldCheck/></span><h2 id="auth-title">ورود امن به بورس‌نگار</h2><p>{requestId?'کد شش‌رقمی ارسال‌شده را وارد کنید.':'شماره موبایل ایران را وارد کنید.'}</p><form onSubmit={submit}>{!requestId?<><label htmlFor="mobile">شماره موبایل</label><input id="mobile" dir="ltr" inputMode="tel" autoComplete="tel" value={mobile} onChange={e=>setMobile(e.target.value)} placeholder="09123456789" required/></>:<><label htmlFor="otp">کد یک‌بارمصرف</label><input id="otp" dir="ltr" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="------" required/></>} {error&&<div className="error-state">{error}</div>}<button className="button primary" disabled={busy}>{busy?'لطفاً صبر کنید':requestId?'تأیید و ورود':'دریافت کد'}</button></form><small>کد حداکثر دو دقیقه معتبر است. اطلاعات ورود شما در مرورگر ذخیره نمی‌شود.</small></div></div>;
+  type Mode = 'login' | 'register' | 'forgot' | 'reset';
+  const resetToken = new URLSearchParams(window.location.search).get('reset-token') || '';
+  const [mode,setMode]=useState<Mode>(resetToken ? 'reset' : 'login');
+  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [notice,setNotice]=useState('');
+  const close = () => { if (resetToken) history.replaceState({}, '', window.location.pathname); onClose(); };
+  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');setNotice('');try{
+    if(mode==='forgot'){const r=await api<{message:string}>('/api/auth/password/forgot',{method:'POST',body:JSON.stringify({email})});setNotice(r.message);return;}
+    if(mode==='reset'){const r=await api<{message:string}>('/api/auth/password/reset',{method:'POST',body:JSON.stringify({token:resetToken,password})});history.replaceState({},'',window.location.pathname);setNotice(r.message);setPassword('');setMode('login');return;}
+    const endpoint=mode==='register'?'/api/auth/register':'/api/auth/login';
+    const r=await api<{user:User;csrfToken:string}>(endpoint,{method:'POST',body:JSON.stringify({email,password})});onLogin(r.user,r.csrfToken);
+  }catch(e){setError(e instanceof Error?e.message:'خطا در انجام درخواست');}finally{setBusy(false)}}
+  const title=mode==='login'?'ورود به بورس‌نگار':mode==='register'?'ساخت حساب کاربری':mode==='forgot'?'بازیابی رمز عبور':'تعیین رمز عبور جدید';
+  return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&close()}><div className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="close" onClick={close} aria-label="بستن"><X/></button><span className="brand-mark"><ShieldCheck/></span><h2 id="auth-title">{title}</h2><p>{mode==='forgot'?'ایمیل حساب را وارد کنید تا لینک امن بازیابی ارسال شود.':mode==='reset'?'رمز تازه باید دست‌کم ۱۲ نویسه باشد.':'با ایمیل و رمز عبور امن وارد شوید.'}</p><form onSubmit={submit}>{mode!=='reset'&&<><label htmlFor="auth-email">ایمیل</label><input id="auth-email" dir="ltr" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" required/></>} {mode!=='forgot'&&<><label htmlFor="auth-password">رمز عبور</label><input id="auth-password" dir="ltr" type="password" minLength={mode==='login'?1:12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} required/></>} {error&&<div className="error-state" role="alert">{error}</div>}{notice&&<div className="success-state" role="status">{notice}</div>}<button className="button primary" disabled={busy}>{busy?'لطفاً صبر کنید':mode==='login'?'ورود':mode==='register'?'ساخت حساب':mode==='forgot'?'ارسال لینک بازیابی':'ثبت رمز جدید'}</button></form><div className="auth-switch">{mode==='login'&&<><button type="button" onClick={()=>setMode('forgot')}>رمز را فراموش کرده‌اید؟</button><button type="button" onClick={()=>setMode('register')}>حساب ندارید؟ ثبت‌نام</button></>}{mode==='register'&&<button type="button" onClick={()=>setMode('login')}>حساب دارید؟ وارد شوید</button>}{mode==='forgot'&&<button type="button" onClick={()=>setMode('login')}>بازگشت به ورود</button>}</div><small>رمز عبور به‌صورت hash نگهداری می‌شود و هرگز با ایمیل ارسال یا قابل بازیابی نیست.</small></div></div>;
 }

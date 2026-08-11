@@ -15,16 +15,22 @@ import {
 import { pool, withTransaction } from "./server/postgres";
 import {
   authenticate,
+  createPasswordReset,
   createOtp,
+  loginWithEmail,
+  normalizeEmail,
   normalizeIranMobile,
+  registerWithEmail,
   requireAdmin,
   requireCsrf,
   requireUser,
   revokeSession,
   setSessionCookie,
+  resetPassword,
   verifyOtp,
 } from "./server/auth";
 import { installPlatformRoutes } from "./server/platformRoutes";
+import { mailDeliveryReady, sendPasswordResetEmail } from "./server/mailer";
 
 dotenv.config({ quiet: true });
 const app = express();
@@ -83,6 +89,16 @@ const otpVerifySchema = z.object({
   code: z.string().regex(/^\d{6}$/),
   referralCode: z.string().max(16).optional(),
 });
+const emailSchema = z.string().trim().email().max(254);
+const passwordSchema = z.string().min(12).max(128);
+const registerSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  referralCode: z.string().trim().max(16).optional(),
+});
+const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(128) });
+const forgotSchema = z.object({ email: emailSchema });
+const resetSchema = z.object({ token: z.string().min(32).max(128), password: passwordSchema });
 const analyzeSchema = z.object({
   query: z.string().min(1).max(32),
   reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
@@ -133,12 +149,83 @@ async function sendOtp(mobile: string, code: string): Promise<string> {
   }
 }
 
-app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
+app.get("/healthz", (_req, res) => res.json({ status: "ok", auth: "email_password" }));
 app.get(
   "/readyz",
   asyncRoute(async (_req, res) => {
     await pool.query("SELECT 1");
-    res.json({ status: "ready" });
+    res.json({ status: "ready", auth: "email_password", mail: mailDeliveryReady() ? "ready" : "not_configured" });
+  }),
+);
+app.post(
+  "/api/auth/register",
+  rateLimit("register", 5, 15 * 60_000),
+  asyncRoute(async (req, res) => {
+    const parsed = registerSchema.safeParse(req.body);
+    const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
+    if (!parsed.success || !email)
+      return res.status(400).json({ success: false, error: "ایمیل یا رمز عبور معتبر نیست. رمز باید حداقل ۱۲ نویسه باشد." });
+    try {
+      const result = await registerWithEmail(email, parsed.data.password, req.ip || "127.0.0.1", req.header("user-agent") || "", parsed.data.referralCode);
+      setSessionCookie(res, result.sessionToken);
+      res.status(201).json({ success: true, csrfToken: result.csrfToken, user: result.user });
+    } catch (error) {
+      if ((error as { code?: string })?.code === "23505")
+        return res.status(409).json({ success: false, error: "امکان ثبت این حساب وجود ندارد. اگر قبلاً ثبت‌نام کرده‌اید، وارد شوید." });
+      throw error;
+    }
+  }),
+);
+app.post(
+  "/api/auth/login",
+  rateLimit("login", 10, 15 * 60_000),
+  asyncRoute(async (req, res) => {
+    const parsed = loginSchema.safeParse(req.body);
+    const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
+    if (!parsed.success || !email)
+      return res.status(401).json({ success: false, error: "ایمیل یا رمز عبور نادرست است." });
+    try {
+      const result = await loginWithEmail(email, parsed.data.password, req.ip || "127.0.0.1", req.header("user-agent") || "");
+      setSessionCookie(res, result.sessionToken);
+      res.json({ success: true, csrfToken: result.csrfToken, user: result.user });
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_CREDENTIALS")
+        return res.status(401).json({ success: false, error: "ایمیل یا رمز عبور نادرست است." });
+      throw error;
+    }
+  }),
+);
+app.post(
+  "/api/auth/password/forgot",
+  rateLimit("forgot-password", 5, 30 * 60_000),
+  asyncRoute(async (req, res) => {
+    const parsed = forgotSchema.safeParse(req.body);
+    const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
+    if (email && mailDeliveryReady()) {
+      const token = await createPasswordReset(email, req.ip || "127.0.0.1");
+      if (token) {
+        const publicOrigin = process.env.PUBLIC_ORIGIN || "https://boursnegar.ir";
+        await sendPasswordResetEmail(email, `${publicOrigin}/?reset-token=${encodeURIComponent(token)}`);
+      }
+    }
+    res.status(202).json({ success: true, message: "اگر حسابی با این ایمیل وجود داشته باشد، لینک بازیابی برای آن ارسال می‌شود." });
+  }),
+);
+app.post(
+  "/api/auth/password/reset",
+  rateLimit("reset-password", 8, 30 * 60_000),
+  asyncRoute(async (req, res) => {
+    const parsed = resetSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ success: false, error: "لینک بازیابی یا رمز جدید معتبر نیست." });
+    try {
+      await resetPassword(parsed.data.token, parsed.data.password);
+      res.json({ success: true, message: "رمز عبور تغییر کرد. اکنون با رمز جدید وارد شوید." });
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_RESET_TOKEN")
+        return res.status(400).json({ success: false, error: "لینک بازیابی نامعتبر یا منقضی شده است." });
+      throw error;
+    }
   }),
 );
 app.post(
@@ -457,7 +544,7 @@ app.get(
       `SELECT
         (SELECT count(*) FROM users) AS users,
         (SELECT count(*) FROM users WHERE created_at >= now()-interval '30 days') AS registrations_30d,
-        (SELECT count(*) FROM mobile_identities WHERE last_login_at >= now()-interval '30 days') AS active_users_30d,
+        (SELECT count(DISTINCT user_id) FROM (SELECT user_id,last_login_at FROM mobile_identities UNION ALL SELECT user_id,last_login_at FROM email_identities) identities WHERE last_login_at >= now()-interval '30 days') AS active_users_30d,
         (SELECT count(*) FROM analysis_attempts WHERE success) AS successful_analyses,
         (SELECT count(*) FROM analysis_attempts WHERE NOT success) AS failed_analyses,
         (SELECT count(*) FROM payment_submissions WHERE status='pending') AS pending_payments,
@@ -474,7 +561,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const q = String(req.query.q || "").slice(0, 32);
     const users = await pool.query(
-      `SELECT u.id,u.mobile_e164,u.status,r.code AS role,coalesce(c.balance,0) AS credits,u.created_at FROM users u JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE $1='' OR u.mobile_e164 LIKE '%'||$1||'%' ORDER BY u.created_at DESC LIMIT 100`,
+      `SELECT u.id,u.mobile_e164,e.email,u.status,r.code AS role,coalesce(c.balance,0) AS credits,u.created_at FROM users u LEFT JOIN email_identities e ON e.user_id=u.id JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE $1='' OR coalesce(u.mobile_e164,'') LIKE '%'||$1||'%' OR coalesce(e.email,'') ILIKE '%'||$1||'%' ORDER BY u.created_at DESC LIMIT 100`,
       [q],
     );
     res.json({ success: true, users: users.rows });

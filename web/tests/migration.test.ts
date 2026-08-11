@@ -7,6 +7,7 @@ const campaignSql = fs.readFileSync(
   path.resolve("migrations/003_campaign_redemptions.sql"),
   "utf8",
 );
+const emailAuthSql = fs.readFileSync(path.resolve("migrations/005_email_password_auth.sql"), "utf8");
 describe("core migration safety contract", () => {
   it("contains every required domain table", () => {
     for (const table of [
@@ -55,5 +56,11 @@ describe("core migration safety contract", () => {
     expect(sql).toContain("code_hash char(64)");
     expect(sql).toContain("token_hash char(64)");
     expect(sql).not.toMatch(/password/i);
+  });
+  it("supports email identities and one-time password resets", () => {
+    expect(emailAuthSql).toContain("email_identities");
+    expect(emailAuthSql).toContain("password_reset_tokens");
+    expect(emailAuthSql).toContain("token_hash char(64)");
+    expect(emailAuthSql).toContain("consumed_at timestamptz");
   });
 });
