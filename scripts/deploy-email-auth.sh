@@ -5,7 +5,7 @@ stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 release="/var/www/boursnegar-releases/${stamp}-emailauth"
 previous="$(pm2 pid bourse-app >/dev/null 2>&1 && pm2 describe bourse-app --no-color | awk -F'│' '/script path/{gsub(/^ +| +$/,"",$3); print $3; exit}' || true)"
 previous="${previous%/dist/server.cjs}"
-backup="$(find /var/backups/boursnegar -maxdepth 1 -type d -name '*-emailauth*' | sort | tail -1)"
+backup="$(find /var/backups/boursnegar -maxdepth 1 -type d \( -name '*-emailauth*' -o -name '*-smtp' \) | sort | tail -1)"
 
 rollback() {
   code=$?
@@ -60,6 +60,7 @@ set_flag OTP_PENDING_APPROVAL true
 set_flag SMS_ENABLED false
 set_flag OTP_GATEWAY disabled
 set_flag PUBLIC_ORIGIN https://boursnegar.ir
+set_flag EMAIL_ENABLED false
 
 cd "$release"
 npm ci --omit=dev=false

@@ -1,3 +1,16 @@
+# تکمیل نهایی SMTP و بازیابی رمز — ۲۰ مرداد ۱۴۰۵
+
+- دامنه فرستنده `mail.boursnegar.ir` و همه متغیرهای SMTP بدون افشای مقدار تأیید شدند.
+- اتصال SMTP و ایمیل کنترل‌شده PASS؛ `EMAIL_ENABLED=true` و readiness برابر `mail=ready` است.
+- لینک بازیابی ۳۰ دقیقه‌ای، hash‌شده و تک‌بارمصرف است؛ پاسخ موجود/ناموجود یکسان، نشست‌های قبلی revoked و audit بدون اطلاعات حساس ثبت می‌شود.
+- E2E: generic response، single use، expiry، session revocation، ورود با رمز جدید، rate limit و audit همگی PASS.
+- Backup: `/var/backups/boursnegar/20260811T100207Z-smtp` با permission 600.
+- Release: `/var/www/boursnegar-releases/20260811T100232Z-emailauth`.
+- ۴۳ تست Node، چهار تست Python، typecheck، build، dependency audit، PM2، FastAPI، PostgreSQL، دامنه و Auth routes همگی PASS.
+- حساب، tokenها، نشست‌ها و فایل‌های موقت تست پاک شدند؛ ایمیل/رمز/token در log، Git یا گزارش ثبت نشد.
+
+---
+
 # گزارش نهایی فنی بورس‌نگار
 
 تاریخ اجرا: 2026-08-10

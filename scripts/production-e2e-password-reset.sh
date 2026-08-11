@@ -31,7 +31,10 @@ SQL
 }
 trap cleanup EXIT
 
-existing="$(sudo -u postgres psql -At -d boursnegar_db -v test_email="$email" -c "SELECT count(*) FROM email_identities WHERE email=:'test_email';")"
+existing="$(sudo -u postgres psql -At -d boursnegar_db -v test_email="$email" <<'SQL'
+SELECT count(*) FROM email_identities WHERE email=:'test_email';
+SQL
+)"
 test "$existing" = 0
 audit_before="$(sudo -u postgres psql -At -d boursnegar_db -c "SELECT count(*) FROM admin_audit_logs WHERE action LIKE 'password_reset_%';")"
 
@@ -64,8 +67,16 @@ test "$(curl -sS -o "$body" -w '%{http_code}' -H 'content-type: application/json
   --data "{\"email\":\"$email\",\"password\":\"$new_password\"}" "$origin/api/auth/login")" = 200
 
 npx tsx scripts/create-e2e-reset.ts no-send
-sudo -u postgres psql -d boursnegar_db -v ON_ERROR_STOP=1 -v test_email="$email" \
-  -c "UPDATE password_reset_tokens SET expires_at=now()-interval '1 second' WHERE id=(SELECT p.id FROM password_reset_tokens p JOIN email_identities e ON e.user_id=p.user_id WHERE e.email=:'test_email' ORDER BY p.created_at DESC LIMIT 1);" >/dev/null
+sudo -u postgres psql -d boursnegar_db -v ON_ERROR_STOP=1 -v test_email="$email" >/dev/null <<'SQL'
+UPDATE password_reset_tokens
+SET expires_at=now()-interval '1 second'
+WHERE id=(
+  SELECT p.id FROM password_reset_tokens p
+  JOIN email_identities e ON e.user_id=p.user_id
+  WHERE e.email=:'test_email'
+  ORDER BY p.created_at DESC LIMIT 1
+);
+SQL
 token="$(cat "$token_file")"
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'content-type: application/json' \
   --data "{\"token\":\"$token\",\"password\":\"$old_password\"}" "$origin/api/auth/password/reset")" = 400
@@ -89,7 +100,7 @@ SELECT
   (SELECT count(*) FROM email_identities WHERE email=:'test_email' AND password_changed_at > created_at);
 SQL
 
-unset email old_password new_password token csrf
+unset old_password new_password token csrf
 echo GENERIC_FORGOT_RESPONSE=PASS
 echo RESET_LINK_SINGLE_USE=PASS
 echo RESET_EXPIRY=PASS
