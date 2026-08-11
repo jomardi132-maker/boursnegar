@@ -104,6 +104,13 @@ const analyzeSchema = z.object({
   reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
 });
 
+async function auditAuth(action: string, ip: string, targetId?: string, metadata: Record<string, unknown> = {}) {
+  await pool.query(
+    `INSERT INTO admin_audit_logs(admin_user_id,action,target_type,target_id,metadata,ip) VALUES(NULL,$1,'auth',$2,$3,$4::inet)`,
+    [action, targetId ?? null, metadata, ip],
+  );
+}
+
 async function recordAnalysisAttempt(
   userId: string,
   symbol: string,
@@ -201,11 +208,18 @@ app.post(
   asyncRoute(async (req, res) => {
     const parsed = forgotSchema.safeParse(req.body);
     const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
+    const requestIp = req.ip || "127.0.0.1";
+    await auditAuth("password_reset_requested", requestIp, undefined, { mailReady: mailDeliveryReady() });
     if (email && mailDeliveryReady()) {
-      const token = await createPasswordReset(email, req.ip || "127.0.0.1");
+      const token = await createPasswordReset(email, requestIp);
       if (token) {
         const publicOrigin = process.env.PUBLIC_ORIGIN || "https://boursnegar.ir";
-        await sendPasswordResetEmail(email, `${publicOrigin}/?reset-token=${encodeURIComponent(token)}`);
+        try {
+          await sendPasswordResetEmail(email, `${publicOrigin}/?reset-token=${encodeURIComponent(token)}`);
+          await auditAuth("password_reset_dispatched", requestIp, undefined, { delivery: "submitted" });
+        } catch {
+          await auditAuth("password_reset_delivery_failed", requestIp, undefined, { delivery: "failed" });
+        }
       }
     }
     res.status(202).json({ success: true, message: "اگر حسابی با این ایمیل وجود داشته باشد، لینک بازیابی برای آن ارسال می‌شود." });
@@ -219,7 +233,8 @@ app.post(
     if (!parsed.success)
       return res.status(400).json({ success: false, error: "لینک بازیابی یا رمز جدید معتبر نیست." });
     try {
-      await resetPassword(parsed.data.token, parsed.data.password);
+      const userId = await resetPassword(parsed.data.token, parsed.data.password);
+      await auditAuth("password_reset_completed", req.ip || "127.0.0.1", userId);
       res.json({ success: true, message: "رمز عبور تغییر کرد. اکنون با رمز جدید وارد شوید." });
     } catch (error) {
       if (error instanceof Error && error.message === "INVALID_RESET_TOKEN")

@@ -182,7 +182,7 @@ export async function createPasswordReset(email: string, ip: string): Promise<st
   return token;
 }
 
-export async function resetPassword(token: string, password: string): Promise<void> {
+export async function resetPassword(token: string, password: string): Promise<string> {
   const passwordHash = await hashPassword(password);
   const changed = await withTransaction(async (client) => {
     const found = await client.query(
@@ -196,9 +196,10 @@ export async function resetPassword(token: string, password: string): Promise<vo
     );
     await client.query(`UPDATE password_reset_tokens SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL`, [found.rows[0].user_id]);
     await client.query(`UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, [found.rows[0].user_id]);
-    return true;
+    return found.rows[0].user_id as string;
   });
   if (!changed) throw new Error('INVALID_RESET_TOKEN');
+  return changed;
 }
 
 export function normalizeIranMobile(raw: string): string | null {

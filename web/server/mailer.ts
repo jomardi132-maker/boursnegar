@@ -12,7 +12,7 @@ function smtpConfiguration() {
 }
 
 export function mailDeliveryReady(): boolean {
-  return smtpConfiguration() !== null;
+  return process.env.EMAIL_ENABLED === 'true' && smtpConfiguration() !== null;
 }
 
 export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
