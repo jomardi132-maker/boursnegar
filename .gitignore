@@ -7,8 +7,26 @@
 **/__pycache__/
 **/*.pyc
 **/*.log
-web/data/db.json
+
+# Local databases and runtime data
+db.json
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups and dumps
+*.dump
+*.backup
+*.bak
 backups/
+
+# User receipts
+receipts/
+*receipt*.pdf
+*receipt*.jpg
+*receipt*.jpeg
+*receipt*.png
+*receipt*.webp
+
 uploads/
 coverage/
-
