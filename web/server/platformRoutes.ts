@@ -26,7 +26,14 @@ export function installPlatformRoutes(app: express.Express) {
     "/api/plans",
     asyncRoute(async (_req, res) => {
       const r = await pool.query(
-        `SELECT id,code,title_fa,duration_days,price_toman,analysis_credits FROM plans WHERE active ORDER BY duration_days`,
+        `SELECT id,code,title_fa,description_fa,duration_days,price_toman,
+                analysis_credits,unlimited_analyses,features,display_order,
+                discount,sale_starts_at,sale_ends_at
+         FROM plans
+         WHERE active AND publicly_visible
+           AND (sale_starts_at IS NULL OR sale_starts_at<=now())
+           AND (sale_ends_at IS NULL OR sale_ends_at>now())
+         ORDER BY display_order,duration_days`,
       );
       res.json({ success: true, plans: r.rows });
     }),
@@ -264,7 +271,17 @@ export function installPlatformRoutes(app: express.Express) {
           .json({ success: false, error: "تصمیم معتبر نیست." });
       const result = await withTransaction(async (client) => {
         const found = await client.query(
-          `SELECT ps.*,p.analysis_credits AS plan_credits,p.duration_days,pr.credit_amount AS campaign_credits,pr.active AS campaign_active,pr.starts_at,pr.ends_at,pr.capacity,pr.rules,u.created_at AS user_created_at FROM payment_submissions ps JOIN users u ON u.id=ps.user_id LEFT JOIN plans p ON p.id=ps.plan_id LEFT JOIN promotions pr ON pr.id=ps.promotion_id WHERE ps.id=$1 FOR UPDATE OF ps`,
+          `SELECT ps.*,p.analysis_credits AS plan_credits,p.duration_days,
+                  p.unlimited_analyses,p.title_fa AS plan_title_fa,
+                  p.features AS plan_features,
+                  pr.credit_amount AS campaign_credits,pr.active AS campaign_active,
+                  pr.starts_at,pr.ends_at,pr.capacity,pr.rules,
+                  u.created_at AS user_created_at
+           FROM payment_submissions ps
+           JOIN users u ON u.id=ps.user_id
+           LEFT JOIN plans p ON p.id=ps.plan_id
+           LEFT JOIN promotions pr ON pr.id=ps.promotion_id
+           WHERE ps.id=$1 FOR UPDATE OF ps`,
           [req.params.id],
         );
         const payment = found.rows[0];
@@ -305,8 +322,29 @@ export function installPlatformRoutes(app: express.Express) {
         if (parsed.data.decision === "approved") {
           if (payment.duration_days > 0)
             await client.query(
-              `INSERT INTO subscriptions(user_id,plan_id,status,starts_at,ends_at) VALUES($1,$2,'active',now(),now()+($3||' days')::interval)`,
-              [payment.user_id, payment.plan_id, payment.duration_days],
+              `INSERT INTO subscriptions(
+                 user_id,plan_id,status,starts_at,ends_at,
+                 entitlement_snapshot,purchased_price_toman
+               ) VALUES(
+                 $1,$2,'active',now(),now()+($3||' days')::interval,
+                 jsonb_build_object(
+                   'durationDays',$3,
+                   'analysisCredits',$4,
+                   'unlimitedAnalyses',$5,
+                   'titleFa',$6,
+                   'features',$7::jsonb
+                 ),$8
+               )`,
+              [
+                payment.user_id,
+                payment.plan_id,
+                payment.duration_days,
+                payment.plan_credits,
+                payment.unlimited_analyses,
+                payment.plan_title_fa,
+                JSON.stringify(payment.plan_features ?? []),
+                payment.amount_toman,
+              ],
             );
           const credits = Number(
             payment.plan_credits ?? payment.campaign_credits ?? 0,
@@ -514,35 +552,109 @@ export function installPlatformRoutes(app: express.Express) {
       res.json({ success: true, plans: r.rows });
     }),
   );
+  const planSchema = z
+    .object({
+      code: z.string().regex(/^[a-z0-9][a-z0-9_-]{1,47}$/),
+      titleFa: z.string().min(2).max(80),
+      descriptionFa: z.string().max(500).nullable().optional(),
+      durationDays: z.number().int().min(0).max(5000),
+      priceToman: z.number().int().min(0),
+      analysisCredits: z.number().int().min(0).max(100000),
+      unlimitedAnalyses: z.boolean().default(false),
+      features: z.array(z.string().min(1).max(120)).max(30).default([]),
+      active: z.boolean(),
+      displayOrder: z.number().int().min(-10000).max(10000).default(0),
+      discount: z.record(z.string(), z.unknown()).nullable().optional(),
+      saleStartsAt: z.string().datetime().nullable().optional(),
+      saleEndsAt: z.string().datetime().nullable().optional(),
+      publiclyVisible: z.boolean().default(true),
+    })
+    .refine(
+      (v) =>
+        !v.saleStartsAt ||
+        !v.saleEndsAt ||
+        new Date(v.saleEndsAt) > new Date(v.saleStartsAt),
+    );
+  app.post(
+    "/api/admin/plans",
+    requireUser,
+    requireAdmin,
+    requireCsrf,
+    asyncRoute(async (req, res) => {
+      const parsed = planSchema.safeParse(req.body);
+      if (!parsed.success)
+        return res
+          .status(400)
+          .json({ success: false, error: "تنظیمات پلن معتبر نیست." });
+      const v = parsed.data;
+      const r = await pool.query(
+        `INSERT INTO plans(
+           code,title_fa,description_fa,duration_days,price_toman,
+           analysis_credits,unlimited_analyses,features,active,display_order,
+           discount,sale_starts_at,sale_ends_at,publicly_visible
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING *`,
+        [
+          v.code,
+          v.titleFa,
+          v.descriptionFa ?? null,
+          v.durationDays,
+          v.priceToman,
+          v.analysisCredits,
+          v.unlimitedAnalyses,
+          v.features,
+          v.active,
+          v.displayOrder,
+          v.discount ?? null,
+          v.saleStartsAt ?? null,
+          v.saleEndsAt ?? null,
+          v.publiclyVisible,
+        ],
+      );
+      await audit(
+        req.authUser!.id,
+        "plan.create",
+        "plan",
+        r.rows[0].id,
+        req.ip || "127.0.0.1",
+      );
+      res.status(201).json({ success: true, plan: r.rows[0] });
+    }),
+  );
   app.patch(
     "/api/admin/plans/:id",
     requireUser,
     requireAdmin,
     requireCsrf,
     asyncRoute(async (req, res) => {
-      const p = z
-        .object({
-          titleFa: z.string().min(2).max(80),
-          durationDays: z.number().int().min(0).max(5000),
-          priceToman: z.number().int().min(0),
-          analysisCredits: z.number().int().min(0).max(100000),
-          active: z.boolean(),
-        })
-        .safeParse(req.body);
+      const p = planSchema.omit({ code: true }).safeParse(req.body);
       if (!p.success)
         return res
           .status(400)
           .json({ success: false, error: "تنظیمات پلن معتبر نیست." });
       const v = p.data;
       const r = await pool.query(
-        `UPDATE plans SET title_fa=$2,duration_days=$3,price_toman=$4,analysis_credits=$5,active=$6,updated_at=now() WHERE id=$1 RETURNING *`,
+        `UPDATE plans SET
+           title_fa=$2,description_fa=$3,duration_days=$4,price_toman=$5,
+           analysis_credits=$6,unlimited_analyses=$7,features=$8,active=$9,
+           display_order=$10,discount=$11,sale_starts_at=$12,sale_ends_at=$13,
+           publicly_visible=$14,updated_at=now()
+         WHERE id=$1 RETURNING *`,
         [
           req.params.id,
           v.titleFa,
+          v.descriptionFa ?? null,
           v.durationDays,
           v.priceToman,
           v.analysisCredits,
+          v.unlimitedAnalyses,
+          v.features,
           v.active,
+          v.displayOrder,
+          v.discount ?? null,
+          v.saleStartsAt ?? null,
+          v.saleEndsAt ?? null,
+          v.publiclyVisible,
         ],
       );
       if (!r.rowCount) return res.status(404).json({ success: false });

@@ -49,4 +49,11 @@ describe("platform routes security contract", () => {
   });
   it("never exposes secret-shaped system settings", () =>
     expect(source).toMatch(/secret\|token\|password\|api/));
+  it("supports configurable plans and immutable purchase entitlements", () => {
+    expect(source).toContain('app.post(\n    "/api/admin/plans"');
+    expect(source).toContain("publicly_visible");
+    expect(source).toContain("unlimited_analyses");
+    expect(source).toContain("entitlement_snapshot");
+    expect(source).toContain("purchased_price_toman");
+  });
 });

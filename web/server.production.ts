@@ -157,6 +157,9 @@ async function sendOtp(mobile: string, code: string): Promise<string> {
 }
 
 app.get("/healthz", (_req, res) => res.json({ status: "ok", auth: "email_password" }));
+app.get("/api/health", (_req, res) =>
+  res.json({ status: "ok", auth: "email_password" }),
+);
 app.get(
   "/readyz",
   asyncRoute(async (_req, res) => {
@@ -245,6 +248,14 @@ app.post(
 );
 app.post(
   "/api/auth/otp/request",
+  (_req, res) =>
+    res.status(410).json({
+      success: false,
+      error: "ورود پیامکی حذف شده است. از ایمیل و رمز عبور استفاده کنید.",
+    }),
+);
+app.post(
+  "/api/auth/otp/request/legacy-disabled",
   rateLimit("otp", 5, 600_000),
   asyncRoute(async (req, res) => {
     const parsed = otpRequestSchema.safeParse(req.body);
@@ -286,6 +297,14 @@ app.post(
 );
 app.post(
   "/api/auth/otp/verify",
+  (_req, res) =>
+    res.status(410).json({
+      success: false,
+      error: "ورود پیامکی حذف شده است. از ایمیل و رمز عبور استفاده کنید.",
+    }),
+);
+app.post(
+  "/api/auth/otp/verify/legacy-disabled",
   rateLimit("verify", 10, 600_000),
   asyncRoute(async (req, res) => {
     const parsed = otpVerifySchema.safeParse(req.body);
@@ -348,12 +367,65 @@ app.post(
       return res
         .status(400)
         .json({ success: false, error: "نماد واردشده معتبر نیست." });
+    const key = String(
+      req.header("idempotency-key") || crypto.randomUUID(),
+    ).slice(0, 128);
+    const ledgerKey = `analysis:${req.authUser!.id}:${key}`;
+    const replay = await pool.query(
+      `SELECT h.id,h.symbol,h.report_mode,h.result,h.created_at,c.balance AS remaining_credits
+       FROM credit_ledger l
+       JOIN analysis_history h ON h.id::text=l.reference_id
+       JOIN analysis_credits c ON c.user_id=l.user_id
+       WHERE l.user_id=$1 AND l.idempotency_key=$2`,
+      [req.authUser!.id, ledgerKey],
+    );
+    if (replay.rows[0]) {
+      const previous = replay.rows[0];
+      if (
+        previous.symbol !== symbol ||
+        previous.report_mode !== parsed.data.reportMode
+      )
+        return res.status(409).json({
+          success: false,
+          error: "این کلید تکرار قبلاً برای درخواست دیگری استفاده شده است.",
+        });
+      return res.json({
+        success: true,
+        replayed: true,
+        data: previous.result,
+        analysis: {
+          id: previous.id,
+          created_at: previous.created_at,
+          remainingCredits: previous.remaining_credits,
+        },
+      });
+    }
     try {
       const data = await generateRealHealthCard(symbol, parsed.data.reportMode);
-      const key = String(
-        req.header("idempotency-key") || crypto.randomUUID(),
-      ).slice(0, 128);
       const saved = await withTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT h.id,h.symbol,h.report_mode,h.result,h.created_at,c.balance AS remaining_credits
+           FROM credit_ledger l
+           JOIN analysis_history h ON h.id::text=l.reference_id
+           JOIN analysis_credits c ON c.user_id=l.user_id
+           WHERE l.user_id=$1 AND l.idempotency_key=$2`,
+          [req.authUser!.id, ledgerKey],
+        );
+        if (existing.rows[0]) {
+          const previous = existing.rows[0];
+          if (
+            previous.symbol !== symbol ||
+            previous.report_mode !== parsed.data.reportMode
+          )
+            throw new Error("IDEMPOTENCY_CONFLICT");
+          return {
+            id: previous.id,
+            created_at: previous.created_at,
+            remainingCredits: previous.remaining_credits,
+            replayed: true,
+            replayData: previous.result,
+          };
+        }
         const credit = await client.query(
           `SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`,
           [req.authUser!.id],
@@ -380,7 +452,7 @@ app.post(
             req.authUser!.id,
             balance - 1,
             history.rows[0].id,
-            `analysis:${req.authUser!.id}:${key}`,
+            ledgerKey,
           ],
         );
         return { ...history.rows[0], remainingCredits: balance - 1 };
@@ -391,7 +463,16 @@ app.post(
         parsed.data.reportMode,
         true,
       );
-      res.json({ success: true, data, analysis: saved });
+      res.json({
+        success: true,
+        replayed: Boolean(saved.replayed),
+        data: saved.replayData ?? data,
+        analysis: {
+          id: saved.id,
+          created_at: saved.created_at,
+          remainingCredits: saved.remainingCredits,
+        },
+      });
     } catch (error) {
       await recordAnalysisAttempt(
         req.authUser!.id,
@@ -607,6 +688,10 @@ app.get(
 );
 installPlatformRoutes(app);
 
+app.use("/api", (_req, res) =>
+  res.status(404).json({ success: false, error: "مسیر API پیدا نشد." }),
+);
+
 const distPath = path.join(process.cwd(), "dist");
 async function start() {
   if (!isProduction)
@@ -647,6 +732,7 @@ async function start() {
                       "ALREADY_DECIDED",
                       "CAMPAIGN_UNAVAILABLE",
                       "INVALID_BALANCE",
+                      "IDEMPOTENCY_CONFLICT",
                     ].includes(message)
                   ? 409
                   : message === "OTP_DISABLED"
