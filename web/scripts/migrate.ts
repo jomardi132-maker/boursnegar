@@ -5,7 +5,10 @@ import { pool } from '../server/postgres';
 dotenv.config();
 async function main() {
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now())`);
-  for (const file of fs.readdirSync(path.resolve('migrations')).filter((f) => /^\d+.*\.sql$/.test(f)).sort()) {
+  for (const file of fs
+    .readdirSync(path.resolve('migrations'))
+    .filter((f) => /^\d+.*\.sql$/.test(f) && !f.endsWith('.rollback.sql'))
+    .sort()) {
     const version = file.replace(/\.sql$/, '');
     if ((await pool.query(`SELECT 1 FROM schema_migrations WHERE version=$1`, [version])).rowCount) continue;
     await pool.query(fs.readFileSync(path.join('migrations', file), 'utf8'));

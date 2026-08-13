@@ -9,6 +9,10 @@ const campaignSql = fs.readFileSync(
 );
 const emailAuthSql = fs.readFileSync(path.resolve("migrations/005_email_password_auth.sql"), "utf8");
 describe("core migration safety contract", () => {
+  it("never executes rollback files in the forward migration runner", () => {
+    const runner = fs.readFileSync(path.resolve("scripts/migrate.ts"), "utf8");
+    expect(runner).toContain("!f.endsWith('.rollback.sql')");
+  });
   it("contains every required domain table", () => {
     for (const table of [
       "users",
