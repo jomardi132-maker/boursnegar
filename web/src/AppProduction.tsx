@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, CheckCircle2, Database, LogOut, Menu, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, Database, LogOut, Menu, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { DecisionReport, type AnalysisPayload } from './components/DecisionReport';
 import { AccountDashboard } from './components/AccountDashboard';
 import { LegalModal, type LegalDocument } from './components/LegalModal';
+import { StockPage } from './components/StockPage';
 import './dashboard.css';
 
 export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
 type SymbolSuggestion = { symbol: string; legal_name: string; industry: string | null; isin: string };
+type MarketOverview = { catalog: { instruments: number }; prices: { rows: number; instruments: number; from_date: string; to_date: string }; disclosures: { rows: number; issuers: number; updated_at: string | null }; analysis: { analyzed: number } };
 const csrfStorage = 'boursnegar_csrf';
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -28,7 +30,9 @@ export function AppProduction() {
   const [error, setError] = useState('');
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
+  const [overview, setOverview] = useState<MarketOverview | null>(null);
   useEffect(() => { api<{ user: User }>('/api/auth/me').then((r) => setUser(r.user)).catch(() => setUser(null)); }, []);
+  useEffect(() => { api<MarketOverview>('/api/market/overview').then(setOverview).catch(()=>setOverview(null)); }, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
   useEffect(() => {
     const term = query.trim();
@@ -44,7 +48,7 @@ export function AppProduction() {
 
   async function analyze(event: FormEvent) {
     event.preventDefault(); setError('');
-    if (!user) { setAuthOpen(true); return; }
+    if (!user) { window.location.assign(`/s/${encodeURIComponent(query.trim())}`); return; }
     setLoading(true);
     try {
       const response = await api<{ data: AnalysisPayload; analysis: { remainingCredits: number } }>('/api/v2/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query, reportMode: 'audited' }) });
@@ -56,16 +60,18 @@ export function AppProduction() {
   }
 
   async function logout() { await api('/api/auth/logout', { method: 'POST', body: '{}' }); sessionStorage.removeItem(csrfStorage); setUser(null); setResult(null); }
+  const stockMatch = window.location.pathname.match(/^\/s\/([^/]+)\/?$/);
+  if (stockMatch) return <StockPage symbol={decodeURIComponent(stockMatch[1])} onAnalyze={(stockSymbol)=>window.location.assign(`/?analyze=${encodeURIComponent(stockSymbol)}`)}/>;
   return <div className="app-shell" dir="rtl">
     <header className="topbar"><a className="brand" href="#top" aria-label="بورس‌نگار"><span className="brand-mark"><BarChart3 /></span><span><b>بورس‌نگار</b><small>تحلیل بنیادی شفاف</small></span></a>
       <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
       <div className="header-actions">{user ? <><button className="credit-pill dashboard-trigger" onClick={()=>setDashboardOpen(true)}>{user.credits.toLocaleString('fa-IR')} اعتبار · پنل من</button><button className="icon-button" onClick={logout} aria-label="خروج"><LogOut /></button></> : <button className="button ghost" onClick={() => setAuthOpen(true)}>ورود / ثبت‌نام</button>}<button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="منو">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
     <main id="top">
-      <section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> داده واقعی بازار تهران و کدال</span><h1>صورت‌های مالی را<br/><em>قابل فهم</em> ببینید.</h1><p>سه پرسش بنیادی، منابع قابل ردگیری و نتیجه‌ای محتاطانه؛ بدون داده ساختگی و بدون توصیه قطعی خرید یا فروش.</p>
-        <div className="symbol-search"><form className="search-box" onSubmit={analyze}><Search aria-hidden="true"/><label className="sr-only" htmlFor="symbol">نماد یا نام شرکت</label><input id="symbol" value={query} onChange={(e) => setQuery(e.target.value)} onFocus={()=>setSearchFocused(true)} onBlur={()=>window.setTimeout(()=>setSearchFocused(false),120)} placeholder="نام شرکت یا نماد؛ مثلاً مبارکه، فولاد یا وبملت" required maxLength={80} autoComplete="off" aria-autocomplete="list" aria-expanded={searchFocused&&suggestions.length>0}/><button disabled={loading}>{loading ? <span className="spinner"/> : <>تحلیل نماد <ArrowLeft /></>}</button></form>{searchFocused&&suggestions.length>0&&<div className="symbol-suggestions" role="listbox">{suggestions.map((item)=><button type="button" role="option" key={item.isin} onMouseDown={()=>{setQuery(item.symbol);setSuggestions([])}}><span><b>{item.symbol}</b><small>{item.legal_name}</small></span><em>{item.industry||'بازار سرمایه'}</em></button>)}</div>}</div>
-        {error && <div className="error-state" role="alert">{error}</div>}<div className="trust-line"><ShieldCheck/> اطلاعات بازار از BrsApi <span/> صورت‌های مالی از کدال</div></div>
-        <div className="hero-panel" aria-hidden="true"><div className="panel-head"><span>نمونه ساختار گزارش</span><span className="live-dot">داده مستند</span></div>{['بازده سودآوری در برابر سود بانکی','کیفیت نقدی سود','رشد واقعی در برابر تورم'].map((x,i)=><div className="metric-row" key={x}><span className="metric-num">۰{i+1}</span><div><b>{x}</b><small>{i===2?'در صورت وجود دوره مقایسه‌ای معتبر':'با ذکر منبع و تاریخ داده'}</small></div><CheckCircle2/></div>)}<div className="panel-note">این نمایش صرفاً ساختار گزارش است و عدد مالی نمونه تولید نمی‌کند.</div></div>
+      <section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> پایگاه تحلیلی مستقل بازار سرمایه</span><h1>هر سهم، یک صفحهٔ<br/><em>شفاف و قابل پیگیری.</em></h1><p>قیمت تاریخی، اسناد کدال و تحلیل بنیادی صنعت‌محور را در یک مسیر روشن ببینید؛ عددها از منبع می‌آیند، نتیجه از مدل مستند.</p>
+        <div className="symbol-search"><form className="search-box" onSubmit={analyze}><Search aria-hidden="true"/><label className="sr-only" htmlFor="symbol">نماد یا نام شرکت</label><input id="symbol" value={query} onChange={(e) => setQuery(e.target.value)} onFocus={()=>setSearchFocused(true)} onBlur={()=>window.setTimeout(()=>setSearchFocused(false),120)} placeholder="نام شرکت یا نماد؛ مثلاً مبارکه، فولاد یا وبملت" required maxLength={80} autoComplete="off" aria-autocomplete="list" aria-expanded={searchFocused&&suggestions.length>0}/><button disabled={loading}>{loading ? <span className="spinner"/> : <>{user?'تحلیل کامل':'مشاهده سهم'} <ArrowLeft /></>}</button></form>{searchFocused&&suggestions.length>0&&<div className="symbol-suggestions" role="listbox">{suggestions.map((item)=><button type="button" role="option" key={item.isin} onMouseDown={()=>window.location.assign(`/s/${encodeURIComponent(item.symbol)}`)}><span><b>{item.symbol}</b><small>{item.legal_name}</small></span><em>{item.industry||'بازار سرمایه'}</em></button>)}</div>}</div>
+        {error && <div className="error-state" role="alert">{error}</div>}<div className="trust-line"><ShieldCheck/> تاریخچه بازار از ۱۴۰۴ <span/> اطلاعیه‌های رسمی کدال <span/> بدون عدد ساختگی</div></div>
+        <div className="hero-panel"><div className="panel-head"><span>وضعیت زندهٔ پایگاه داده</span><span className="live-dot">متصل</span></div><div className="database-number"><strong>{overview ? overview.catalog.instruments.toLocaleString('fa-IR') : '—'}</strong><span>نماد و ابزار فعال</span></div><div className="database-grid"><div><b>{overview ? overview.prices.rows.toLocaleString('fa-IR') : '—'}</b><small>رکورد قیمت روزانه</small></div><div><b>{overview ? overview.disclosures.rows.toLocaleString('fa-IR') : '—'}</b><small>نسخه اطلاعیه کدال</small></div><div><b>{overview ? overview.prices.instruments.toLocaleString('fa-IR') : '—'}</b><small>نماد با تاریخچه ۱۴۰۴</small></div><div><b>{overview ? overview.analysis.analyzed.toLocaleString('fa-IR') : '—'}</b><small>نسخه تحلیل ثبت‌شده</small></div></div><div className="panel-note">این اعداد مستقیماً از پایگاه دادهٔ عملیاتی بورس‌نگار خوانده می‌شوند.</div></div>
       </section>
       <section className="method-section" id="method"><div className="section-heading"><span>روش کار</span><h2>از داده خام تا پاسخ روشن</h2><p>هر نتیجه، مسیر قابل مشاهده‌ای از منبع تا محاسبه دارد.</p></div><div className="steps-grid">{[[Database,'گردآوری','قیمت از BrsApi و گزارش رسمی از کدال'],[BarChart3,'محاسبه','نسبت‌های deterministic با دوره و واحد مشخص'],[Sparkles,'توضیح','پاسخ فارسی محتاطانه و قابل حسابرسی']].map(([Icon,title,text],i)=><article key={String(title)}><span className="step-index">۰{i+1}</span><Icon/><h3>{title as string}</h3><p>{text as string}</p></article>)}</div></section>
       <section className="source-band" id="sources"><div><Database/><span><b>منبع بازار</b><small>BrsApi — قیمت و مشخصات تابلو</small></span></div><div><ShieldCheck/><span><b>منبع مالی</b><small>کدال — صورت‌های مالی رسمی</small></span></div><p>زمان گزارش، وضعیت حسابرسی و تاریخ به‌روزرسانی در هر تحلیل نمایش داده می‌شود.</p></section>

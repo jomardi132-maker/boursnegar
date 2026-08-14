@@ -11,6 +11,13 @@ describe("platform routes security contract", () => {
     expect(source).toContain("similarity(sa.symbol,$1)");
     expect(source).toContain("LIMIT 10");
   });
+  it("publishes evidence-backed stock pages and market coverage", () => {
+    expect(source).toContain('"/api/stocks/:symbol"');
+    expect(source).toContain('"/api/market/overview"');
+    expect(source).toContain("FROM daily_prices WHERE instrument_id=$1");
+    expect(source).toContain("FROM disclosures d JOIN disclosure_versions v");
+    expect(source).toContain('"/sitemap.xml"');
+  });
   it.each(["/api/account/overview", "/api/account/referrals", "/api/alerts"])(
     "protects account route %s",
     (route) =>
@@ -26,6 +33,7 @@ describe("platform routes security contract", () => {
     "/api/admin/campaigns",
     "/api/admin/settings",
     "/api/admin/sms",
+    "/api/admin/data-status",
   ])("protects admin route %s", (route) => {
     const block = source.slice(
       source.indexOf(route),

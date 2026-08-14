@@ -22,6 +22,98 @@ const audit = async (
   );
 
 export function installPlatformRoutes(app: express.Express) {
+  app.get("/robots.txt", (_req, res) => {
+    res.type("text/plain").send("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://boursnegar.ir/sitemap.xml\n");
+  });
+  app.get(
+    "/sitemap.xml",
+    asyncRoute(async (_req, res) => {
+      const rows = await pool.query(`SELECT sa.symbol FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id WHERE sa.valid_to IS NULL AND i.active AND sa.symbol !~ '[0-9۰-۹]$' ORDER BY sa.symbol`);
+      const urls = ["<url><loc>https://boursnegar.ir/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>", ...rows.rows.map(({symbol}) => `<url><loc>https://boursnegar.ir/s/${encodeURIComponent(symbol)}</loc><changefreq>daily</changefreq><priority>0.7</priority></url>`)];
+      res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`);
+    }),
+  );
+  app.get(
+    "/api/market/overview",
+    asyncRoute(async (_req, res) => {
+      const [catalog, prices, disclosures, coverage] = await Promise.all([
+        pool.query(`SELECT count(*)::int AS instruments FROM instruments WHERE active`),
+        pool.query(`SELECT count(*)::int AS rows,count(DISTINCT instrument_id)::int AS instruments,min(trading_date) AS from_date,max(trading_date) AS to_date FROM daily_prices`),
+        pool.query(`SELECT count(*)::int AS rows,count(DISTINCT issuer_id)::int AS issuers,max(retrieved_at) AS updated_at FROM disclosure_versions`),
+        pool.query(`SELECT count(*)::int AS analyzed FROM analytical_snapshots`),
+      ]);
+      res.json({ success: true, catalog: catalog.rows[0], prices: prices.rows[0], disclosures: disclosures.rows[0], analysis: coverage.rows[0] });
+    }),
+  );
+  app.get(
+    "/api/admin/data-status",
+    requireUser,
+    requireAdmin,
+    asyncRoute(async (_req, res) => {
+      const [counts, pipelines, issues] = await Promise.all([
+        pool.query(`SELECT
+          (SELECT count(*)::int FROM instruments WHERE active) AS instruments,
+          (SELECT count(*)::int FROM daily_prices) AS daily_prices,
+          (SELECT count(DISTINCT instrument_id)::int FROM daily_prices) AS price_symbols,
+          (SELECT count(*)::int FROM disclosures) AS disclosures,
+          (SELECT count(*)::int FROM disclosure_versions) AS disclosure_versions,
+          (SELECT count(*)::int FROM analytical_snapshots) AS analyses,
+          (SELECT max(trading_date) FROM daily_prices) AS latest_price_date,
+          (SELECT max(retrieved_at) FROM disclosure_versions) AS latest_disclosure_at`),
+        pool.query(`SELECT pipeline,status,started_at,finished_at,metrics,error_summary FROM ingestion_runs ORDER BY started_at DESC LIMIT 30`),
+        pool.query(`SELECT severity,issue_code,cause,status,detected_at FROM data_quality_issues WHERE status='OPEN' ORDER BY detected_at DESC LIMIT 30`),
+      ]);
+      res.json({ success: true, counts: counts.rows[0], pipelines: pipelines.rows, issues: issues.rows });
+    }),
+  );
+  app.get(
+    "/api/stocks/:symbol",
+    asyncRoute(async (req, res) => {
+      const symbol = z.string().trim().min(1).max(32).safeParse(req.params.symbol);
+      if (!symbol.success) return res.status(400).json({ success: false, error: "نماد معتبر نیست." });
+      const profile = await pool.query(
+        `SELECT i.id AS instrument_id,sa.symbol,i.isin,i.market_instrument_id,
+                ir.legal_name,ind.title_fa AS industry,ind.model_family
+         FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id
+         JOIN issuers ir ON ir.id=i.issuer_id LEFT JOIN industries ind ON ind.id=ir.industry_id
+         WHERE sa.symbol=$1 AND sa.valid_to IS NULL AND i.active LIMIT 1`,
+        [symbol.data],
+      );
+      if (!profile.rowCount) return res.status(404).json({ success: false, error: "نماد پیدا نشد." });
+      const stock = profile.rows[0];
+      const [history, disclosureRows, snapshot] = await Promise.all([
+        pool.query(
+          `SELECT trading_date,trading_date_jalali,open,high,low,close,last,adjusted_close,volume,value,trade_count,quality_status
+           FROM daily_prices WHERE instrument_id=$1 ORDER BY trading_date DESC LIMIT 420`,
+          [stock.instrument_id],
+        ),
+        pool.query(
+          `SELECT d.source_disclosure_id,d.title,d.published_date_jalali,d.is_audited,d.scope,
+                  v.retrieved_at,v.metadata->>'detail_url' AS detail_url,v.metadata->>'excel_url' AS excel_url
+           FROM disclosures d JOIN disclosure_versions v ON v.disclosure_id=d.id AND v.is_current
+           WHERE d.instrument_id=$1 ORDER BY coalesce(d.published_at,v.retrieved_at) DESC LIMIT 16`,
+          [stock.instrument_id],
+        ),
+        pool.query(
+          `SELECT s.id,s.status,s.data_as_of,s.calculated_at,s.coverage,s.confidence,
+                  r.decision,r.top_reasons,r.top_risks,r.critical_warning,
+                  h.score,v.fair_value_low,v.fair_value_base,v.fair_value_high,v.model_type,v.model_version
+           FROM analytical_snapshots s
+           LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
+           LEFT JOIN health_score_results h ON h.snapshot_id=s.id
+           LEFT JOIN valuation_results v ON v.snapshot_id=s.id
+           WHERE s.instrument_id=$1 ORDER BY s.calculated_at DESC LIMIT 1`,
+          [stock.instrument_id],
+        ),
+      ]);
+      const prices = history.rows.reverse();
+      const first = prices[0] ?? null;
+      const latest = prices.at(-1) ?? null;
+      const periodReturn = first?.adjusted_close && latest?.adjusted_close
+        ? ((Number(latest.adjusted_close) / Number(first.adjusted_close)) - 1) * 100 : null;
+      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, periodReturn, prices, disclosures: disclosureRows.rows, snapshot: snapshot.rows[0] ?? null });
+    }),
+  );
   app.get(
     "/api/symbols/search",
     asyncRoute(async (req, res) => {

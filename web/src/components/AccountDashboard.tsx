@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   Bell,
   CreditCard,
+  Database,
   Gauge,
   History,
   Megaphone,
@@ -535,7 +536,9 @@ function AdminPanel() {
                     ? "/api/admin/settings"
                     : section === "sms"
                       ? "/api/admin/sms"
-                      : "/api/admin/audit",
+                      : section === "data"
+                        ? "/api/admin/data-status"
+                        : "/api/admin/audit",
     ).then(setData);
   useEffect(() => {
     setData(null);
@@ -552,6 +555,7 @@ function AdminPanel() {
           ["campaigns", Megaphone, "کمپین‌ها"],
           ["referrals", Users, "معرفی‌ها"],
           ["settings", Settings, "تنظیمات"],
+          ["data", Database, "وضعیت داده"],
           ["sms", Bell, "پیامک"],
           ["audit", Shield, "ممیزی"],
         ].map(([id, Icon, label]: any) => (
@@ -742,6 +746,8 @@ function AdminContent({
         </div>
       </>
     );
+  if (section === "data")
+    return <DataStatus data={data} />;
   return (
     <div className="dashboard-list">
       {(data.logs || []).map((x: any) => (
@@ -755,6 +761,10 @@ function AdminContent({
       ))}
     </div>
   );
+}
+function DataStatus({ data }: { data: any }) {
+  const labels: Record<string,string> = { instruments:"نماد فعال",daily_prices:"رکورد قیمت",price_symbols:"نماد دارای قیمت",disclosures:"اطلاعیه کدال",disclosure_versions:"نسخه اطلاعیه",analyses:"تحلیل ثبت‌شده",latest_price_date:"آخرین روز قیمت",latest_disclosure_at:"آخرین دریافت کدال" };
+  return <><div className="dashboard-cards data-cards">{Object.entries(data.counts || {}).map(([key,value])=><article key={key}><small>{labels[key]||key}</small><strong>{typeof value==='number'?value.toLocaleString('fa-IR'):value?new Date(String(value)).toLocaleString('fa-IR'):'—'}</strong></article>)}</div><section className="dashboard-section"><h3>آخرین اجرای خط‌های داده</h3><div className="dashboard-list">{(data.pipelines||[]).map((run:any,i:number)=><article key={`${run.pipeline}-${run.started_at}-${i}`}><span><b>{run.pipeline}</b><br/>{new Date(run.started_at).toLocaleString('fa-IR')} · {run.error_summary||JSON.stringify(run.metrics)}</span><em className={`run-status ${String(run.status).toLowerCase()}`}>{run.status}</em></article>)}</div></section>{(data.issues||[]).length>0&&<section className="dashboard-section"><h3>هشدارهای کیفیت باز</h3><div className="dashboard-list">{data.issues.map((issue:any,i:number)=><article key={`${issue.issue_code}-${i}`}><span><b>{issue.issue_code}</b><br/>{issue.cause}</span><em>{issue.severity}</em></article>)}</div></section>}</>;
 }
 function AdminUsers({
   initial,
