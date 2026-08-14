@@ -59,7 +59,7 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
               ) VALUES(
                 (SELECT id FROM instrument),:report_mode,'INSUFFICIENT_DATA',
                 :data_as_of,:stale_after,:coverage,:confidence,:model_version,
-                :policy_version,:checksum,:quality_summary::jsonb
+                :policy_version,:checksum,CAST(:quality_summary AS jsonb)
               )
               ON CONFLICT(instrument_id,report_mode,data_as_of,model_version,policy_version)
               DO UPDATE SET calculated_at=now(),stale_after=excluded.stale_after,
@@ -70,7 +70,8 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
             INSERT INTO recommendation_results(
               snapshot_id,decision,top_reasons,top_risks,critical_warning,policy_version
             ) VALUES(
-              (SELECT id FROM snapshot),'INSUFFICIENT_DATA','[]'::jsonb,:risks::jsonb,
+              (SELECT id FROM snapshot),'INSUFFICIENT_DATA','[]'::jsonb,
+              CAST(:risks AS jsonb),
               :warning,:policy_version
             )
             ON CONFLICT(snapshot_id) DO UPDATE SET top_risks=excluded.top_risks,
