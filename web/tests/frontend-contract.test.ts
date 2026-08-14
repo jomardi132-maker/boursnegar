@@ -27,4 +27,8 @@ describe('analysis UI contract', () => {
     expect(stockSource).toContain('بازده شش‌ماهه');
     expect(stockSource).toContain('بازده یک‌ساله');
   });
+  it('restores the CSRF token when an existing session is loaded', () => {
+    expect(source).toContain("sessionStorage.setItem(csrfStorage, r.csrfToken)");
+    expect(source).toContain("api<{ user: User; csrfToken: string }>('/api/auth/me')");
+  });
 });

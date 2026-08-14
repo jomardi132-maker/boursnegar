@@ -35,7 +35,7 @@ export function AppProduction() {
   const requestedAnalysisStarted = useRef(false);
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get('analyze');
-    api<{ user: User }>('/api/auth/me').then((r) => { setUser(r.user); if(requested) setQuery(requested); }).catch(() => { setUser(null); if(requested){ setQuery(requested); setAuthOpen(true); } });
+    api<{ user: User; csrfToken: string }>('/api/auth/me').then((r) => { sessionStorage.setItem(csrfStorage, r.csrfToken); setUser(r.user); if(requested) setQuery(requested); }).catch(() => { sessionStorage.removeItem(csrfStorage); setUser(null); if(requested){ setQuery(requested); setAuthOpen(true); } });
   }, []);
   useEffect(() => { api<MarketOverview>('/api/market/overview').then(setOverview).catch(()=>setOverview(null)); }, []);
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashPassword, normalizeEmail, normalizeIranMobile, verifyPassword } from '../server/auth';
+import { hashPassword, normalizeEmail, normalizeIranMobile, sessionCsrfToken, verifyPassword } from '../server/auth';
 import fs from 'fs';
 import path from 'path';
 
@@ -41,5 +41,10 @@ describe('email/password security', () => {
     expect(bootstrap).toContain("'admin.bootstrap'");
     expect(bootstrap).toContain('UPDATE sessions SET revoked_at=now()');
     expect(bootstrap).not.toMatch(/admin123|default.?password/i);
+  });
+  it('derives a stable per-session CSRF token for restored browser sessions', () => {
+    process.env.PASSWORD_PEPPER = 'test-only-pepper-that-is-never-used-in-production';
+    expect(sessionCsrfToken('session-a')).toBe(sessionCsrfToken('session-a'));
+    expect(sessionCsrfToken('session-a')).not.toBe(sessionCsrfToken('session-b'));
   });
 });

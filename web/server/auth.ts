@@ -23,6 +23,13 @@ const sha256 = (value: string) => crypto.createHash('sha256').update(value).dige
 const randomToken = (bytes = 32) => crypto.randomBytes(bytes).toString('base64url');
 const equalHex = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
+export function sessionCsrfToken(sessionId: string): string {
+  return crypto
+    .createHmac('sha256', required('PASSWORD_PEPPER'))
+    .update(`csrf:${sessionId}`)
+    .digest('base64url');
+}
+
 const SCRYPT_N = 1 << 17;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
@@ -286,7 +293,13 @@ export function requireCsrf(req: Request, res: Response, next: NextFunction) {
   if (!req.sessionId) return res.status(401).json({ success: false, error: 'نشست معتبر نیست.' });
   const token = req.header('x-csrf-token') || '';
   pool.query(`SELECT 1 FROM sessions WHERE id=$1 AND csrf_hash=$2 AND revoked_at IS NULL`, [req.sessionId, sha256(token)])
-    .then((r) => r.rowCount ? next() : res.status(403).json({ success: false, error: 'درخواست معتبر نیست.' })).catch(next);
+    .then((r) => {
+      const expected = sessionCsrfToken(req.sessionId!);
+      const currentSessionToken = token.length === expected.length && equalHex(token, expected);
+      return r.rowCount || currentSessionToken
+        ? next()
+        : res.status(403).json({ success: false, error: 'درخواست معتبر نیست.' });
+    }).catch(next);
 }
 
 export async function revokeSession(req: Request, res: Response) {

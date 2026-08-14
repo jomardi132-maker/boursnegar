@@ -28,6 +28,7 @@ import {
   revokeSession,
   setSessionCookie,
   resetPassword,
+  sessionCsrfToken,
   verifyOtp,
 } from "./server/auth";
 import { installPlatformRoutes } from "./server/platformRoutes";
@@ -340,7 +341,7 @@ app.post(
   }),
 );
 app.get("/api/auth/me", requireUser, (req, res) =>
-  res.json({ success: true, user: req.authUser }),
+  res.json({ success: true, user: req.authUser, csrfToken: sessionCsrfToken(req.sessionId!) }),
 );
 app.post(
   "/api/auth/logout",
