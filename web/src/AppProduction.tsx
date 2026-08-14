@@ -31,7 +31,10 @@ export function AppProduction() {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
   const [overview, setOverview] = useState<MarketOverview | null>(null);
-  useEffect(() => { api<{ user: User }>('/api/auth/me').then((r) => setUser(r.user)).catch(() => setUser(null)); }, []);
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('analyze');
+    api<{ user: User }>('/api/auth/me').then((r) => { setUser(r.user); if(requested) setQuery(requested); }).catch(() => { setUser(null); if(requested){ setQuery(requested); setAuthOpen(true); } });
+  }, []);
   useEffect(() => { api<MarketOverview>('/api/market/overview').then(setOverview).catch(()=>setOverview(null)); }, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
   useEffect(() => {

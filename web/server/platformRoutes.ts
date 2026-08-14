@@ -81,7 +81,7 @@ export function installPlatformRoutes(app: express.Express) {
       );
       if (!profile.rowCount) return res.status(404).json({ success: false, error: "نماد پیدا نشد." });
       const stock = profile.rows[0];
-      const [history, disclosureRows, snapshot] = await Promise.all([
+      const [history, disclosureRows, legacyDisclosureRows, snapshot] = await Promise.all([
         pool.query(
           `SELECT trading_date,trading_date_jalali,open,high,low,close,last,adjusted_close,volume,value,trade_count,quality_status
            FROM daily_prices WHERE instrument_id=$1 ORDER BY trading_date DESC LIMIT 420`,
@@ -93,6 +93,15 @@ export function installPlatformRoutes(app: express.Express) {
            FROM disclosures d JOIN disclosure_versions v ON v.disclosure_id=d.id AND v.is_current
            WHERE d.instrument_id=$1 ORDER BY coalesce(d.published_at,v.retrieved_at) DESC LIMIT 16`,
           [stock.instrument_id],
+        ),
+        pool.query(
+          `SELECT fr.tracing_no AS source_disclosure_id,fr.title,
+                  fr.publish_datetime AS published_date_jalali,fr.is_audited,
+                  'separate' AS scope,fr.fetched_at AS retrieved_at,
+                  fr.detail_url,fr.excel_url
+           FROM financial_reports fr JOIN companies c ON c.id=fr.company_id
+           WHERE c.symbol=$1 ORDER BY fr.fetched_at DESC LIMIT 16`,
+          [stock.symbol],
         ),
         pool.query(
           `SELECT s.id,s.status,s.data_as_of,s.calculated_at,s.coverage,s.confidence,
@@ -111,7 +120,10 @@ export function installPlatformRoutes(app: express.Express) {
       const latest = prices.at(-1) ?? null;
       const periodReturn = first?.adjusted_close && latest?.adjusted_close
         ? ((Number(latest.adjusted_close) / Number(first.adjusted_close)) - 1) * 100 : null;
-      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, periodReturn, prices, disclosures: disclosureRows.rows, snapshot: snapshot.rows[0] ?? null });
+      const disclosures = [...disclosureRows.rows, ...legacyDisclosureRows.rows]
+        .filter((row, index, all) => all.findIndex((item) => String(item.source_disclosure_id) === String(row.source_disclosure_id)) === index)
+        .slice(0, 16);
+      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, periodReturn, prices, disclosures, snapshot: snapshot.rows[0] ?? null });
     }),
   );
   app.get(

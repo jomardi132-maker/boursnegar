@@ -39,7 +39,7 @@ export function StockPage({ symbol, onAnalyze }: { symbol: string; onAnalyze: (s
   return <div className="stock-shell" dir="rtl">
     <header className="stock-topbar"><a href="/" className="brand"><span className="brand-mark"><BarChart3/></span><span><b>بورس‌نگار</b><small>مرجع تحلیلی بازار ایران</small></span></a><a href="/" className="back-home"><ArrowRight/> جست‌وجوی سهم دیگر</a></header>
     <main className="stock-page">
-      <section className="stock-identity"><div><span className="stock-symbol">{data.stock.symbol}</span><div><h1>{data.stock.legal_name}</h1><p>{data.stock.industry || "بازار سرمایه"} · {data.stock.isin}</p></div></div><button onClick={() => onAnalyze(data.stock.symbol)}>تحلیل بنیادی کامل</button></section>
+      <section className="stock-identity"><div><span className="stock-symbol">{data.stock.symbol}</span><div><h1 style={{color:"var(--navy)"}}>{data.stock.legal_name}</h1><p>{data.stock.industry || "بازار سرمایه"} · {data.stock.isin}</p></div></div><button onClick={() => onAnalyze(data.stock.symbol)}>تحلیل بنیادی کامل</button></section>
       <section className="market-strip">
         <Metric label="آخرین قیمت" value={`${fa(data.latest?.adjusted_close)} ریال`} detail={data.latest?.trading_date_jalali || "—"}/>
         <Metric label="بازده از ابتدای داده" value={`${fa(data.periodReturn, 1)}٪`} detail="بر مبنای قیمت پایانی" tone={positive ? "positive" : "negative"}/>
