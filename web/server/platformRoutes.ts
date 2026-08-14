@@ -21,6 +21,21 @@ const audit = async (
     [adminId, action, targetType, targetId, metadata, ip],
   );
 
+const priceReturn = (prices: Array<Record<string, unknown>>, months: number) => {
+  const latest = prices.at(-1);
+  const latestValue = Number(latest?.adjusted_close ?? latest?.close);
+  if (!latest || !Number.isFinite(latestValue)) return null;
+  const cutoff = new Date(String(latest.trading_date));
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
+  const baseline = [...prices].reverse().find((row) =>
+    new Date(String(row.trading_date)).getTime() <= cutoff.getTime(),
+  );
+  const baselineValue = Number(baseline?.adjusted_close ?? baseline?.close);
+  return baseline && Number.isFinite(baselineValue) && baselineValue !== 0
+    ? ((latestValue / baselineValue) - 1) * 100
+    : null;
+};
+
 export function installPlatformRoutes(app: express.Express) {
   app.get("/robots.txt", (_req, res) => {
     res.type("text/plain").send("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://boursnegar.ir/sitemap.xml\n");
@@ -28,6 +43,7 @@ export function installPlatformRoutes(app: express.Express) {
   app.get(
     "/sitemap.xml",
     asyncRoute(async (_req, res) => {
+      res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
       const rows = await pool.query(`SELECT sa.symbol FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id WHERE sa.valid_to IS NULL AND i.active AND sa.symbol !~ '[0-9۰-۹]$' ORDER BY sa.symbol`);
       const urls = ["<url><loc>https://boursnegar.ir/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>", ...rows.rows.map(({symbol}) => `<url><loc>https://boursnegar.ir/s/${encodeURIComponent(symbol)}</loc><changefreq>daily</changefreq><priority>0.7</priority></url>`)];
       res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`);
@@ -116,14 +132,17 @@ export function installPlatformRoutes(app: express.Express) {
         ),
       ]);
       const prices = history.rows.reverse();
-      const first = prices[0] ?? null;
       const latest = prices.at(-1) ?? null;
-      const periodReturn = first?.adjusted_close && latest?.adjusted_close
-        ? ((Number(latest.adjusted_close) / Number(first.adjusted_close)) - 1) * 100 : null;
+      const returns = {
+        oneMonth: priceReturn(prices, 1),
+        sixMonths: priceReturn(prices, 6),
+        oneYear: priceReturn(prices, 12),
+      };
       const disclosures = [...disclosureRows.rows, ...legacyDisclosureRows.rows]
         .filter((row, index, all) => all.findIndex((item) => String(item.source_disclosure_id) === String(row.source_disclosure_id)) === index)
         .slice(0, 16);
-      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, periodReturn, prices, disclosures, snapshot: snapshot.rows[0] ?? null });
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, snapshot: snapshot.rows[0] ?? null });
     }),
   );
   app.get(
@@ -154,6 +173,7 @@ export function installPlatformRoutes(app: express.Express) {
          LIMIT 10`,
         [query],
       );
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json({ success: true, results: r.rows });
     }),
   );

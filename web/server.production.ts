@@ -537,7 +537,20 @@ app.post(
         },
       });
     }
-    const data = await generateV2Analysis(symbol, parsed.data.reportMode);
+    const cached = await pool.query(
+      `SELECT s.quality_summary
+       FROM symbol_aliases a
+       JOIN analytical_snapshots s ON s.instrument_id=a.instrument_id
+       WHERE a.symbol=$1 AND a.valid_to IS NULL AND s.report_mode=$2
+         AND s.calculated_at >= now() - interval '6 hours'
+         AND s.quality_summary IS NOT NULL
+       ORDER BY s.calculated_at DESC LIMIT 1`,
+      [symbol, parsed.data.reportMode],
+    );
+    const cachedPayload = cached.rows[0]?.quality_summary;
+    const data = cachedPayload && typeof cachedPayload === "object"
+      ? cachedPayload
+      : await generateV2Analysis(symbol, parsed.data.reportMode);
     const charge = data.decision !== "INSUFFICIENT_DATA";
     const saved = await withTransaction(async (client) => {
       const existing = await client.query(

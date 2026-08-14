@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const source = fs.readFileSync(path.resolve('src/AppProduction.tsx'), 'utf8');
 const reportSource = fs.readFileSync(path.resolve('src/components/DecisionReport.tsx'), 'utf8');
 const dashboardSource = fs.readFileSync(path.resolve('src/components/AccountDashboard.tsx'), 'utf8');
+const stockSource = fs.readFileSync(path.resolve('src/components/StockPage.tsx'), 'utf8');
 describe('analysis UI contract', () => {
   it('always presents the three fundamental questions', () => {
     expect(reportSource).toContain('earnings_vs_bank');
@@ -18,5 +19,12 @@ describe('analysis UI contract', () => {
   });
   it('keeps the dashboard in a loading state until its first payload arrives', () => {
     expect(dashboardSource).toContain('busy || !data');
+  });
+  it('resolves typed company names and keeps full analysis on the stock page', () => {
+    expect(source).toContain('async function resolveSymbol');
+    expect(stockSource).toContain('<DecisionReport report={analysis}/>');
+    expect(stockSource).toContain('بازده یک‌ماهه');
+    expect(stockSource).toContain('بازده شش‌ماهه');
+    expect(stockSource).toContain('بازده یک‌ساله');
   });
 });

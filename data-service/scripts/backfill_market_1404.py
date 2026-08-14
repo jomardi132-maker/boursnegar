@@ -60,8 +60,7 @@ def upsert_catalog(connection, rows: list[dict]) -> list[dict]:
                 active=true WHERE id=:instrument_id
             """), {"isin": isin, "market_id": market_id,
                      "instrument_id": existing["instrument_id"]})
-            if family != "unclassified":
-                selected.append({"symbol": symbol, "market_id": market_id, "family": family})
+            selected.append({"symbol": symbol, "market_id": market_id, "family": family})
             continue
         connection.execute(text("""
           WITH industry AS (
@@ -92,8 +91,7 @@ def upsert_catalog(connection, rows: list[dict]) -> list[dict]:
             "family": family, "stable_code": isin, "legal_name": legal_name,
             "isin": isin, "market_id": market_id, "symbol": symbol,
         })
-        if family != "unclassified":
-            selected.append({"symbol": symbol, "market_id": market_id, "family": family})
+        selected.append({"symbol": symbol, "market_id": market_id, "family": family})
     return selected
 
 
@@ -155,14 +153,13 @@ def main() -> None:
         for row in symbol_rows
         if str(row.get("l18") or "").strip()
         and str(row.get("id") or "").strip()
-        and model_family(row.get("cs")) != "unclassified"
     ]
     with engine.begin() as connection:
         connection.execute(text("""
           INSERT INTO ingestion_runs(id,pipeline,source,partition_key,status,watermark)
           VALUES(:id,:pipeline,:source,:partition,'RUNNING',CAST(:watermark AS jsonb))
         """), {"id": run_id, "pipeline": PIPELINE, "source": SOURCE,
-                 "partition": "pilot-industries", "watermark": json.dumps({"start": args.start})})
+                 "partition": "all-market-instruments", "watermark": json.dumps({"start": args.start})})
         if args.refresh_catalog:
             selected = upsert_catalog(connection, symbol_rows)
         elif int(connection.execute(text("SELECT count(*) FROM instruments")).scalar_one()) < 1000:

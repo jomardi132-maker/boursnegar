@@ -17,6 +17,9 @@ describe("platform routes security contract", () => {
     expect(source).toContain("FROM daily_prices WHERE instrument_id=$1");
     expect(source).toContain("FROM disclosures d JOIN disclosure_versions v");
     expect(source).toContain('"/sitemap.xml"');
+    expect(source).toContain("oneMonth: priceReturn(prices, 1)");
+    expect(source).toContain("sixMonths: priceReturn(prices, 6)");
+    expect(source).toContain("oneYear: priceReturn(prices, 12)");
   });
   it.each(["/api/account/overview", "/api/account/referrals", "/api/alerts"])(
     "protects account route %s",

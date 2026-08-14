@@ -31,6 +31,7 @@ export function AppProduction() {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
   const [overview, setOverview] = useState<MarketOverview | null>(null);
+  const [pendingAnalysis, setPendingAnalysis] = useState('');
   const requestedAnalysisStarted = useRef(false);
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get('analyze');
@@ -44,6 +45,12 @@ export function AppProduction() {
     setQuery(requested);
     void runAnalysis(requested).finally(() => history.replaceState({}, '', window.location.pathname));
   }, [user]);
+  useEffect(() => {
+    if (!user || !pendingAnalysis || loading) return;
+    const symbol = pendingAnalysis;
+    setPendingAnalysis('');
+    void runAnalysis(symbol);
+  }, [user, pendingAnalysis]);
   useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
   useEffect(() => {
     const term = query.trim();
@@ -70,15 +77,25 @@ export function AppProduction() {
     finally { setLoading(false); }
   }
 
+  async function resolveSymbol(input: string) {
+    const normalized = input.trim().replace(/[يى]/g, 'ی').replace(/ك/g, 'ک');
+    const response = await api<{ results: SymbolSuggestion[] }>(`/api/symbols/search?q=${encodeURIComponent(normalized)}`);
+    const exact = response.results.find((item) => item.symbol === normalized || item.legal_name === normalized);
+    return exact?.symbol || response.results[0]?.symbol || '';
+  }
+
   async function analyze(event: FormEvent) {
     event.preventDefault();
-    if (!user) { window.location.assign(`/s/${encodeURIComponent(query.trim())}`); return; }
-    await runAnalysis(query);
+    setError('');
+    const symbol = await resolveSymbol(query);
+    if (!symbol) { setError('نماد یا شرکت موردنظر پیدا نشد.'); return; }
+    if (!user) { window.location.assign(`/s/${encodeURIComponent(symbol)}`); return; }
+    await runAnalysis(symbol);
   }
 
   async function logout() { await api('/api/auth/logout', { method: 'POST', body: '{}' }); sessionStorage.removeItem(csrfStorage); setUser(null); setResult(null); }
   const stockMatch = window.location.pathname.match(/^\/s\/([^/]+)\/?$/);
-  if (stockMatch) return <StockPage symbol={decodeURIComponent(stockMatch[1])} onAnalyze={(stockSymbol)=>window.location.assign(`/?analyze=${encodeURIComponent(stockSymbol)}`)}/>;
+  if (stockMatch) return <><StockPage symbol={decodeURIComponent(stockMatch[1])} analysis={result} analysisLoading={loading} analysisError={error} onAnalyze={(stockSymbol)=>{ setPendingAnalysis(stockSymbol); if(!user) setAuthOpen(true); }}/>{authOpen && <AuthDialog onClose={() => { setAuthOpen(false); setPendingAnalysis(''); }} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</>;
   return <div className="app-shell" dir="rtl">
     <header className="topbar"><a className="brand" href="#top" aria-label="بورس‌نگار"><span className="brand-mark"><BarChart3 /></span><span><b>بورس‌نگار</b><small>تحلیل بنیادی شفاف</small></span></a>
       <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
