@@ -31,4 +31,9 @@ describe("production hardening contract", () => {
     expect(source).toContain("analysis_usage");
     expect(source).toContain("charge ? -1 : 0");
   });
+  it("renders stock-specific search metadata on public share URLs", () => {
+    expect(source).toContain("og:title");
+    expect(source).toContain('req.path.match(/^\\/s\\/');
+    expect(source).toContain('rel="canonical"');
+  });
 });

@@ -835,6 +835,7 @@ app.use("/api", (_req, res) =>
 );
 
 const distPath = path.join(process.cwd(), "dist");
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
 async function start() {
   if (!isProduction)
     app.use(
@@ -847,9 +848,28 @@ async function start() {
     );
   else {
     app.use(express.static(distPath, { index: false, maxAge: "1h" }));
-    app.get("*", (_req, res) =>
-      res.sendFile(path.join(distPath, "index.html")),
-    );
+    app.get("*", asyncRoute(async (req, res) => {
+      const match = req.path.match(/^\/s\/([^/]+)\/?$/);
+      if (!match) return res.sendFile(path.join(distPath, "index.html"));
+      const symbol = decodeURIComponent(match[1]);
+      const row = await pool.query(
+        `SELECT sa.symbol,ir.legal_name,ind.title_fa AS industry
+         FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id
+         JOIN issuers ir ON ir.id=i.issuer_id LEFT JOIN industries ind ON ind.id=ir.industry_id
+         WHERE sa.symbol=$1 AND sa.valid_to IS NULL LIMIT 1`,
+        [symbol],
+      );
+      if (!row.rowCount) return res.sendFile(path.join(distPath, "index.html"));
+      const stock = row.rows[0];
+      const title = `${stock.symbol} | ${stock.legal_name} — بورس‌نگار`;
+      const description = `قیمت، نمودار، اطلاعیه‌های کدال و تحلیل بنیادی ${stock.symbol}، ${stock.legal_name} در صنعت ${stock.industry || "بازار سرمایه"}`;
+      const canonical = `https://boursnegar.ir/s/${encodeURIComponent(stock.symbol)}`;
+      const html = fs.readFileSync(path.join(distPath, "index.html"), "utf8")
+        .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
+        .replace(/<meta name="description" content="[^"]*"\/>/, `<meta name="description" content="${escapeHtml(description)}"/>`)
+        .replace("</head>", `<link rel="canonical" href="${canonical}"/><meta property="og:type" content="website"/><meta property="og:title" content="${escapeHtml(title)}"/><meta property="og:description" content="${escapeHtml(description)}"/><meta property="og:url" content="${canonical}"/></head>`);
+      res.type("html").send(html);
+    }));
   }
   app.use(
     (
