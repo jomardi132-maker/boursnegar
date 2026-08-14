@@ -1,0 +1,19 @@
+[Unit]
+Description=Boursnegar validated end-of-day market update
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+EnvironmentFile=/var/www/boursnegar-data-current/.env
+Environment=PYTHONPATH=.
+ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/update_market_daily.py
+Restart=on-failure
+RestartSec=10min
+TimeoutStartSec=30min
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Boursnegar market update after each trading day
+
+[Timer]
+OnCalendar=Sat,Sun,Mon,Tue,Wed *-*-* 16:30:00 Asia/Tehran
+RandomizedDelaySec=5min
+Persistent=true
+Unit=boursnegar-market-daily.service
+
+[Install]
+WantedBy=timers.target

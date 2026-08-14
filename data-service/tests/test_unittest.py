@@ -1,4 +1,5 @@
 import unittest
+import importlib.util
 from pathlib import Path
 
 
@@ -33,6 +34,18 @@ class DataServiceContractTests(unittest.TestCase):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
         self.assertIn("def _stored_codal_letters", source)
         self.assertIn("letters = _stored_codal_letters(db, symbol)", source)
+
+    def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
+        path = self.root.joinpath("scripts", "update_market_daily.py")
+        spec = importlib.util.spec_from_file_location("update_market_daily", path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+        self.assertAlmostEqual(module.adjusted_close(100, 100, 110, 100), 110)
+        self.assertAlmostEqual(module.adjusted_close(100, 100, 80, 50), 160)
+        first = [{"id": "2", "l18": "ب", "pc": 20, "py": 19, "pl": 20, "tvol": 2, "tval": 40, "tno": 1},
+                 {"id": "1", "l18": "الف", "pc": 10, "py": 9, "pl": 10, "tvol": 1, "tval": 10, "tno": 1}]
+        self.assertEqual(module.market_fingerprint(first), module.market_fingerprint(list(reversed(first))))
 
 
 if __name__ == "__main__":
