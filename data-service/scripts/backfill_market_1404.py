@@ -140,18 +140,39 @@ def main() -> None:
     parser.add_argument("--start", default="2025-03-21")
     parser.add_argument("--delay", type=float, default=0.35)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--refresh-catalog", action="store_true")
+    parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
     start = date.fromisoformat(args.start)
     run_id = str(uuid.uuid4())
     session = requests.Session()
     session.headers.update({"User-Agent": HTTP_USER_AGENT, "Accept": "application/json"})
+    symbol_rows = get_all_symbols(force_refresh=True)
+    selected = [
+        {"symbol": str(row.get("l18") or "").strip(),
+         "market_id": str(row.get("id") or "").strip(),
+         "family": model_family(row.get("cs"))}
+        for row in symbol_rows
+        if str(row.get("l18") or "").strip()
+        and str(row.get("id") or "").strip()
+        and model_family(row.get("cs")) != "unclassified"
+    ]
     with engine.begin() as connection:
         connection.execute(text("""
           INSERT INTO ingestion_runs(id,pipeline,source,partition_key,status,watermark)
           VALUES(:id,:pipeline,:source,:partition,'RUNNING',CAST(:watermark AS jsonb))
         """), {"id": run_id, "pipeline": PIPELINE, "source": SOURCE,
                  "partition": "pilot-industries", "watermark": json.dumps({"start": args.start})})
-        selected = upsert_catalog(connection, get_all_symbols(force_refresh=True))
+        if args.refresh_catalog:
+            selected = upsert_catalog(connection, symbol_rows)
+        elif int(connection.execute(text("SELECT count(*) FROM instruments")).scalar_one()) < 1000:
+            raise RuntimeError("catalog is incomplete; run once with --refresh-catalog")
+        if not args.no_resume:
+            completed = set(connection.execute(text("""
+              SELECT partition_key FROM ingestion_checkpoints
+              WHERE source=:source AND pipeline=:pipeline
+            """), {"source": SOURCE, "pipeline": PIPELINE}).scalars())
+            selected = [row for row in selected if row["market_id"] not in completed]
     selected.sort(key=lambda row: (row["family"], row["symbol"]))
     if args.limit:
         selected = selected[: args.limit]
