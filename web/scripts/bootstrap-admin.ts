@@ -56,7 +56,7 @@ async function main() {
     await client.query(
       `INSERT INTO admin_audit_logs(
          admin_user_id,action,target_type,target_id,metadata,ip
-       ) VALUES($1,'admin.bootstrap','user',$1,$2,'127.0.0.1'::inet)`,
+       ) VALUES($1,'admin.bootstrap','user',$1::text,$2,'127.0.0.1'::inet)`,
       [id, { source: "local-cli", idempotent: true }],
     );
     return id;

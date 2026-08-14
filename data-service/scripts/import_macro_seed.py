@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from sqlalchemy import text
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
 from app.ingestion.macro_seed import validate_dataset
