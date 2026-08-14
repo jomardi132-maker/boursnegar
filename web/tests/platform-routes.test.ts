@@ -6,6 +6,11 @@ const source = fs.readFileSync(
   "utf8",
 );
 describe("platform routes security contract", () => {
+  it("provides a bounded public symbol search over normalized catalog data", () => {
+    expect(source).toContain('"/api/symbols/search"');
+    expect(source).toContain("similarity(sa.symbol,$1)");
+    expect(source).toContain("LIMIT 10");
+  });
   it.each(["/api/account/overview", "/api/account/referrals", "/api/alerts"])(
     "protects account route %s",
     (route) =>

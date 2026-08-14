@@ -11,6 +11,7 @@ import { LegalModal, type LegalDocument } from './components/LegalModal';
 import './dashboard.css';
 
 export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
+type SymbolSuggestion = { symbol: string; legal_name: string; industry: string | null; isin: string };
 const csrfStorage = 'boursnegar_csrf';
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -39,6 +40,8 @@ export function AppProduction() {
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<SymbolSuggestion[]>([]);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [result, setResult] = useState<StockHealthCardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,6 +49,17 @@ export function AppProduction() {
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
   useEffect(() => { api<{ user: User }>('/api/auth/me').then((r) => setUser(r.user)).catch(() => setUser(null)); }, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) { setSuggestions([]); return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      api<{ results: SymbolSuggestion[] }>(`/api/symbols/search?q=${encodeURIComponent(term)}`, { signal: controller.signal })
+        .then((response) => setSuggestions(response.results))
+        .catch(() => setSuggestions([]));
+    }, 180);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [query]);
   const questions = useMemo(() => result ? completeQuestions(result) : null, [result]);
 
   async function analyze(event: FormEvent) {
@@ -69,7 +83,7 @@ export function AppProduction() {
     </header>
     <main id="top">
       <section className="hero"><div className="hero-copy"><span className="eyebrow"><span /> داده واقعی بازار تهران و کدال</span><h1>صورت‌های مالی را<br/><em>قابل فهم</em> ببینید.</h1><p>سه پرسش بنیادی، منابع قابل ردگیری و نتیجه‌ای محتاطانه؛ بدون داده ساختگی و بدون توصیه قطعی خرید یا فروش.</p>
-        <form className="search-box" onSubmit={analyze}><Search aria-hidden="true"/><label className="sr-only" htmlFor="symbol">نماد بورسی</label><input id="symbol" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="مثلاً فولاد، شپنا یا فملی" required maxLength={32}/><button disabled={loading}>{loading ? <span className="spinner"/> : <>تحلیل نماد <ArrowLeft /></>}</button></form>
+        <div className="symbol-search"><form className="search-box" onSubmit={analyze}><Search aria-hidden="true"/><label className="sr-only" htmlFor="symbol">نماد یا نام شرکت</label><input id="symbol" value={query} onChange={(e) => setQuery(e.target.value)} onFocus={()=>setSearchFocused(true)} onBlur={()=>window.setTimeout(()=>setSearchFocused(false),120)} placeholder="نام شرکت یا نماد؛ مثلاً مبارکه، فولاد یا وبملت" required maxLength={80} autoComplete="off" aria-autocomplete="list" aria-expanded={searchFocused&&suggestions.length>0}/><button disabled={loading}>{loading ? <span className="spinner"/> : <>تحلیل نماد <ArrowLeft /></>}</button></form>{searchFocused&&suggestions.length>0&&<div className="symbol-suggestions" role="listbox">{suggestions.map((item)=><button type="button" role="option" key={item.isin} onMouseDown={()=>{setQuery(item.symbol);setSuggestions([])}}><span><b>{item.symbol}</b><small>{item.legal_name}</small></span><em>{item.industry||'بازار سرمایه'}</em></button>)}</div>}</div>
         {error && <div className="error-state" role="alert">{error}</div>}<div className="trust-line"><ShieldCheck/> اطلاعات بازار از BrsApi <span/> صورت‌های مالی از کدال</div></div>
         <div className="hero-panel" aria-hidden="true"><div className="panel-head"><span>نمونه ساختار گزارش</span><span className="live-dot">داده مستند</span></div>{['بازده سودآوری در برابر سود بانکی','کیفیت نقدی سود','رشد واقعی در برابر تورم'].map((x,i)=><div className="metric-row" key={x}><span className="metric-num">۰{i+1}</span><div><b>{x}</b><small>{i===2?'در صورت وجود دوره مقایسه‌ای معتبر':'با ذکر منبع و تاریخ داده'}</small></div><CheckCircle2/></div>)}<div className="panel-note">این نمایش صرفاً ساختار گزارش است و عدد مالی نمونه تولید نمی‌کند.</div></div>
       </section>

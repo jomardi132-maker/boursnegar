@@ -23,6 +23,36 @@ const audit = async (
 
 export function installPlatformRoutes(app: express.Express) {
   app.get(
+    "/api/symbols/search",
+    asyncRoute(async (req, res) => {
+      const parsed = z.string().trim().min(1).max(80).safeParse(req.query.q);
+      if (!parsed.success)
+        return res.json({ success: true, results: [] });
+      const query = parsed.data
+        .replace(/[يى]/g, "ی")
+        .replace(/ك/g, "ک")
+        .replace(/\u200c/g, " ")
+        .replace(/\s+/g, " ");
+      const r = await pool.query(
+        `SELECT sa.symbol,i.isin,i.market_instrument_id,
+                ir.legal_name,ind.title_fa AS industry,
+                greatest(similarity(sa.symbol,$1),similarity(ir.legal_name,$1)) AS score
+         FROM symbol_aliases sa
+         JOIN instruments i ON i.id=sa.instrument_id AND i.active
+         JOIN issuers ir ON ir.id=i.issuer_id AND ir.active
+         LEFT JOIN industries ind ON ind.id=ir.industry_id
+         WHERE sa.valid_to IS NULL
+           AND (sa.symbol ILIKE '%'||$1||'%' OR ir.legal_name ILIKE '%'||$1||'%'
+                OR similarity(sa.symbol,$1)>0.18 OR similarity(ir.legal_name,$1)>0.18)
+         ORDER BY (sa.symbol=$1) DESC,(sa.symbol ILIKE $1||'%') DESC,
+                  score DESC,length(sa.symbol),sa.symbol
+         LIMIT 10`,
+        [query],
+      );
+      res.json({ success: true, results: r.rows });
+    }),
+  );
+  app.get(
     "/api/plans",
     asyncRoute(async (_req, res) => {
       const r = await pool.query(
