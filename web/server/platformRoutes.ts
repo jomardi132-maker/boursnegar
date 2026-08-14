@@ -42,6 +42,7 @@ export function installPlatformRoutes(app: express.Express) {
          JOIN issuers ir ON ir.id=i.issuer_id AND ir.active
          LEFT JOIN industries ind ON ind.id=ir.industry_id
          WHERE sa.valid_to IS NULL
+           AND (sa.symbol !~ '[0-9۰-۹]$' OR sa.symbol=$1)
            AND (sa.symbol ILIKE '%'||$1||'%' OR ir.legal_name ILIKE '%'||$1||'%'
                 OR similarity(sa.symbol,$1)>0.18 OR similarity(ir.legal_name,$1)>0.18)
          ORDER BY (sa.symbol=$1) DESC,(sa.symbol ILIKE $1||'%') DESC,
