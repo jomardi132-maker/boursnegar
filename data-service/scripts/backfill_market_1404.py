@@ -22,6 +22,26 @@ PIPELINE = "market-history-1404-v1"
 HISTORY_URL = "https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceDailyList/{market_id}/0"
 
 
+def adjusted_closes(rows: list[dict]) -> dict[int, float | None]:
+    """Back-adjust closes using TSETMC's official previous-price discontinuities."""
+    ordered = sorted(rows, key=lambda row: int(row.get("dEven") or 0))
+    result: dict[int, float | None] = {}
+    cumulative = 1.0
+    for index in range(len(ordered) - 1, -1, -1):
+        row = ordered[index]
+        close = row.get("pClosing")
+        result[int(row["dEven"])] = float(close) * cumulative if close is not None else None
+        if index == 0:
+            continue
+        previous_close = ordered[index - 1].get("pClosing")
+        official_previous = row.get("priceYesterday")
+        if previous_close not in (None, 0) and official_previous not in (None, 0):
+            ratio = float(official_previous) / float(previous_close)
+            if abs(ratio - 1.0) > 0.001:
+                cumulative *= ratio
+    return result
+
+
 def upsert_catalog(connection, rows: list[dict]) -> list[dict]:
     selected = []
     for row in rows:
@@ -98,6 +118,7 @@ def upsert_catalog(connection, rows: list[dict]) -> list[dict]:
 def save_prices(connection, instrument_id: str, rows: list[dict]) -> int:
     values = []
     retrieved_at = datetime.now(timezone.utc)
+    adjusted = adjusted_closes(rows)
     for row in rows:
         raw_date = str(row["dEven"])
         trading_date = date(int(raw_date[:4]), int(raw_date[4:6]), int(raw_date[6:8]))
@@ -110,7 +131,7 @@ def save_prices(connection, instrument_id: str, rows: list[dict]) -> int:
         values.append((
             instrument_id, trading_date, jalali_iso(trading_date), timestamp,
             row.get("priceFirst"), row.get("priceMax"), row.get("priceMin"),
-            row.get("pClosing"), row.get("pDrCotVal"), row.get("pClosing"),
+            row.get("pClosing"), row.get("pDrCotVal"), adjusted.get(int(row["dEven"])),
             row.get("qTotTran5J"), row.get("qTotCap"), row.get("zTotTran"),
             SOURCE, retrieved_at,
         ))
@@ -126,7 +147,8 @@ def save_prices(connection, instrument_id: str, rows: list[dict]) -> int:
           ) VALUES %s
           ON CONFLICT(instrument_id,trading_date,source,adjustment_version)
           DO UPDATE SET open=excluded.open,high=excluded.high,low=excluded.low,
-            close=excluded.close,last=excluded.last,volume=excluded.volume,
+            close=excluded.close,last=excluded.last,adjusted_close=excluded.adjusted_close,
+            volume=excluded.volume,
             value=excluded.value,trade_count=excluded.trade_count,
             retrieved_at=excluded.retrieved_at,quality_status='VALID'
         """, values, page_size=500)

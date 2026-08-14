@@ -7,9 +7,21 @@ from app.ingestion.market_history import (
     model_family,
     normalize_persian,
 )
+from scripts.backfill_market_1404 import adjusted_closes
 
 
 class MarketHistoryTests(unittest.TestCase):
+    def test_back_adjusts_prices_across_official_corporate_action_gap(self):
+        rows = [
+            {"dEven": 20260729, "pClosing": 20020, "priceYesterday": 20020},
+            {"dEven": 20260801, "pClosing": 14860, "priceYesterday": 14600},
+            {"dEven": 20260802, "pClosing": 15300, "priceYesterday": 14860},
+        ]
+        adjusted = adjusted_closes(rows)
+        self.assertAlmostEqual(adjusted[20260729], 14600)
+        self.assertEqual(adjusted[20260801], 14860)
+        self.assertEqual(adjusted[20260802], 15300)
+
     def test_normalizes_persian_variants(self):
         self.assertEqual(normalize_persian("بانك\u200cها و موسسات اعتباري"), "بانک ها و موسسات اعتباری")
 
