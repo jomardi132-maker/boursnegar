@@ -33,6 +33,36 @@ def upsert_catalog(connection, rows: list[dict]) -> list[dict]:
         if not symbol or not isin or not market_id:
             continue
         family = model_family(industry)
+        existing = connection.execute(text("""
+          SELECT i.id AS instrument_id,ir.id AS issuer_id
+          FROM symbol_aliases sa
+          JOIN instruments i ON i.id=sa.instrument_id
+          JOIN issuers ir ON ir.id=i.issuer_id
+          WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
+        """), {"symbol": symbol}).mappings().first()
+        if existing:
+            industry_id = connection.execute(text("""
+              INSERT INTO industries(code,title_fa,model_family)
+              VALUES(:code,:title,:family)
+              ON CONFLICT(code) DO UPDATE SET title_fa=excluded.title_fa,
+                model_family=CASE WHEN excluded.model_family='unclassified'
+                  THEN industries.model_family ELSE excluded.model_family END
+              RETURNING id
+            """), {"code": f"market:{industry}", "title": industry,
+                     "family": family}).scalar_one()
+            connection.execute(text("""
+              UPDATE issuers SET stable_code=:isin,legal_name=:legal_name,
+                industry_id=:industry_id,updated_at=now() WHERE id=:issuer_id
+            """), {"isin": isin, "legal_name": legal_name,
+                     "industry_id": industry_id, "issuer_id": existing["issuer_id"]})
+            connection.execute(text("""
+              UPDATE instruments SET isin=:isin,market_instrument_id=:market_id,
+                active=true WHERE id=:instrument_id
+            """), {"isin": isin, "market_id": market_id,
+                     "instrument_id": existing["instrument_id"]})
+            if family != "unclassified":
+                selected.append({"symbol": symbol, "market_id": market_id, "family": family})
+            continue
         connection.execute(text("""
           WITH industry AS (
             INSERT INTO industries(code,title_fa,model_family)
