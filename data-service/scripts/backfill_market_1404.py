@@ -11,15 +11,44 @@ import requests
 from psycopg2.extras import execute_values
 from sqlalchemy import text
 
-from app.config import HTTP_USER_AGENT, TSETMC_TIMEOUT_SECONDS
+from app.config import BRSAPI_KEY, HTTP_USER_AGENT, TSETMC_TIMEOUT_SECONDS
 from app.database import engine
-from app.ingestion.market_history import filter_history, jalali_iso, model_family
+from app.ingestion.market_history import filter_history, jalali_iso, jalali_to_gregorian, model_family
 from app.services.tsetmc_service import get_all_symbols
 
 
 SOURCE = "tsetmc-closing-price-api"
 PIPELINE = "market-history-1404-v1"
 HISTORY_URL = "https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceDailyList/{market_id}/0"
+BRS_HISTORY_URL = "https://Api.BrsApi.ir/Tsetmc/History.php"
+
+
+def fetch_history(session: requests.Session, symbol: str) -> list[dict]:
+    response = session.get(
+        BRS_HISTORY_URL,
+        params={"key": BRSAPI_KEY, "type": 0, "l18": symbol},
+        timeout=max(20, TSETMC_TIMEOUT_SECONDS),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, list):
+        raise ValueError("BrsApi history response is not a list")
+    rows = []
+    for item in payload:
+        parts = [int(part) for part in str(item.get("date") or "").split("-")]
+        if len(parts) != 3:
+            continue
+        trading_date = jalali_to_gregorian(*parts)
+        rows.append({
+            "dEven": int(trading_date.strftime("%Y%m%d")),
+            "hEven": int(str(item.get("time") or "0:0:0").replace(":", "")),
+            "priceFirst": item.get("pf"), "priceMax": item.get("pmax"),
+            "priceMin": item.get("pmin"), "pClosing": item.get("pc"),
+            "pDrCotVal": item.get("pl"), "priceYesterday": item.get("py"),
+            "qTotTran5J": item.get("tvol"), "qTotCap": item.get("tval"),
+            "zTotTran": item.get("tno"),
+        })
+    return rows
 
 
 def adjusted_closes(rows: list[dict]) -> dict[int, float | None]:
@@ -198,12 +227,7 @@ def main() -> None:
     total_prices = failures = 0
     for index, item in enumerate(selected, 1):
         try:
-            response = session.get(
-                HISTORY_URL.format(market_id=item["market_id"]),
-                timeout=max(20, TSETMC_TIMEOUT_SECONDS),
-            )
-            response.raise_for_status()
-            history = filter_history(response.json().get("closingPriceDaily") or [], start)
+            history = filter_history(fetch_history(session, item["symbol"]), start)
             with engine.begin() as connection:
                 instrument_id = connection.execute(text(
                     "SELECT id FROM instruments WHERE market_instrument_id=:market_id"

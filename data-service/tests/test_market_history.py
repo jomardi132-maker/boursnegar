@@ -4,6 +4,7 @@ from datetime import date
 from app.ingestion.market_history import (
     filter_history,
     jalali_iso,
+    jalali_to_gregorian,
     model_family,
     normalize_persian,
 )
@@ -34,6 +35,7 @@ class MarketHistoryTests(unittest.TestCase):
 
     def test_converts_first_day_of_1404(self):
         self.assertEqual(jalali_iso(date(2025, 3, 21)), "1404-01-01")
+        self.assertEqual(jalali_to_gregorian(1404, 1, 1), date(2025, 3, 21))
 
     def test_filters_history_from_1404(self):
         rows = [{"dEven": 20250320}, {"dEven": 20250321}, {"dEven": 20260814}]
