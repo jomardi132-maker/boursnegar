@@ -695,6 +695,7 @@ function AdminContent({
   if (section === "settings")
     return (
       <>
+        <ReferenceRatesEditor settings={data.settings || []} reload={reload} />
         <SettingEditor reload={reload} />
         <div className="dashboard-list">
           {(data.settings || []).map((s: any) => (
@@ -1074,6 +1075,120 @@ function SettingEditor({ reload }: { reload: () => void }) {
         عمومی
       </label>
       <button>ذخیره</button>
+    </form>
+  );
+}
+
+function ReferenceRatesEditor({
+  settings,
+  reload,
+}: {
+  settings: any[];
+  reload: () => void;
+}) {
+  const values = Object.fromEntries(settings.map((item) => [item.key, item.value]));
+  const [inflation, setInflation] = useState(
+    String(values.inflation_rate_percent ?? ""),
+  );
+  const [inflationSource, setInflationSource] = useState(
+    String(values.inflation_rate_source ?? ""),
+  );
+  const [inflationAsOf, setInflationAsOf] = useState(
+    String(values.inflation_rate_as_of ?? ""),
+  );
+  const [bank, setBank] = useState(
+    String(values.bank_deposit_rate_percent ?? ""),
+  );
+  const [bankSource, setBankSource] = useState(
+    String(values.bank_deposit_rate_source ?? ""),
+  );
+  const [bankAsOf, setBankAsOf] = useState(
+    String(values.bank_deposit_rate_as_of ?? ""),
+  );
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const payload: any = {
+      inflation: {
+        percent: Number(inflation),
+        source: inflationSource,
+        asOf: inflationAsOf,
+      },
+    };
+    if (bank && bankSource && bankAsOf)
+      payload.bankDeposit = {
+        percent: Number(bank),
+        source: bankSource,
+        asOf: bankAsOf,
+      };
+    await api("/api/admin/reference-rates", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    reload();
+  }
+  return (
+    <form className="inline-form reference-rates-form" onSubmit={submit}>
+      <h4>نرخ‌های مرجع تحلیل</h4>
+      <label>
+        تورم سالانه (درصد)
+        <input
+          type="number"
+          min="0"
+          max="1000"
+          step="0.01"
+          value={inflation}
+          onChange={(e) => setInflation(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        لینک منبع تورم
+        <input
+          type="url"
+          dir="ltr"
+          value={inflationSource}
+          onChange={(e) => setInflationSource(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        تاریخ اثر تورم
+        <input
+          type="date"
+          value={inflationAsOf}
+          onChange={(e) => setInflationAsOf(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        سود سپرده بانکی (درصد)
+        <input
+          type="number"
+          min="0"
+          max="1000"
+          step="0.01"
+          value={bank}
+          onChange={(e) => setBank(e.target.value)}
+        />
+      </label>
+      <label>
+        لینک منبع سود بانکی
+        <input
+          type="url"
+          dir="ltr"
+          value={bankSource}
+          onChange={(e) => setBankSource(e.target.value)}
+        />
+      </label>
+      <label>
+        تاریخ اثر سود بانکی
+        <input
+          type="date"
+          value={bankAsOf}
+          onChange={(e) => setBankAsOf(e.target.value)}
+        />
+      </label>
+      <button>ذخیره نرخ‌های مرجع</button>
     </form>
   );
 }

@@ -1,0 +1,23 @@
+{
+  "series": {
+    "code": "cbi_urban_inflation_12m",
+    "title_fa": "تورم دوازده‌ماهه مناطق شهری ایران",
+    "source": "https://www.tasnimnews.ir/fa/news/1405/05/06/3658639/تورم-تیرماه-اعلام-شد",
+    "unit": "percent",
+    "frequency": "monthly"
+  },
+  "observations": [
+    {
+      "reference_start": "2025-07-23",
+      "reference_end": "2026-07-22",
+      "reference_period_jalali": "دوازده ماه منتهی به ۱۴۰۵/۰۴",
+      "publication_date": "2026-07-28",
+      "effective_date": "2026-07-22",
+      "value": "61.4",
+      "revision": 0,
+      "source_reference": "https://www.tasnimnews.ir/fa/news/1405/05/06/3658639/تورم-تیرماه-اعلام-شد",
+      "quality_status": "USER_APPROVED_SECONDARY_SOURCE",
+      "confidence": "70"
+    }
+  ]
+}

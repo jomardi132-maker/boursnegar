@@ -780,6 +780,60 @@ export function installPlatformRoutes(app: express.Express) {
     }),
   );
   app.put(
+    "/api/admin/reference-rates",
+    requireUser,
+    requireAdmin,
+    requireCsrf,
+    asyncRoute(async (req, res) => {
+      const referenceSchema = z.object({
+        percent: z.number().min(0).max(1000),
+        source: z.string().url().refine((value) => value.startsWith("https://")),
+        asOf: z.string().date(),
+      });
+      const parsed = z
+        .object({
+          inflation: referenceSchema,
+          bankDeposit: referenceSchema.optional(),
+        })
+        .safeParse(req.body);
+      if (!parsed.success)
+        return res.status(400).json({
+          success: false,
+          error: "نرخ، منبع یا تاریخ مرجع معتبر نیست.",
+        });
+      const entries: Array<[string, unknown]> = [
+        ["inflation_rate_percent", parsed.data.inflation.percent],
+        ["inflation_rate_source", parsed.data.inflation.source],
+        ["inflation_rate_as_of", parsed.data.inflation.asOf],
+      ];
+      if (parsed.data.bankDeposit)
+        entries.push(
+          ["bank_deposit_rate_percent", parsed.data.bankDeposit.percent],
+          ["bank_deposit_rate_source", parsed.data.bankDeposit.source],
+          ["bank_deposit_rate_as_of", parsed.data.bankDeposit.asOf],
+        );
+      await withTransaction(async (client) => {
+        for (const [key, value] of entries)
+          await client.query(
+            `INSERT INTO system_settings(key,value,is_public,updated_by)
+             VALUES($1,$2,true,$3)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value,is_public=true,
+               updated_by=excluded.updated_by,updated_at=now()`,
+            [key, value, req.authUser!.id],
+          );
+      });
+      await audit(
+        req.authUser!.id,
+        "reference_rates.update",
+        "system_settings",
+        "economic_references",
+        req.ip || "127.0.0.1",
+        { keys: entries.map(([key]) => key) },
+      );
+      res.json({ success: true, updated: entries.map(([key]) => key) });
+    }),
+  );
+  app.put(
     "/api/admin/settings/:key",
     requireUser,
     requireAdmin,
