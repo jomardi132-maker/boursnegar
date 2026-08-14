@@ -128,6 +128,7 @@ def run(max_pages: int, resume: bool) -> dict:
               SELECT partition_key FROM ingestion_checkpoints
               WHERE source=:source AND pipeline=:pipeline
                 AND (cursor->>'completed')::boolean=true
+                AND COALESCE((cursor->>'letters')::integer,0)>0
             """), {"source": SOURCE, "pipeline": PIPELINE})}
     saved = failures = processed = 0
     for item in symbols:
