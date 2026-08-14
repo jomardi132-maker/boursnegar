@@ -112,7 +112,7 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
             ))}
           </nav>
           <main>
-            {busy ? (
+            {busy || !data ? (
               <DashboardSkeleton />
             ) : error ? (
               <div className="dashboard-error" role="alert">

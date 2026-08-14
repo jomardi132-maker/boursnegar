@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const source = fs.readFileSync(path.resolve('src/AppProduction.tsx'), 'utf8');
 const reportSource = fs.readFileSync(path.resolve('src/components/DecisionReport.tsx'), 'utf8');
+const dashboardSource = fs.readFileSync(path.resolve('src/components/AccountDashboard.tsx'), 'utf8');
 describe('analysis UI contract', () => {
   it('always presents the three fundamental questions', () => {
     expect(reportSource).toContain('earnings_vs_bank');
@@ -14,5 +15,8 @@ describe('analysis UI contract', () => {
   it('states insufficiency instead of inventing comparative data', () => {
     expect(reportSource).toContain('INSUFFICIENT_DATA');
     expect(reportSource).toContain('داده ناکافی');
+  });
+  it('keeps the dashboard in a loading state until its first payload arrives', () => {
+    expect(dashboardSource).toContain('busy || !data');
   });
 });
