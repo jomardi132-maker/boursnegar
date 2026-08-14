@@ -43,7 +43,9 @@ def _fetch_with_backoff(symbol: str, page: int) -> dict:
         except Exception as exc:
             if "429" not in str(exc) or attempt == 4:
                 raise
-            time.sleep(15 * (attempt + 1))
+            wait_seconds = 15 * (attempt + 1)
+            print(json.dumps({"symbol": symbol, "page": page, "retryIn": wait_seconds}), flush=True)
+            time.sleep(wait_seconds)
     raise RuntimeError("unreachable")
 
 

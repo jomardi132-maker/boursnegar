@@ -1,0 +1,16 @@
+[Unit]
+Description=Boursnegar resumable Codal metadata backfill
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+EnvironmentFile=/var/www/boursnegar-data-current/.env
+Environment=PYTHONPATH=.
+Environment=CODAL_RATE_LIMIT_SECONDS=2.5
+ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/backfill_codal_1404.py --max-pages 6
+TimeoutStartSec=2h
+Nice=10
+
