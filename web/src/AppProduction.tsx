@@ -1,11 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { ArrowLeft, BarChart3, CheckCircle2, Database, LogOut, Menu, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
-import type { QuestionCard, StockHealthCardData } from './types';
-import { QuestionCardsRow } from './components/QuestionCardsRow';
-import { StatusBanner } from './components/StatusBanner';
-import { GoldenSummaryBanner } from './components/GoldenSummaryBanner';
-import { ExplanationCardsGrid } from './components/ExplanationCardsGrid';
-import { ConclusionAndSources } from './components/ConclusionAndSources';
+import { DecisionReport, type AnalysisPayload } from './components/DecisionReport';
 import { AccountDashboard } from './components/AccountDashboard';
 import { LegalModal, type LegalDocument } from './components/LegalModal';
 import './dashboard.css';
@@ -21,20 +16,6 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-function completeQuestions(data: StockHealthCardData): StockHealthCardData {
-  const current = [...(data.questions || [])];
-  const third: QuestionCard = {
-    id: 3,
-    title: '۳) آیا رشد واقعی شرکت از تورم بیشتر است؟',
-    subtitle: 'مقایسه دوره جاری با دوره هم‌طول قبلی و نرخ تورم مرجع',
-    status: 'mid', statusLabel: 'نامشخص', mainMetricValue: 'داده مقایسه‌ای کافی نیست',
-    comparisonDetail: 'API باید درآمد/سود دو دوره قابل‌مقایسه و نرخ تورم دارای منبع و تاریخ ارائه کند.',
-    summaryAnswer: 'به‌دلیل نبود داده مقایسه‌ای مستند، درباره رشد واقعی نتیجه‌گیری نمی‌شود.',
-  };
-  if (!current.some((q) => q.id === 3)) current.push(third);
-  return { ...data, questions: [1, 2, 3].map((id) => current.find((q) => q.id === id) || { ...third, id, title: id === 1 ? '۱) آیا بازده سودآوری از سود بانکی بهتر است؟' : id === 2 ? '۲) آیا سود اعلام‌شده همراه با جریان نقد است؟' : third.title }) };
-}
-
 export function AppProduction() {
   const [user, setUser] = useState<User | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -42,7 +23,7 @@ export function AppProduction() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SymbolSuggestion[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [result, setResult] = useState<StockHealthCardData | null>(null);
+  const [result, setResult] = useState<AnalysisPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dashboardOpen, setDashboardOpen] = useState(false);
@@ -60,15 +41,14 @@ export function AppProduction() {
     }, 180);
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [query]);
-  const questions = useMemo(() => result ? completeQuestions(result) : null, [result]);
 
   async function analyze(event: FormEvent) {
     event.preventDefault(); setError('');
     if (!user) { setAuthOpen(true); return; }
     setLoading(true);
     try {
-      const response = await api<{ data: StockHealthCardData; analysis: { remainingCredits: number } }>('/api/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query, reportMode: 'audited' }) });
-      setResult(completeQuestions(response.data));
+      const response = await api<{ data: AnalysisPayload; analysis: { remainingCredits: number } }>('/api/v2/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query, reportMode: 'audited' }) });
+      setResult(response.data);
       setUser({ ...user, credits: response.analysis.remainingCredits });
       requestAnimationFrame(() => document.getElementById('analysis')?.scrollIntoView({ behavior: 'smooth' }));
     } catch (e) { setError(e instanceof Error ? e.message : 'خطای ناشناخته'); }
@@ -90,7 +70,7 @@ export function AppProduction() {
       <section className="method-section" id="method"><div className="section-heading"><span>روش کار</span><h2>از داده خام تا پاسخ روشن</h2><p>هر نتیجه، مسیر قابل مشاهده‌ای از منبع تا محاسبه دارد.</p></div><div className="steps-grid">{[[Database,'گردآوری','قیمت از BrsApi و گزارش رسمی از کدال'],[BarChart3,'محاسبه','نسبت‌های deterministic با دوره و واحد مشخص'],[Sparkles,'توضیح','پاسخ فارسی محتاطانه و قابل حسابرسی']].map(([Icon,title,text],i)=><article key={String(title)}><span className="step-index">۰{i+1}</span><Icon/><h3>{title as string}</h3><p>{text as string}</p></article>)}</div></section>
       <section className="source-band" id="sources"><div><Database/><span><b>منبع بازار</b><small>BrsApi — قیمت و مشخصات تابلو</small></span></div><div><ShieldCheck/><span><b>منبع مالی</b><small>کدال — صورت‌های مالی رسمی</small></span></div><p>زمان گزارش، وضعیت حسابرسی و تاریخ به‌روزرسانی در هر تحلیل نمایش داده می‌شود.</p></section>
       {loading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
-      {questions && <section id="analysis" className="analysis-wrap"><div className="analysis-title"><span>گزارش بنیادی</span><h2>{questions.header.fullName} <small>{questions.header.symbol}</small></h2><p>گزارش {questions.header.reportDate} · {questions.header.dataStamp.source}</p></div><QuestionCardsRow questions={questions.questions}/><StatusBanner metrics={questions.statusBanner}/><GoldenSummaryBanner summary={questions.goldenSummary}/><ExplanationCardsGrid cards={questions.explanationCards}/><ConclusionAndSources conclusion={questions.conclusion}/></section>}
+      {result && <DecisionReport report={result}/>}
       <section className="trust-section" id="trust"><div><span className="eyebrow"><span/> تعهد بورس‌نگار</span><h2>ابهام را پنهان نمی‌کنیم.</h2></div><p>هرجا داده کافی نباشد، وضعیت «نامشخص» همراه با دلیل دقیق نمایش داده می‌شود. این سامانه ابزار آموزشی و تحلیلی است و توصیه سرمایه‌گذاری محسوب نمی‌شود.</p></section>
     </main><footer><b>بورس‌نگار</b><span>صاحب‌امتیاز: محمد جوانمردی راد</span><button onClick={()=>setLegalDocument('terms')}>شرایط استفاده</button><button onClick={()=>setLegalDocument('privacy')}>حریم خصوصی</button><small>© ۱۴۰۵ — مسئولیت تصمیم نهایی سرمایه‌گذاری با کاربر است.</small></footer>
     {dashboardOpen&&user&&<AccountDashboard user={user} onClose={()=>setDashboardOpen(false)} onCredits={(credits)=>setUser({...user,credits})}/>} {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>} {legalDocument&&<LegalModal document={legalDocument} onClose={()=>setLegalDocument(null)}/>}</div>;

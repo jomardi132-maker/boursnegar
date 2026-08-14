@@ -34,8 +34,10 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
             """
             WITH industry AS (
               INSERT INTO industries(code,title_fa,model_family)
-              VALUES(:industry_code,:industry_title,'unclassified')
-              ON CONFLICT(code) DO UPDATE SET title_fa=excluded.title_fa
+              VALUES(:industry_code,:industry_title,:model_family)
+              ON CONFLICT(code) DO UPDATE SET title_fa=excluded.title_fa,
+                model_family=CASE WHEN excluded.model_family='unclassified'
+                  THEN industries.model_family ELSE excluded.model_family END
               RETURNING id
             ), issuer AS (
               INSERT INTO issuers(stable_code,legal_name,industry_id)
@@ -51,13 +53,13 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
             ), alias AS (
               INSERT INTO symbol_aliases(instrument_id,symbol,valid_from,source)
               VALUES((SELECT id FROM instrument),:symbol,current_date,'market')
-              ON CONFLICT(instrument_id,symbol,valid_from) DO NOTHING
+              ON CONFLICT DO NOTHING
             ), snapshot AS (
               INSERT INTO analytical_snapshots(
                 instrument_id,report_mode,status,data_as_of,stale_after,coverage,
                 confidence,model_version,policy_version,payload_checksum,quality_summary
               ) VALUES(
-                (SELECT id FROM instrument),:report_mode,'INSUFFICIENT_DATA',
+                (SELECT id FROM instrument),:report_mode,:decision,
                 :data_as_of,:stale_after,:coverage,:confidence,:model_version,
                 :policy_version,:checksum,CAST(:quality_summary AS jsonb)
               )
@@ -70,11 +72,12 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
             INSERT INTO recommendation_results(
               snapshot_id,decision,top_reasons,top_risks,critical_warning,policy_version
             ) VALUES(
-              (SELECT id FROM snapshot),'INSUFFICIENT_DATA','[]'::jsonb,
+              (SELECT id FROM snapshot),:decision,CAST(:reasons AS jsonb),
               CAST(:risks AS jsonb),
               :warning,:policy_version
             )
-            ON CONFLICT(snapshot_id) DO UPDATE SET top_risks=excluded.top_risks,
+            ON CONFLICT(snapshot_id) DO UPDATE SET decision=excluded.decision,
+              top_reasons=excluded.top_reasons,top_risks=excluded.top_risks,
               critical_warning=excluded.critical_warning,policy_version=excluded.policy_version
             RETURNING snapshot_id
             """
@@ -82,6 +85,7 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
         {
             "industry_code": f"market:{industry_title}",
             "industry_title": industry_title,
+            "model_family": (payload.get("valuation") or {}).get("family", "unclassified"),
             "stable_code": stable_code,
             "legal_name": raw.get("company_name") or symbol,
             "isin": live.get("isin") or stable_code,
@@ -96,10 +100,47 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
             "policy_version": payload["policyVersion"],
             "checksum": payload["payloadChecksum"],
             "quality_summary": json.dumps(payload, ensure_ascii=False),
+            "decision": payload["decision"],
+            "reasons": json.dumps(payload["reasons"], ensure_ascii=False),
             "risks": json.dumps(payload["risks"], ensure_ascii=False),
             "warning": payload["criticalWarning"],
         },
     ).scalar_one()
+    if payload.get("healthScore") is not None:
+        db.execute(text("""
+          INSERT INTO health_score_results(snapshot_id,score,dimensions,reasons,risks)
+          VALUES(:snapshot,:score,CAST(:dimensions AS jsonb),CAST(:reasons AS jsonb),CAST(:risks AS jsonb))
+          ON CONFLICT(snapshot_id) DO UPDATE SET score=excluded.score,
+            dimensions=excluded.dimensions,reasons=excluded.reasons,risks=excluded.risks
+        """), {"snapshot": row, "score": payload["healthScore"],
+                 "dimensions": json.dumps(payload.get("healthDimensions") or {}, ensure_ascii=False),
+                 "reasons": json.dumps(payload["reasons"], ensure_ascii=False),
+                 "risks": json.dumps(payload["risks"], ensure_ascii=False)})
+    valuation = payload.get("valuation")
+    if valuation:
+        base = valuation["fairValueBase"]
+        db.execute(text("""
+          INSERT INTO valuation_results(
+            snapshot_id,model_type,model_version,fair_value_low,fair_value_base,
+            fair_value_high,buy_zone,hold_zone,sell_zone,scenarios,assumptions
+          ) VALUES(
+            :snapshot,:model_type,:model_version,:low,:base,:high,
+            jsonb_build_object('max',:buy_max),
+            jsonb_build_object('min',:buy_max,'max',:sell_min),
+            jsonb_build_object('min',:sell_min),
+            CAST(:scenarios AS jsonb),CAST(:assumptions AS jsonb)
+          ) ON CONFLICT(snapshot_id,model_type,model_version) DO UPDATE SET
+            fair_value_low=excluded.fair_value_low,fair_value_base=excluded.fair_value_base,
+            fair_value_high=excluded.fair_value_high,buy_zone=excluded.buy_zone,
+            hold_zone=excluded.hold_zone,sell_zone=excluded.sell_zone,
+            scenarios=excluded.scenarios,assumptions=excluded.assumptions
+        """), {"snapshot": row, "model_type": valuation["method"],
+                 "model_version": valuation["modelVersion"],
+                 "low": valuation["fairValueLow"], "base": base,
+                 "high": valuation["fairValueHigh"], "buy_max": base * 0.8,
+                 "sell_min": valuation["fairValueHigh"] * 1.15,
+                 "scenarios": json.dumps(valuation["scenarios"], ensure_ascii=False),
+                 "assumptions": json.dumps(valuation["assumptions"], ensure_ascii=False)})
     db.commit()
     return str(row)
 
@@ -464,6 +505,16 @@ def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
     if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}", symbol):
         raise HTTPException(status_code=400, detail="نماد نامعتبر است.")
     raw = analyze_symbol(symbol, request.report_mode, db)
+    settings = dict(db.execute(text("""
+      SELECT key,value FROM system_settings
+      WHERE key IN ('bank_deposit_rate_percent','inflation_rate_percent')
+    """)).all())
+    raw["references"] = {
+        "bankDepositRate": float(settings["bank_deposit_rate_percent"])
+        if settings.get("bank_deposit_rate_percent") is not None else None,
+        "inflationRate": float(settings["inflation_rate_percent"])
+        if settings.get("inflation_rate_percent") is not None else None,
+    }
     payload = build_snapshot_payload(raw, request.report_mode)
     payload["analysisId"] = _persist_v2_snapshot(db, raw, payload)
     return {"success": True, "data": payload}

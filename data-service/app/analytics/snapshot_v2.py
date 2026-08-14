@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from app.analytics.engine import Policy, core_questions, decide
+from app.analytics.industry_valuation import health_score, value_company
 
 
 REQUIRED_METRICS = (
@@ -33,6 +34,22 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         confidence -= min(20, len(raw["financial_metrics_missing"]) * 3)
     confidence = max(0.0, round(confidence, 2))
 
+    references = raw.get("references") or {}
+    bank_rate = references.get("bankDepositRate")
+    inflation = references.get("inflationRate")
+    valuation = value_company(raw)
+    family = valuation.get("family") if valuation else "unclassified"
+    score, dimensions = health_score(
+        metrics,
+        ratios,
+        family,
+        inflation,
+        (raw.get("period_comparison") or {}).get("revenue_growth_percent"),
+    )
+    critical_warning = bool(
+        metrics.get("net_profit") is not None and metrics.get("net_profit") <= 0
+    ) or bool(metrics.get("total_equity") is not None and metrics.get("total_equity") <= 0)
+
     questions = core_questions(
         ttm_eps=metrics.get("eps_basic"),
         price=live.get("last_price") or live.get("closing_price"),
@@ -43,19 +60,20 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             "revenue_growth_percent"
         ),
         # Official, period-matched observations are intentionally not inferred.
-        bank_rate=None,
-        matched_inflation=None,
+        bank_rate=bank_rate,
+        matched_inflation=inflation,
         policy=policy,
     )
     decision = decide(
-        health_score=None,
+        health_score=score,
         coverage=coverage,
         confidence=confidence,
         current_price=live.get("last_price") or live.get("closing_price"),
-        fair_value_low=None,
-        fair_value_base=None,
-        fair_value_high=None,
-        industry_model_ready=False,
+        fair_value_low=valuation.get("fairValueLow") if valuation else None,
+        fair_value_base=valuation.get("fairValueBase") if valuation else None,
+        fair_value_high=valuation.get("fairValueHigh") if valuation else None,
+        critical_warning=critical_warning,
+        industry_model_ready=valuation is not None,
         policy=policy,
     )
     now = datetime.now(timezone.utc)
@@ -64,17 +82,21 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "companyName": raw.get("company_name"),
         "reportMode": report_mode,
         "decision": decision,
-        "healthScore": None,
+        "healthScore": score,
+        "healthDimensions": dimensions,
         "dataCoverage": coverage,
         "confidence": confidence,
-        "valuation": None,
+        "valuation": valuation,
         "coreQuestions": questions,
-        "reasons": [],
-        "risks": [
-            "مدل ارزش‌گذاری تخصصی صنعت هنوز آماده نیست.",
-            "نرخ‌های رسمی و تاریخ‌دار بانکی/تورم برای دوره متناظر ثبت نشده‌اند.",
+        "reasons": [
+            f"امتیاز سلامت بنیادی {score} از ۱۰۰ است." if score is not None else "امتیاز سلامت به‌دلیل کمبود داده محاسبه نشد.",
+            f"ارزش منصفانه پایه با مدل {valuation['method']} محاسبه شد." if valuation else "مدل تخصصی معتبر برای این صنعت یا داده موجود نیست.",
         ],
-        "criticalWarning": "داده برای توصیه خرید یا فروش کافی نیست.",
+        "risks": [
+            "ارزش‌گذاری سناریویی است و به کیفیت آخرین صورت مالی وابسته است.",
+            "تغییر نرخ ارز، قیمت جهانی کالا و مقررات می‌تواند نتیجه را تغییر دهد.",
+        ],
+        "criticalWarning": "زیان یا حقوق صاحبان سهام نامثبت مشاهده شد." if critical_warning else ("داده برای تصمیم کافی نیست." if decision == "INSUFFICIENT_DATA" else None),
         "policyVersion": policy.version,
         "modelVersion": policy.model_version,
         "dataAsOf": report.get("publish_datetime"),
