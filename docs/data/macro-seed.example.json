@@ -1,0 +1,24 @@
+{
+  "series": {
+    "code": "official_series_code",
+    "title_fa": "عنوان سری رسمی",
+    "source": "https://official-source.example/dataset",
+    "unit": "percent",
+    "frequency": "monthly",
+    "base_year": "1400"
+  },
+  "observations": [
+    {
+      "reference_start": "2026-06-22",
+      "reference_end": "2026-07-22",
+      "reference_period_jalali": "1405/04",
+      "publication_date": "2026-07-25",
+      "effective_date": "2026-07-22",
+      "value": "<official-value>",
+      "revision": 0,
+      "source_reference": "https://official-source.example/report",
+      "quality_status": "VALID",
+      "confidence": "100"
+    }
+  ]
+}
