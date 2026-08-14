@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BarChart3, Database, LogOut, Menu, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { DecisionReport, type AnalysisPayload } from './components/DecisionReport';
 import { AccountDashboard } from './components/AccountDashboard';
@@ -31,11 +31,19 @@ export function AppProduction() {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
   const [overview, setOverview] = useState<MarketOverview | null>(null);
+  const requestedAnalysisStarted = useRef(false);
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get('analyze');
     api<{ user: User }>('/api/auth/me').then((r) => { setUser(r.user); if(requested) setQuery(requested); }).catch(() => { setUser(null); if(requested){ setQuery(requested); setAuthOpen(true); } });
   }, []);
   useEffect(() => { api<MarketOverview>('/api/market/overview').then(setOverview).catch(()=>setOverview(null)); }, []);
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('analyze')?.trim();
+    if (!user || !requested || requestedAnalysisStarted.current) return;
+    requestedAnalysisStarted.current = true;
+    setQuery(requested);
+    void runAnalysis(requested).finally(() => history.replaceState({}, '', window.location.pathname));
+  }, [user]);
   useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
   useEffect(() => {
     const term = query.trim();
@@ -49,17 +57,23 @@ export function AppProduction() {
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [query]);
 
-  async function analyze(event: FormEvent) {
-    event.preventDefault(); setError('');
-    if (!user) { window.location.assign(`/s/${encodeURIComponent(query.trim())}`); return; }
+  async function runAnalysis(symbolQuery: string) {
+    if (!user) return;
+    setError('');
     setLoading(true);
     try {
-      const response = await api<{ data: AnalysisPayload; analysis: { remainingCredits: number } }>('/api/v2/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query, reportMode: 'audited' }) });
+      const response = await api<{ data: AnalysisPayload; analysis: { remainingCredits: number } }>('/api/v2/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query: symbolQuery, reportMode: 'audited' }) });
       setResult(response.data);
       setUser({ ...user, credits: response.analysis.remainingCredits });
       requestAnimationFrame(() => document.getElementById('analysis')?.scrollIntoView({ behavior: 'smooth' }));
     } catch (e) { setError(e instanceof Error ? e.message : 'خطای ناشناخته'); }
     finally { setLoading(false); }
+  }
+
+  async function analyze(event: FormEvent) {
+    event.preventDefault();
+    if (!user) { window.location.assign(`/s/${encodeURIComponent(query.trim())}`); return; }
+    await runAnalysis(query);
   }
 
   async function logout() { await api('/api/auth/logout', { method: 'POST', body: '{}' }); sessionStorage.removeItem(csrfStorage); setUser(null); setResult(null); }
