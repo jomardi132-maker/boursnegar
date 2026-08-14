@@ -3,7 +3,7 @@ Description=Retry Boursnegar Codal backfill after source throttling
 
 [Timer]
 OnActiveSec=10min
-OnUnitActiveSec=1h
+OnUnitActiveSec=12h
 RandomizedDelaySec=2min
 Persistent=true
 Unit=boursnegar-codal-backfill.service

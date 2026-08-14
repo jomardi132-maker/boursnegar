@@ -41,9 +41,19 @@ class CodalUnavailableError(Exception):
     pass
 
 
-def fetch_letters_page(symbol: str, page: int = 1) -> dict:
+def fetch_letters_page(
+    symbol: str | None,
+    page: int = 1,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict:
     params = dict(DEFAULT_PARAMS)
-    params["Symbol"] = symbol
+    if symbol:
+        params["Symbol"] = symbol
+    if from_date:
+        params["FromDate"] = from_date
+    if to_date:
+        params["ToDate"] = to_date
     params["PageNumber"] = str(page)
 
     try:

@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from app.config import CODAL_RATE_LIMIT_SECONDS
 from app.database import engine
+from app.ingestion.market_history import gregorian_to_jalali, normalize_persian
 from app.services.codal_service import fetch_letters_page
 
 
@@ -45,6 +46,19 @@ def _fetch_with_backoff(symbol: str, page: int) -> dict:
                 raise
             wait_seconds = 15 * (attempt + 1)
             print(json.dumps({"symbol": symbol, "page": page, "retryIn": wait_seconds}), flush=True)
+            time.sleep(wait_seconds)
+    raise RuntimeError("unreachable")
+
+
+def _fetch_global_with_backoff(page: int, from_date: str, to_date: str) -> dict:
+    for attempt in range(6):
+        try:
+            return fetch_letters_page(None, page, from_date, to_date)
+        except Exception as exc:
+            if "429" not in str(exc) or attempt == 5:
+                raise
+            wait_seconds = 30 * (attempt + 1)
+            print(json.dumps({"page": page, "retryIn": wait_seconds}), flush=True)
             time.sleep(wait_seconds)
     raise RuntimeError("unreachable")
 
@@ -181,9 +195,90 @@ def run(max_pages: int, resume: bool) -> dict:
     return result
 
 
+def run_global(resume: bool) -> dict:
+    """Fetch each dated Codal result page once instead of querying every symbol."""
+    run_id = str(uuid.uuid4())
+    jy, jm, jd = gregorian_to_jalali(datetime.now().date())
+    from_date = "1404/01/01"
+    to_date = f"{jy:04d}/{jm:02d}/{jd:02d}"
+    with engine.begin() as connection:
+        connection.execute(text("""
+          UPDATE ingestion_runs SET status='CANCELLED',finished_at=now(),
+            error_summary='superseded by global-page ingestion'
+          WHERE pipeline=:pipeline AND status='RUNNING'
+        """), {"pipeline": PIPELINE})
+        connection.execute(text("""
+          INSERT INTO ingestion_runs(id,pipeline,source,partition_key,status,watermark)
+          VALUES(:id,:pipeline,:source,'global-pages','RUNNING',CAST(:watermark AS jsonb))
+        """), {"id": run_id, "pipeline": PIPELINE, "source": SOURCE,
+                 "watermark": json.dumps({"from": from_date, "to": to_date})})
+        catalog = list(connection.execute(text("""
+          SELECT sa.symbol,i.id AS instrument_id,ir.id AS issuer_id,ir.legal_name
+          FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id
+          JOIN issuers ir ON ir.id=i.issuer_id
+          WHERE sa.valid_to IS NULL AND i.active
+        """)).mappings())
+        symbols = {normalize_persian(row["symbol"]): dict(row) for row in catalog}
+        next_page = 1
+        if resume:
+            cursor = connection.execute(text("""
+              SELECT cursor FROM ingestion_checkpoints
+              WHERE source=:source AND pipeline=:pipeline AND partition_key='global-pages'
+            """), {"source": SOURCE, "pipeline": PIPELINE}).scalar()
+            if cursor and cursor.get("to") == to_date:
+                next_page = max(1, int(cursor.get("nextPage") or 1))
+
+    saved = matched = unmatched = 0
+    total_pages = next_page
+    try:
+        while next_page <= total_pages:
+            payload = _fetch_global_with_backoff(next_page, from_date, to_date)
+            total_pages = int(payload.get("Page") or 0)
+            letters = payload.get("Letters") or []
+            with engine.begin() as connection:
+                for letter in letters:
+                    item = symbols.get(normalize_persian(str(letter.get("Symbol") or "")))
+                    if not item:
+                        unmatched += 1
+                        continue
+                    matched += 1
+                    saved += int(_save_letter(connection, item, letter))
+                connection.execute(text("""
+                  INSERT INTO ingestion_checkpoints(source,pipeline,partition_key,cursor,watermark_at)
+                  VALUES(:source,:pipeline,'global-pages',CAST(:cursor AS jsonb),now())
+                  ON CONFLICT(source,pipeline,partition_key) DO UPDATE SET
+                    cursor=excluded.cursor,watermark_at=excluded.watermark_at,updated_at=now()
+                """), {"source": SOURCE, "pipeline": PIPELINE,
+                         "cursor": json.dumps({"nextPage": next_page + 1, "totalPages": total_pages,
+                                               "from": from_date, "to": to_date})})
+            if next_page % 25 == 0 or next_page == total_pages:
+                print(json.dumps({"page": next_page, "totalPages": total_pages, "saved": saved,
+                                  "matched": matched, "unmatched": unmatched}), flush=True)
+            next_page += 1
+            time.sleep(CODAL_RATE_LIMIT_SECONDS)
+        result = {"runId": run_id, "pages": total_pages, "saved": saved,
+                  "matched": matched, "unmatched": unmatched}
+        with engine.begin() as connection:
+            connection.execute(text("""
+              UPDATE ingestion_runs SET status='PASSED',finished_at=now(),metrics=CAST(:metrics AS jsonb)
+              WHERE id=:id
+            """), {"id": run_id, "metrics": json.dumps(result)})
+        return result
+    except Exception as exc:
+        with engine.begin() as connection:
+            connection.execute(text("""
+              UPDATE ingestion_runs SET status='FAILED',finished_at=now(),error_summary=:error,
+                metrics=CAST(:metrics AS jsonb) WHERE id=:id
+            """), {"id": run_id, "error": str(exc)[:1000],
+                     "metrics": json.dumps({"nextPage": next_page, "saved": saved})})
+        raise
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-pages", type=int, default=12)
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--global-pages", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(run(args.max_pages, not args.no_resume), ensure_ascii=False))
+    result = run_global(not args.no_resume) if args.global_pages else run(args.max_pages, not args.no_resume)
+    print(json.dumps(result, ensure_ascii=False))
