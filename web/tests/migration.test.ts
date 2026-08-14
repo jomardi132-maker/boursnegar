@@ -8,6 +8,7 @@ const campaignSql = fs.readFileSync(
   "utf8",
 );
 const emailAuthSql = fs.readFileSync(path.resolve("migrations/005_email_password_auth.sql"), "utf8");
+const creditPackagesSql = fs.readFileSync(path.resolve("migrations/008_credit_packages.sql"), "utf8");
 describe("core migration safety contract", () => {
   it("never executes rollback files in the forward migration runner", () => {
     const runner = fs.readFileSync(path.resolve("scripts/migrate.ts"), "utf8");
@@ -66,5 +67,10 @@ describe("core migration safety contract", () => {
     expect(emailAuthSql).toContain("password_reset_tokens");
     expect(emailAuthSql).toContain("token_hash char(64)");
     expect(emailAuthSql).toContain("consumed_at timestamptz");
+  });
+  it("seeds non-expiring credit packages using the approved pricing rule", () => {
+    expect(creditPackagesSql).toContain("generate_series(6,20)");
+    expect(creditPackagesSql).toContain("(credits - 1) * 100000");
+    expect(creditPackagesSql).toContain("بدون تاریخ انقضا");
   });
 });

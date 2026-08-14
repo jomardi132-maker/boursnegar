@@ -7,6 +7,7 @@ import { GoldenSummaryBanner } from './components/GoldenSummaryBanner';
 import { ExplanationCardsGrid } from './components/ExplanationCardsGrid';
 import { ConclusionAndSources } from './components/ConclusionAndSources';
 import { AccountDashboard } from './components/AccountDashboard';
+import { LegalModal, type LegalDocument } from './components/LegalModal';
 import './dashboard.css';
 
 export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
@@ -42,6 +43,7 @@ export function AppProduction() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
   useEffect(() => { api<{ user: User }>('/api/auth/me').then((r) => setUser(r.user)).catch(() => setUser(null)); }, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).has('reset-token')) setAuthOpen(true); }, []);
   const questions = useMemo(() => result ? completeQuestions(result) : null, [result]);
@@ -76,8 +78,8 @@ export function AppProduction() {
       {loading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
       {questions && <section id="analysis" className="analysis-wrap"><div className="analysis-title"><span>گزارش بنیادی</span><h2>{questions.header.fullName} <small>{questions.header.symbol}</small></h2><p>گزارش {questions.header.reportDate} · {questions.header.dataStamp.source}</p></div><QuestionCardsRow questions={questions.questions}/><StatusBanner metrics={questions.statusBanner}/><GoldenSummaryBanner summary={questions.goldenSummary}/><ExplanationCardsGrid cards={questions.explanationCards}/><ConclusionAndSources conclusion={questions.conclusion}/></section>}
       <section className="trust-section" id="trust"><div><span className="eyebrow"><span/> تعهد بورس‌نگار</span><h2>ابهام را پنهان نمی‌کنیم.</h2></div><p>هرجا داده کافی نباشد، وضعیت «نامشخص» همراه با دلیل دقیق نمایش داده می‌شود. این سامانه ابزار آموزشی و تحلیلی است و توصیه سرمایه‌گذاری محسوب نمی‌شود.</p></section>
-    </main><footer><b>بورس‌نگار</b><span>تحلیل بنیادی شفاف برای بازار سرمایه ایران</span><small>© ۱۴۰۵ — مسئولیت تصمیم نهایی سرمایه‌گذاری با کاربر است.</small></footer>
-    {dashboardOpen&&user&&<AccountDashboard user={user} onClose={()=>setDashboardOpen(false)} onCredits={(credits)=>setUser({...user,credits})}/>} {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</div>;
+    </main><footer><b>بورس‌نگار</b><span>صاحب‌امتیاز: محمد جوانمردی راد</span><button onClick={()=>setLegalDocument('terms')}>شرایط استفاده</button><button onClick={()=>setLegalDocument('privacy')}>حریم خصوصی</button><small>© ۱۴۰۵ — مسئولیت تصمیم نهایی سرمایه‌گذاری با کاربر است.</small></footer>
+    {dashboardOpen&&user&&<AccountDashboard user={user} onClose={()=>setDashboardOpen(false)} onCredits={(credits)=>setUser({...user,credits})}/>} {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>} {legalDocument&&<LegalModal document={legalDocument} onClose={()=>setLegalDocument(null)}/>}</div>;
 }
 
 function AuthDialog({ onClose, onLogin }: { onClose: () => void; onLogin: (u: User, csrf: string) => void }) {
