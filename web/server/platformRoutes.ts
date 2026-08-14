@@ -39,7 +39,7 @@ export function installPlatformRoutes(app: express.Express) {
       const [catalog, prices, disclosures, coverage] = await Promise.all([
         pool.query(`SELECT count(*)::int AS instruments FROM instruments WHERE active`),
         pool.query(`SELECT count(*)::int AS rows,count(DISTINCT instrument_id)::int AS instruments,min(trading_date) AS from_date,max(trading_date) AS to_date FROM daily_prices`),
-        pool.query(`SELECT count(*)::int AS rows,count(DISTINCT issuer_id)::int AS issuers,max(retrieved_at) AS updated_at FROM disclosure_versions`),
+        pool.query(`SELECT count(*)::int AS rows,count(DISTINCT d.issuer_id)::int AS issuers,max(v.retrieved_at) AS updated_at FROM disclosure_versions v JOIN disclosures d ON d.id=v.disclosure_id`),
         pool.query(`SELECT count(*)::int AS analyzed FROM analytical_snapshots`),
       ]);
       res.json({ success: true, catalog: catalog.rows[0], prices: prices.rows[0], disclosures: disclosures.rows[0], analysis: coverage.rows[0] });
