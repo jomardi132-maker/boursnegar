@@ -29,6 +29,11 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("translate(_DATE_DIGITS)", source)
         self.assertIn('"years": [1404, 1405]', source)
 
+    def test_analysis_uses_provenance_cache_when_codal_is_throttled(self):
+        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        self.assertIn("def _stored_codal_letters", source)
+        self.assertIn("letters = _stored_codal_letters(db, symbol)", source)
+
 
 if __name__ == "__main__":
     unittest.main()

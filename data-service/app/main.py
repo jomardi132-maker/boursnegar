@@ -334,6 +334,35 @@ def list_companies(db: Session = Depends(get_db)):
     }
 
 
+def _stored_codal_letters(db: Session, symbol: str) -> list[dict]:
+    """Rebuild Codal search records from our provenance-preserving local cache."""
+    company = db.query(models.Company).filter(models.Company.symbol == symbol).first()
+    if not company:
+        return []
+    reports = (
+        db.query(models.FinancialReport)
+        .filter(models.FinancialReport.company_id == company.id)
+        .order_by(models.FinancialReport.publish_datetime.desc(), models.FinancialReport.id.desc())
+        .limit(200)
+        .all()
+    )
+    letters = []
+    for report in reports:
+        raw = dict(report.raw_json or {})
+        raw.update({
+            "TracingNo": raw.get("TracingNo") or report.tracing_no,
+            "Title": raw.get("Title") or report.title,
+            "CompanyName": raw.get("CompanyName") or company.company_name,
+            "LetterCode": raw.get("LetterCode") or report.letter_code,
+            "PublishDateTime": raw.get("PublishDateTime") or report.publish_datetime,
+            "ExcelUrl": raw.get("ExcelUrl") or report.excel_url,
+            "HasExcel": bool(raw.get("HasExcel") or report.excel_url),
+            "Url": raw.get("Url") or report.detail_url,
+        })
+        letters.append(raw)
+    return letters
+
+
 @app.get("/api/analyze/{symbol}")
 def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depends(get_db)):
     """
@@ -358,7 +387,9 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     try:
         letters = codal_service.fetch_all_letters(symbol, max_pages=2)
     except codal_service.CodalUnavailableError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        letters = _stored_codal_letters(db, symbol)
+        if not letters:
+            raise HTTPException(status_code=503, detail=str(e))
 
     if not letters:
         raise HTTPException(status_code=404, detail=f"هیچ گزارشی برای نماد «{symbol}» در کدال پیدا نشد.")
