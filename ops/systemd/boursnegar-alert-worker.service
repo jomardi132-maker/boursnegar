@@ -1,0 +1,17 @@
+[Unit]
+Description=Boursnegar scheduled market alert worker
+After=network-online.target postgresql.service boursnegar-data-service.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-current
+EnvironmentFile=/var/www/boursnegar-current/.env
+ExecStart=/usr/bin/node /var/www/boursnegar-current/dist/alert-worker.cjs
+PrivateTmp=true
+ProtectSystem=strict
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

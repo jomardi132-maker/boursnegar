@@ -13,3 +13,12 @@ await esbuildBuild({
   sourcemap: true,
   outfile: 'dist/server.cjs',
 });
+await esbuildBuild({
+  entryPoints: ['server/alertWorker.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  packages: 'external',
+  sourcemap: true,
+  outfile: 'dist/alert-worker.cjs',
+});
