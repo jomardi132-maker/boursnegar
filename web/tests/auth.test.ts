@@ -35,4 +35,11 @@ describe('email/password security', () => {
     expect(mailer).toContain("process.env.EMAIL_ENABLED === 'true'");
     expect(server).not.toMatch(/console\.(?:log|error)\([^\n]*(?:token|email)/i);
   });
+  it('bootstraps an admin only from the server-side ADMIN_EMAIL', () => {
+    const bootstrap = fs.readFileSync(path.resolve('scripts/bootstrap-admin.ts'), 'utf8');
+    expect(bootstrap).toContain('process.env.ADMIN_EMAIL');
+    expect(bootstrap).toContain("'admin.bootstrap'");
+    expect(bootstrap).toContain('UPDATE sessions SET revoked_at=now()');
+    expect(bootstrap).not.toMatch(/admin123|default.?password/i);
+  });
 });
