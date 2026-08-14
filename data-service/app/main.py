@@ -1,17 +1,106 @@
 import re
+import json
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, get_db
 from app import models
 from app.services import tsetmc_service, codal_service, codal_excel_parser, ratio_engine
+from app.analytics.snapshot_v2 import build_snapshot_payload
 
 # ساخت جدول‌ها در صورت عدم وجود (برای MVP کافیه؛ بعداً می‌تونیم Alembic اضافه کنیم)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Boursnegar Data Service", version="0.1.0")
 _DATE_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+class AnalysisV2Request(BaseModel):
+    query: str = Field(min_length=1, max_length=32)
+    report_mode: str = Field(default="audited", alias="reportMode")
+
+
+def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
+    live = raw.get("live_price") or {}
+    symbol = str(raw.get("symbol") or "").strip()
+    stable_code = str(live.get("isin") or f"symbol:{symbol}")
+    industry_title = str(live.get("market_category") or "نامشخص")
+    row = db.execute(
+        text(
+            """
+            WITH industry AS (
+              INSERT INTO industries(code,title_fa,model_family)
+              VALUES(:industry_code,:industry_title,'unclassified')
+              ON CONFLICT(code) DO UPDATE SET title_fa=excluded.title_fa
+              RETURNING id
+            ), issuer AS (
+              INSERT INTO issuers(stable_code,legal_name,industry_id)
+              VALUES(:stable_code,:legal_name,(SELECT id FROM industry))
+              ON CONFLICT(stable_code) DO UPDATE
+                SET legal_name=excluded.legal_name,industry_id=excluded.industry_id,updated_at=now()
+              RETURNING id
+            ), instrument AS (
+              INSERT INTO instruments(issuer_id,isin,market_instrument_id)
+              VALUES((SELECT id FROM issuer),:isin,:market_id)
+              ON CONFLICT(isin) DO UPDATE SET market_instrument_id=excluded.market_instrument_id
+              RETURNING id
+            ), alias AS (
+              INSERT INTO symbol_aliases(instrument_id,symbol,valid_from,source)
+              VALUES((SELECT id FROM instrument),:symbol,current_date,'market')
+              ON CONFLICT(instrument_id,symbol,valid_from) DO NOTHING
+            ), snapshot AS (
+              INSERT INTO analytical_snapshots(
+                instrument_id,report_mode,status,data_as_of,stale_after,coverage,
+                confidence,model_version,policy_version,payload_checksum,quality_summary
+              ) VALUES(
+                (SELECT id FROM instrument),:report_mode,'INSUFFICIENT_DATA',
+                :data_as_of,:stale_after,:coverage,:confidence,:model_version,
+                :policy_version,:checksum,:quality_summary::jsonb
+              )
+              ON CONFLICT(instrument_id,report_mode,data_as_of,model_version,policy_version)
+              DO UPDATE SET calculated_at=now(),stale_after=excluded.stale_after,
+                coverage=excluded.coverage,confidence=excluded.confidence,
+                payload_checksum=excluded.payload_checksum,quality_summary=excluded.quality_summary
+              RETURNING id
+            )
+            INSERT INTO recommendation_results(
+              snapshot_id,decision,top_reasons,top_risks,critical_warning,policy_version
+            ) VALUES(
+              (SELECT id FROM snapshot),'INSUFFICIENT_DATA','[]'::jsonb,:risks::jsonb,
+              :warning,:policy_version
+            )
+            ON CONFLICT(snapshot_id) DO UPDATE SET top_risks=excluded.top_risks,
+              critical_warning=excluded.critical_warning,policy_version=excluded.policy_version
+            RETURNING snapshot_id
+            """
+        ),
+        {
+            "industry_code": f"market:{industry_title}",
+            "industry_title": industry_title,
+            "stable_code": stable_code,
+            "legal_name": raw.get("company_name") or symbol,
+            "isin": live.get("isin") or stable_code,
+            "market_id": str(live.get("market_id")) if live.get("market_id") else None,
+            "symbol": symbol,
+            "report_mode": payload["reportMode"],
+            "data_as_of": datetime.now(timezone.utc),
+            "stale_after": datetime.fromisoformat(payload["staleAfter"]),
+            "coverage": payload["dataCoverage"],
+            "confidence": payload["confidence"],
+            "model_version": payload["modelVersion"],
+            "policy_version": payload["policyVersion"],
+            "checksum": payload["payloadChecksum"],
+            "quality_summary": json.dumps(payload, ensure_ascii=False),
+            "risks": json.dumps(payload["risks"], ensure_ascii=False),
+            "warning": payload["criticalWarning"],
+        },
+    ).scalar_one()
+    db.commit()
+    return str(row)
 
 
 def _period_end_from_letter(letter: dict) -> str | None:
@@ -364,3 +453,90 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
             "policy": "on_symbol_search",
         },
     }
+
+
+@app.post("/api/v2/analyze")
+def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
+    if request.report_mode not in {"audited", "latest_codal"}:
+        raise HTTPException(status_code=400, detail="reportMode نامعتبر است.")
+    symbol = request.query.strip().removeprefix("نماد ").strip()
+    if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}", symbol):
+        raise HTTPException(status_code=400, detail="نماد نامعتبر است.")
+    raw = analyze_symbol(symbol, request.report_mode, db)
+    payload = build_snapshot_payload(raw, request.report_mode)
+    payload["analysisId"] = _persist_v2_snapshot(db, raw, payload)
+    return {"success": True, "data": payload}
+
+
+@app.get("/api/v2/analysis/{analysis_id}")
+def get_analysis_v2(analysis_id: str, db: Session = Depends(get_db)):
+    row = db.execute(
+        text(
+            """
+            SELECT s.id,s.status,s.data_as_of,s.calculated_at,s.stale_after,
+                   s.coverage,s.confidence,s.model_version,s.policy_version,
+                   s.quality_summary,r.decision,r.top_reasons,r.top_risks,
+                   r.critical_warning
+            FROM analytical_snapshots s
+            JOIN recommendation_results r ON r.snapshot_id=s.id
+            WHERE s.id=:id
+            """
+        ),
+        {"id": analysis_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="تحلیل پیدا نشد.")
+    return {"success": True, "data": dict(row)}
+
+
+@app.get("/api/v2/symbols/{symbol}")
+def get_symbol_v2(symbol: str, db: Session = Depends(get_db)):
+    rows = db.execute(
+        text(
+            """
+            SELECT s.id,s.report_mode,s.status,s.data_as_of,s.calculated_at,
+                   s.stale_after,s.coverage,s.confidence,r.decision
+            FROM symbol_aliases a
+            JOIN instruments i ON i.id=a.instrument_id
+            JOIN analytical_snapshots s ON s.instrument_id=i.id
+            JOIN recommendation_results r ON r.snapshot_id=s.id
+            WHERE a.symbol=:symbol AND a.valid_to IS NULL
+            ORDER BY s.calculated_at DESC LIMIT 20
+            """
+        ),
+        {"symbol": symbol},
+    ).mappings().all()
+    return {"success": True, "symbol": symbol, "snapshots": [dict(row) for row in rows]}
+
+
+@app.get("/api/v2/symbols/{symbol}/lineage")
+def get_symbol_lineage_v2(symbol: str, db: Session = Depends(get_db)):
+    rows = db.execute(
+        text(
+            """
+            SELECT s.id AS snapshot_id,s.quality_summary->'sourceLineage' AS lineage,
+                   s.data_as_of,s.model_version,s.policy_version
+            FROM symbol_aliases a
+            JOIN instruments i ON i.id=a.instrument_id
+            JOIN analytical_snapshots s ON s.instrument_id=i.id
+            WHERE a.symbol=:symbol AND a.valid_to IS NULL
+            ORDER BY s.calculated_at DESC LIMIT 20
+            """
+        ),
+        {"symbol": symbol},
+    ).mappings().all()
+    return {"success": True, "symbol": symbol, "lineage": [dict(row) for row in rows]}
+
+
+@app.get("/api/v2/ingestion/status")
+def ingestion_status_v2(db: Session = Depends(get_db)):
+    rows = db.execute(
+        text(
+            """
+            SELECT id,pipeline,source,partition_key,status,started_at,finished_at,
+                   watermark,metrics,error_summary
+            FROM ingestion_runs ORDER BY started_at DESC LIMIT 100
+            """
+        )
+    ).mappings().all()
+    return {"success": True, "runs": [dict(row) for row in rows]}

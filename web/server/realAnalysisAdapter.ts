@@ -91,6 +91,24 @@ async function fetchRealAnalysis(symbol: string, reportMode: 'audited' | 'latest
   return resp.json();
 }
 
+export async function generateV2Analysis(
+  symbol: string,
+  reportMode: "audited" | "latest_codal",
+) {
+  const response = await fetch(`${PYTHON_API_BASE}/api/v2/analyze`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query: symbol, reportMode }),
+    signal: AbortSignal.timeout(45_000),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new UpstreamAnalysisError(
+      body.detail || `خطای سرویس داده (کد ${response.status})`,
+    );
+  return body.data;
+}
+
 /**
  * تبدیل پاسخ خام سرویس Python به فرمت StockHealthCardData که کامپوننت‌های
  * React از قبل انتظارش را دارند.

@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import {
   generateRealHealthCard,
+  generateV2Analysis,
   UpstreamAnalysisError,
 } from "./server/realAnalysisAdapter";
 import { pool, withTransaction } from "./server/postgres";
@@ -483,6 +484,147 @@ app.post(
       );
       throw error;
     }
+  }),
+);
+app.post(
+  "/api/v2/analyze",
+  rateLimit("analyze-v2", 12, 60_000),
+  requireUser,
+  requireCsrf,
+  asyncRoute(async (req, res) => {
+    const parsed = analyzeSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res
+        .status(400)
+        .json({ success: false, error: "نماد یا حالت گزارش معتبر نیست." });
+    const symbol = parsed.data.query.trim().replace(/^نماد\s+/, "");
+    if (!/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/.test(symbol))
+      return res
+        .status(400)
+        .json({ success: false, error: "نماد واردشده معتبر نیست." });
+    const key = String(req.header("idempotency-key") || crypto.randomUUID()).slice(
+      0,
+      128,
+    );
+    const replay = await pool.query(
+      `SELECT h.id,h.symbol,h.report_mode,h.result,h.created_at,u.credit_delta,
+              c.balance AS remaining_credits
+       FROM analysis_usage u
+       JOIN analysis_history h ON h.id=u.analysis_history_id
+       JOIN analysis_credits c ON c.user_id=u.user_id
+       WHERE u.user_id=$1 AND u.idempotency_key=$2`,
+      [req.authUser!.id, key],
+    );
+    if (replay.rows[0]) {
+      const previous = replay.rows[0];
+      if (
+        previous.symbol !== symbol ||
+        previous.report_mode !== parsed.data.reportMode
+      )
+        return res.status(409).json({
+          success: false,
+          error: "این کلید تکرار قبلاً برای درخواست دیگری استفاده شده است.",
+        });
+      return res.json({
+        success: true,
+        replayed: true,
+        charged: Number(previous.credit_delta) < 0,
+        data: previous.result,
+        analysis: {
+          id: previous.id,
+          created_at: previous.created_at,
+          remainingCredits: previous.remaining_credits,
+        },
+      });
+    }
+    const data = await generateV2Analysis(symbol, parsed.data.reportMode);
+    const charge = data.decision !== "INSUFFICIENT_DATA";
+    const saved = await withTransaction(async (client) => {
+      const existing = await client.query(
+        `SELECT h.id,h.symbol,h.report_mode,h.result,h.created_at,u.credit_delta,
+                c.balance AS remaining_credits
+         FROM analysis_usage u
+         JOIN analysis_history h ON h.id=u.analysis_history_id
+         JOIN analysis_credits c ON c.user_id=u.user_id
+         WHERE u.user_id=$1 AND u.idempotency_key=$2`,
+        [req.authUser!.id, key],
+      );
+      if (existing.rows[0]) return { ...existing.rows[0], replayed: true };
+      const credit = await client.query(
+        `SELECT balance FROM analysis_credits WHERE user_id=$1 FOR UPDATE`,
+        [req.authUser!.id],
+      );
+      const balance = Number(credit.rows[0]?.balance ?? 0);
+      if (charge && balance < 1) throw new Error("NO_CREDIT");
+      const history = await client.query(
+        `INSERT INTO analysis_history(user_id,symbol,report_mode,result,source_metadata)
+         VALUES($1,$2,$3,$4,$5) RETURNING id,created_at`,
+        [
+          req.authUser!.id,
+          symbol,
+          parsed.data.reportMode,
+          data,
+          {
+            source: "data-engine-v2",
+            snapshotId: data.analysisId,
+            checksum: data.payloadChecksum,
+          },
+        ],
+      );
+      if (charge) {
+        await client.query(
+          `UPDATE analysis_credits SET balance=balance-1,updated_at=now() WHERE user_id=$1`,
+          [req.authUser!.id],
+        );
+        await client.query(
+          `INSERT INTO credit_ledger(
+             user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key
+           ) VALUES($1,-1,$2,'analysis','analysis_history',$3,$4)`,
+          [
+            req.authUser!.id,
+            balance - 1,
+            history.rows[0].id,
+            `analysis-v2:${req.authUser!.id}:${key}`,
+          ],
+        );
+      }
+      await client.query(
+        `INSERT INTO analysis_usage(
+           user_id,snapshot_id,analysis_history_id,idempotency_key,status,credit_delta
+         ) VALUES($1,$2,$3,$4,$5,$6)`,
+        [
+          req.authUser!.id,
+          data.analysisId,
+          history.rows[0].id,
+          key,
+          data.decision,
+          charge ? -1 : 0,
+        ],
+      );
+      return {
+        ...history.rows[0],
+        credit_delta: charge ? -1 : 0,
+        remaining_credits: balance - (charge ? 1 : 0),
+        replayed: false,
+      };
+    });
+    await recordAnalysisAttempt(
+      req.authUser!.id,
+      symbol,
+      parsed.data.reportMode,
+      true,
+    );
+    res.json({
+      success: true,
+      replayed: Boolean(saved.replayed),
+      charged: Number(saved.credit_delta) < 0,
+      data: saved.result ?? data,
+      analysis: {
+        id: saved.id,
+        created_at: saved.created_at,
+        remainingCredits: saved.remaining_credits,
+      },
+    });
   }),
 );
 app.get(

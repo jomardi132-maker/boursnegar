@@ -25,4 +25,10 @@ describe("production hardening contract", () => {
     expect(source).toContain("IDEMPOTENCY_CONFLICT");
     expect(source).toContain("l.idempotency_key=$2");
   });
+  it("does not charge v2 analyses with insufficient data", () => {
+    expect(source).toContain('"/api/v2/analyze"');
+    expect(source).toContain('data.decision !== "INSUFFICIENT_DATA"');
+    expect(source).toContain("analysis_usage");
+    expect(source).toContain("charge ? -1 : 0");
+  });
 });
