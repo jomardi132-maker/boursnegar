@@ -78,10 +78,12 @@ export function installPlatformRoutes(app: express.Express) {
           FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active
           JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL
           JOIN issuers ir ON ir.id=i.issuer_id
+          LEFT JOIN industries ind ON ind.id=ir.industry_id
           LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p
             WHERE p.instrument_id=l.instrument_id AND p.trading_date<l.trading_date AND p.quality_status='VALID'
             ORDER BY p.trading_date DESC LIMIT 1) prev ON true
           WHERE sa.symbol !~ '[0-9۰-۹]$' AND ir.legal_name NOT LIKE 'ح .%'
+            AND coalesce(ind.title_fa,'') <> 'صندوق سرمایه‌گذاری قابل معامله'
         )
         SELECT max(trading_date) AS latest_date,count(*)::int AS symbols,
           coalesce(sum(value),0) AS total_value,coalesce(sum(volume),0) AS total_volume,
@@ -116,9 +118,10 @@ export function installPlatformRoutes(app: express.Express) {
           LEFT JOIN moving ON moving.instrument_id=l.instrument_id
           LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
           WHERE sa.symbol !~ '[0-9۰-۹]$' AND ir.legal_name NOT LIKE 'ح .%'
+            AND coalesce(ind.title_fa,'') <> 'صندوق سرمایه‌گذاری قابل معامله'
         ), filtered AS (SELECT * FROM universe WHERE ($1='' OR symbol ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%') AND ($2='' OR industry=$2) AND ($3='' OR decision=$3) AND ($4::numeric IS NULL OR return_1m >= $4) AND ($5::numeric IS NULL OR pe <= $5) AND ($6::numeric IS NULL OR roe >= $6) AND ($7::numeric IS NULL OR volume >= $7) AND ($8='' OR ($8='above_ma20' AND price>ma20) OR ($8='above_ma50' AND price>ma50)))
         SELECT *,count(*) OVER()::int AS total FROM filtered ORDER BY ${orderBy[v.sort]},symbol LIMIT 50 OFFSET $9`,[v.q,v.industry,v.decision,v.minReturn??null,v.maxPe??null,v.minRoe??null,v.minVolume??null,v.trend,(v.page-1)*50]);
-      const industries=await pool.query(`SELECT title_fa FROM industries ORDER BY title_fa`);
+      const industries=await pool.query(`SELECT title_fa FROM industries WHERE title_fa<>'صندوق سرمایه‌گذاری قابل معامله' ORDER BY title_fa`);
       res.set("Cache-Control","public, max-age=30, stale-while-revalidate=120");
       res.json({success:true,rows:result.rows,total:result.rows[0]?.total??0,page:v.page,industries:industries.rows.map(row=>row.title_fa)});
     }),
