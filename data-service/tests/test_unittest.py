@@ -35,6 +35,12 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("def _stored_codal_letters", source)
         self.assertIn("letters = _stored_codal_letters(db, symbol)", source)
 
+    def test_analysis_falls_back_from_broken_codal_amendments(self):
+        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        self.assertIn("def _parse_first_usable_report", source)
+        self.assertIn("metrics.get(\"revenue\") is not None", source)
+        self.assertIn("_financial_candidates(letters, report_mode)", source)
+
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")
         spec = importlib.util.spec_from_file_location("update_market_daily", path)

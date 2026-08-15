@@ -363,6 +363,46 @@ def _stored_codal_letters(db: Session, symbol: str) -> list[dict]:
     return letters
 
 
+def _is_financial_statement(letter: dict) -> bool:
+    title = str(letter.get("Title") or "").replace("\u200c", " ")
+    code = str(letter.get("LetterCode") or "").replace("۰", "0").replace("۱", "1")
+    return code in {"ن-10", "ن-۱۰"} or "صورت های مالی" in title.replace("‌", " ")
+
+
+def _financial_candidates(letters: list[dict], report_mode: str) -> list[dict]:
+    candidates = [letter for letter in letters if letter.get("HasExcel") and _is_financial_statement(letter)]
+    if report_mode == "latest_codal":
+        return candidates
+    return [
+        letter for letter in candidates
+        if "حسابرسی شده" in str(letter.get("Title") or "")
+        and "حسابرسی نشده" not in str(letter.get("Title") or "")
+        and ("۱۲ ماهه" in str(letter.get("Title") or "") or "سال مالی" in str(letter.get("Title") or ""))
+    ]
+
+
+def _excel_url(letter: dict) -> str:
+    value = str(letter.get("ExcelUrl") or "")
+    return f"https://excel.codal.ir{value}" if value.startswith("/") else value
+
+
+def _parse_first_usable_report(candidates: list[dict]) -> tuple[dict, str, dict]:
+    errors = []
+    for candidate in candidates:
+        excel_url = _excel_url(candidate)
+        try:
+            parsed = codal_excel_parser.fetch_and_parse(excel_url)
+        except (codal_excel_parser.CodalExcelDownloadError, codal_excel_parser.CodalExcelParseError) as exc:
+            errors.append(str(exc))
+            continue
+        metrics = parsed.get("metrics") or {}
+        if metrics.get("revenue") is not None and metrics.get("net_profit") is not None:
+            return candidate, excel_url, parsed
+        errors.append(f"گزارش {candidate.get('TracingNo')} فاقد اقلام اصلی صورت مالی بود.")
+    detail = errors[-1] if errors else "هیچ فایل صورت مالی قابل استفاده‌ای پیدا نشد."
+    raise HTTPException(status_code=422, detail=detail)
+
+
 @app.get("/api/analyze/{symbol}")
 def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depends(get_db)):
     """
@@ -397,38 +437,17 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     if report_mode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="report_mode نامعتبر است.")
 
-    # ۳. انتخاب گزارش بر اساس حالت درخواستی
-    candidate = None
-    if report_mode == "latest_codal":
-        candidate = next((rec for rec in letters if rec.get("HasExcel")), None)
-    else:
-        for rec in letters:
-            title = rec.get("Title") or ""
-            is_audited = ("حسابرسی شده" in title) and ("حسابرسی نشده" not in title)
-            has_excel = bool(rec.get("HasExcel"))
-            is_annual = "۱۲ ماهه" in title or "سال مالی" in title
-            if is_audited and has_excel and is_annual:
-                candidate = rec
-                break
-
-    if not candidate:
+    # ۳. انتخاب نخستین صورت مالی واقعاً قابل استخراج. بعضی اصلاحیه‌های کدال
+    # به‌اشتباه فایل گزارش تفسیری مدیریت را در ExcelUrl برمی‌گردانند؛ در این
+    # حالت به نسخه معتبر قبلی همان صورت مالی برمی‌گردیم.
+    candidates = _financial_candidates(letters, report_mode)
+    if not candidates:
         report_label = "حسابرسی‌شده سالانه" if report_mode == "audited" else "دارای فایل اکسل"
         raise HTTPException(
             status_code=404,
             detail=f"هیچ گزارش {report_label} برای «{symbol}» در {len(letters)} اطلاعیه‌ی اخیر پیدا نشد.",
         )
-
-    excel_url = candidate.get("ExcelUrl") or ""
-    if excel_url.startswith("/"):
-        excel_url = f"https://excel.codal.ir{excel_url}"
-
-    # ۴. دانلود و پارس واقعی صورت مالی
-    try:
-        parsed = codal_excel_parser.fetch_and_parse(excel_url)
-    except codal_excel_parser.CodalExcelDownloadError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except codal_excel_parser.CodalExcelParseError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    candidate, excel_url, parsed = _parse_first_usable_report(candidates)
 
     # گزارش هم‌طول قبلی برای محاسبه رشد واقعی؛ شکست این بخش تحلیل اصلی را متوقف نمی‌کند.
     title = candidate.get("Title") or ""
@@ -436,16 +455,13 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     comparison = None
     comparison_unavailable_reason = "گزارش دوره هم‌طول قبلی دارای فایل اکسل پیدا نشد."
     if period_label:
-        previous = next(
-            (rec for rec in letters if rec is not candidate and rec.get("HasExcel") and period_label in (rec.get("Title") or "")),
-            None,
-        )
-        if previous:
-            previous_url = previous.get("ExcelUrl") or ""
-            if previous_url.startswith("/"):
-                previous_url = f"https://excel.codal.ir{previous_url}"
+        previous_candidates = [
+            rec for rec in _financial_candidates(letters, "latest_codal")
+            if rec is not candidate and period_label in str(rec.get("Title") or "")
+        ]
+        if previous_candidates:
             try:
-                previous_parsed = codal_excel_parser.fetch_and_parse(previous_url)
+                previous, _previous_url, previous_parsed = _parse_first_usable_report(previous_candidates)
                 current_revenue = parsed["metrics"].get("revenue")
                 previous_revenue = previous_parsed["metrics"].get("revenue")
                 current_profit = parsed["metrics"].get("net_profit")
