@@ -546,6 +546,7 @@ app.post(
        WHERE a.symbol=$1 AND a.valid_to IS NULL AND s.report_mode=$2
          AND s.calculated_at >= now() - interval '6 hours'
          AND s.quality_summary IS NOT NULL
+         AND s.quality_summary ? 'keyMetrics'
          AND r.decision <> 'INSUFFICIENT_DATA'
        ORDER BY s.calculated_at DESC LIMIT 1`,
       [symbol, parsed.data.reportMode],

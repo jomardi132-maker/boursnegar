@@ -17,6 +17,12 @@ describe('analysis UI contract', () => {
     expect(reportSource).toContain('INSUFFICIENT_DATA');
     expect(reportSource).toContain('داده ناکافی');
   });
+  it('shows real key fundamentals with report provenance', () => {
+    expect(reportSource).toContain('سود هر سهم (EPS)');
+    expect(reportSource).toContain('بازده حقوق صاحبان سهام (ROE)');
+    expect(reportSource).toContain('نسبت بدهی');
+    expect(reportSource).toContain('report.publishedAt');
+  });
   it('keeps the dashboard in a loading state until its first payload arrives', () => {
     expect(dashboardSource).toContain('busy || !data');
   });

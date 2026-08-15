@@ -71,6 +71,10 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["decision"], "BUY")
         self.assertEqual(payload["valuation"]["fairValueBase"], 1200)
         self.assertGreaterEqual(payload["healthScore"], 70)
+        self.assertEqual(payload["keyMetrics"]["eps"], 200)
+        self.assertEqual(payload["keyMetrics"]["roe"], 25)
+        self.assertEqual(payload["keyMetrics"]["revenueGrowth"], 80)
+        self.assertTrue(payload["report"]["audited"])
 
 
 if __name__ == "__main__":

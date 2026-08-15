@@ -15,6 +15,8 @@ export type AnalysisPayload = {
     fairValueHigh: number;
     assumptions: Record<string, unknown>;
   };
+  keyMetrics?: Record<string, number | null>;
+  report?: { title: string | null; publishedAt: string | null; audited: boolean };
   coreQuestions: Record<string, { value: number | null; benchmark: number | null; status: string }>;
   reasons: string[];
   risks: string[];
@@ -39,6 +41,20 @@ const questionLabels: Record<string, string> = {
   real_growth: "رشد واقعی پس از تورم",
 };
 
+const metricLabels: Record<string, { label: string; suffix: string }> = {
+  eps: { label: "سود هر سهم (EPS)", suffix: " ریال" },
+  pe: { label: "نسبت P/E", suffix: "" },
+  roe: { label: "بازده حقوق صاحبان سهام (ROE)", suffix: "٪" },
+  roa: { label: "بازده دارایی‌ها (ROA)", suffix: "٪" },
+  grossMargin: { label: "حاشیه سود ناخالص", suffix: "٪" },
+  operatingMargin: { label: "حاشیه سود عملیاتی", suffix: "٪" },
+  netMargin: { label: "حاشیه سود خالص", suffix: "٪" },
+  debtRatio: { label: "نسبت بدهی", suffix: "٪" },
+  cashToProfit: { label: "پوشش نقدی سود", suffix: "٪" },
+  revenueGrowth: { label: "رشد درآمد هم‌دوره", suffix: "٪" },
+  netProfitGrowth: { label: "رشد سود خالص هم‌دوره", suffix: "٪" },
+};
+
 const number = (value: number | null, suffix = "") =>
   value == null ? "نامشخص" : `${value.toLocaleString("fa-IR", { maximumFractionDigits: 1 })}${suffix}`;
 
@@ -55,6 +71,7 @@ export function DecisionReport({ report }: { report: AnalysisPayload }) {
       <article><Database/><span><small>پوشش داده</small><b>{number(report.dataCoverage, "٪")}</b></span></article>
       <article><CheckCircle2/><span><small>اطمینان محاسبه</small><b>{number(report.confidence, "٪")}</b></span></article>
     </div>
+    {report.keyMetrics&&<section className="fundamental-metrics"><header><div><small>اعداد استخراج‌شده از صورت مالی</small><h3>شاخص‌های بنیادی کلیدی</h3></div>{report.report&&<span>{report.report.audited?"حسابرسی‌شده":"حسابرسی‌نشده"}{report.report.publishedAt?` · ${report.report.publishedAt}`:""}</span>}</header><div>{Object.entries(report.keyMetrics).map(([key,value])=>{const meta=metricLabels[key];return meta&&value!=null?<article key={key}><small>{meta.label}</small><strong>{number(value,meta.suffix)}</strong></article>:null;})}</div>{report.report?.title&&<p>{report.report.title}</p>}</section>}
     {report.valuation&&<section className="valuation-panel"><div><small>ارزش منصفانه سناریویی ـ ریال به‌ازای هر سهم</small><h3>{number(report.valuation.fairValueBase)}</h3><p>مدل {report.valuation.method} · نسخه {report.valuation.modelVersion}</p></div><div className="valuation-range"><span><small>سناریوی محتاطانه</small><b>{number(report.valuation.fairValueLow)}</b></span><i/><span><small>سناریوی خوش‌بینانه</small><b>{number(report.valuation.fairValueHigh)}</b></span></div></section>}
     <section className="question-grid">{Object.entries(report.coreQuestions).map(([key,item])=><article key={key} data-status={item.status}><small>{questionLabels[key]||key}</small><strong>{number(item.value,"٪")}</strong><p>مرجع: {number(item.benchmark,"٪")}</p><span>{item.status==="PASS"?"عبور از معیار":item.status==="FAIL"?"پایین‌تر از معیار":"داده ناکافی"}</span></article>)}</section>
     <div className="decision-details"><section><h3><TrendingUp/> دلایل اصلی</h3><ul>{report.reasons.map((reason)=><li key={reason}>{reason}</li>)}</ul></section><section><h3><AlertTriangle/> ریسک‌ها و محدودیت‌ها</h3><ul>{report.risks.map((risk)=><li key={risk}>{risk}</li>)}</ul></section></div>
