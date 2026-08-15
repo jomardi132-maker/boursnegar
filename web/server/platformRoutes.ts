@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type express from "express";
 import { z } from "zod";
 import { pool, withTransaction } from "./postgres";
@@ -8,6 +10,7 @@ const asyncRoute =
   (fn: express.RequestHandler): express.RequestHandler =>
   (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
+const execFileAsync = promisify(execFile);
 const audit = async (
   adminId: string,
   action: string,
@@ -66,7 +69,7 @@ export function installPlatformRoutes(app: express.Express) {
     requireUser,
     requireAdmin,
     asyncRoute(async (_req, res) => {
-      const [counts, pipelines, issues] = await Promise.all([
+      const [counts, pipelines, issues, dataService] = await Promise.all([
         pool.query(`SELECT
           (SELECT count(*)::int FROM instruments WHERE active) AS instruments,
           (SELECT count(*)::int FROM daily_prices) AS daily_prices,
@@ -78,8 +81,47 @@ export function installPlatformRoutes(app: express.Express) {
           (SELECT max(retrieved_at) FROM disclosure_versions) AS latest_disclosure_at`),
         pool.query(`SELECT pipeline,status,started_at,finished_at,metrics,error_summary FROM ingestion_runs ORDER BY started_at DESC LIMIT 30`),
         pool.query(`SELECT severity,issue_code,cause,status,detected_at FROM data_quality_issues WHERE status='OPEN' ORDER BY detected_at DESC LIMIT 30`),
+        fetch(`${process.env.PYTHON_API_BASE || "http://127.0.0.1:8001"}/health`, { signal: AbortSignal.timeout(4000) })
+          .then(async (response) => ({ ok: response.ok, status: response.status, detail: await response.json().catch(() => null) }))
+          .catch(() => ({ ok: false, status: 0, detail: null })),
       ]);
-      res.json({ success: true, counts: counts.rows[0], pipelines: pipelines.rows, issues: issues.rows });
+      const latestRuns = new Map<string, any>();
+      for (const run of pipelines.rows)
+        if (!latestRuns.has(run.pipeline)) latestRuns.set(run.pipeline, run);
+      res.json({
+        success: true,
+        counts: counts.rows[0],
+        pipelines: pipelines.rows,
+        issues: issues.rows,
+        providers: {
+          data_service: dataService,
+          market: latestRuns.get("market_daily") ?? latestRuns.get("market_backfill") ?? null,
+          codal: latestRuns.get("codal_backfill") ?? null,
+        },
+      });
+    }),
+  );
+  app.post(
+    "/api/admin/data-refresh/:pipeline",
+    requireUser,
+    requireAdmin,
+    requireCsrf,
+    asyncRoute(async (req, res) => {
+      const services: Record<string, string> = {
+        market: "boursnegar-market-daily.service",
+        codal: "boursnegar-codal-backfill.service",
+      };
+      const service = services[req.params.pipeline];
+      if (!service)
+        return res.status(400).json({ success: false, error: "خط داده معتبر نیست." });
+      try {
+        await execFileAsync("/usr/bin/systemctl", ["start", "--no-block", service], { timeout: 5000 });
+      } catch (error: any) {
+        const detail = String(error?.stderr || "").slice(0, 300);
+        return res.status(503).json({ success: false, error: detail || "اجرای به‌روزرسانی ممکن نشد." });
+      }
+      await audit(req.authUser!.id, "data.refresh", "systemd_service", service, req.ip || "127.0.0.1");
+      res.status(202).json({ success: true, pipeline: req.params.pipeline, service, message: "به‌روزرسانی در صف اجرا قرار گرفت." });
     }),
   );
   app.get(
