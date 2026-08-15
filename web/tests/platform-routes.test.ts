@@ -21,6 +21,14 @@ describe("platform routes security contract", () => {
     expect(source).toContain("sixMonths: priceReturn(prices, 6)");
     expect(source).toContain("oneYear: priceReturn(prices, 12)");
   });
+  it("provides a real market dashboard and bounded server-side screener", () => {
+    expect(source).toContain('"/api/market/dashboard"');
+    expect(source).toContain('"/api/market/screener"');
+    expect(source).toContain("above_ma20");
+    expect(source).toContain("return_1m");
+    expect(source).toContain("LIMIT 50 OFFSET $9");
+    expect(source).not.toContain("RSI_FAKE");
+  });
   it.each(["/api/account/overview", "/api/account/referrals", "/api/alerts"])(
     "protects account route %s",
     (route) =>

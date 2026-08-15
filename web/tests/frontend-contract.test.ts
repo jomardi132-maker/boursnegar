@@ -6,6 +6,7 @@ const source = fs.readFileSync(path.resolve('src/AppProduction.tsx'), 'utf8');
 const reportSource = fs.readFileSync(path.resolve('src/components/DecisionReport.tsx'), 'utf8');
 const dashboardSource = fs.readFileSync(path.resolve('src/components/AccountDashboard.tsx'), 'utf8');
 const stockSource = fs.readFileSync(path.resolve('src/components/StockPage.tsx'), 'utf8');
+const marketSource = fs.readFileSync(path.resolve('src/components/MarketExplorer.tsx'), 'utf8');
 describe('analysis UI contract', () => {
   it('always presents the three fundamental questions', () => {
     expect(reportSource).toContain('earnings_vs_bank');
@@ -36,5 +37,11 @@ describe('analysis UI contract', () => {
   it('restores the CSRF token when an existing session is loaded', () => {
     expect(source).toContain("sessionStorage.setItem(csrfStorage, r.csrfToken)");
     expect(source).toContain("api<{ user: User; csrfToken: string }>('/api/auth/me')");
+  });
+  it('shows a sourced market dashboard and links screener rows to stock pages', () => {
+    expect(marketSource).toContain('/api/market/dashboard');
+    expect(marketSource).toContain('/api/market/screener');
+    expect(marketSource).toContain('بالاتر از میانگین ۲۰روزه');
+    expect(marketSource).toContain('/s/${encodeURIComponent(row.symbol)}');
   });
 });

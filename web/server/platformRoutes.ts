@@ -65,6 +65,63 @@ export function installPlatformRoutes(app: express.Express) {
     }),
   );
   app.get(
+    "/api/market/dashboard",
+    asyncRoute(async (_req, res) => {
+      const result = await pool.query(`
+        WITH latest AS (
+          SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,
+            coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count
+          FROM daily_prices p WHERE p.quality_status='VALID'
+          ORDER BY p.instrument_id,p.trading_date DESC
+        ), market AS (
+          SELECT l.*,prev.price AS previous_price,sa.symbol,ir.legal_name
+          FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active
+          JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL
+          JOIN issuers ir ON ir.id=i.issuer_id
+          LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p
+            WHERE p.instrument_id=l.instrument_id AND p.trading_date<l.trading_date AND p.quality_status='VALID'
+            ORDER BY p.trading_date DESC LIMIT 1) prev ON true
+          WHERE sa.symbol !~ '[0-9۰-۹]$'
+        )
+        SELECT max(trading_date) AS latest_date,count(*)::int AS symbols,
+          coalesce(sum(value),0) AS total_value,coalesce(sum(volume),0) AS total_volume,
+          count(*) FILTER (WHERE price>previous_price)::int AS advancers,
+          count(*) FILTER (WHERE price<previous_price)::int AS decliners,
+          count(*) FILTER (WHERE price=previous_price)::int AS unchanged,
+          (SELECT jsonb_agg(x ORDER BY x.change_percent DESC) FROM (SELECT symbol,legal_name,price,value,round(((price/NULLIF(previous_price,0))-1)*100,2) AS change_percent FROM market WHERE previous_price>0 ORDER BY change_percent DESC NULLS LAST LIMIT 5) x) AS top_gainers,
+          (SELECT jsonb_agg(x ORDER BY x.change_percent) FROM (SELECT symbol,legal_name,price,value,round(((price/NULLIF(previous_price,0))-1)*100,2) AS change_percent FROM market WHERE previous_price>0 ORDER BY change_percent ASC NULLS LAST LIMIT 5) x) AS top_losers,
+          (SELECT jsonb_agg(x ORDER BY x.value DESC NULLS LAST) FROM (SELECT symbol,legal_name,price,value,round(((price/NULLIF(previous_price,0))-1)*100,2) AS change_percent FROM market ORDER BY value DESC NULLS LAST LIMIT 8) x) AS top_value
+        FROM market`);
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      res.json({ success: true, ...result.rows[0] });
+    }),
+  );
+  app.get(
+    "/api/market/screener",
+    asyncRoute(async (req, res) => {
+      const parsed = z.object({ q:z.string().trim().max(40).default(""), industry:z.string().trim().max(80).default(""), decision:z.enum(["","BUY","HOLD","SELL","INSUFFICIENT_DATA"]).default(""), minReturn:z.coerce.number().min(-1000).max(10000).optional(), maxPe:z.coerce.number().min(0).max(10000).optional(), minRoe:z.coerce.number().min(-10000).max(10000).optional(), minVolume:z.coerce.number().min(0).optional(), trend:z.enum(["","above_ma20","above_ma50"]).default(""), sort:z.enum(["value","return","volume","health","pe"]).default("value"), page:z.coerce.number().int().min(1).max(1000).default(1) }).safeParse(req.query);
+      if (!parsed.success) return res.status(400).json({ success:false,error:"فیلترهای اسکرینر معتبر نیستند." });
+      const v=parsed.data; const orderBy:Record<string,string>={value:"value DESC NULLS LAST",return:"return_1m DESC NULLS LAST",volume:"volume DESC NULLS LAST",health:"health_score DESC NULLS LAST",pe:"pe ASC NULLS LAST"};
+      const result=await pool.query(`
+        WITH latest AS (SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count FROM daily_prices p WHERE p.quality_status='VALID' ORDER BY p.instrument_id,p.trading_date DESC),
+        universe AS (
+          SELECT sa.symbol,ir.legal_name,coalesce(ind.title_fa,'') AS industry,l.trading_date,l.trading_date_jalali,l.price,l.volume,l.value,l.trade_count,
+            round(((l.price/NULLIF(month.price,0))-1)*100,2) AS return_1m,round(moving.ma20,2) AS ma20,round(moving.ma50,2) AS ma50,
+            snap.quality_summary->>'decision' AS decision,nullif(snap.quality_summary->>'healthScore','')::numeric AS health_score,
+            nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
+          FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL JOIN issuers ir ON ir.id=i.issuer_id AND ir.active LEFT JOIN industries ind ON ind.id=ir.industry_id
+          LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' ORDER BY p.trading_date DESC LIMIT 1) month ON true
+          LEFT JOIN LATERAL (SELECT avg(price) FILTER (WHERE rn<=20) AS ma20,avg(price) FILTER (WHERE rn<=50) AS ma50 FROM (SELECT coalesce(p.adjusted_close,p.close) AS price,row_number() OVER (ORDER BY p.trading_date DESC) AS rn FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date AND p.quality_status='VALID' ORDER BY p.trading_date DESC LIMIT 50) prices) moving ON true
+          LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
+          WHERE sa.symbol !~ '[0-9۰-۹]$'
+        ), filtered AS (SELECT * FROM universe WHERE ($1='' OR symbol ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%') AND ($2='' OR industry=$2) AND ($3='' OR decision=$3) AND ($4::numeric IS NULL OR return_1m >= $4) AND ($5::numeric IS NULL OR pe <= $5) AND ($6::numeric IS NULL OR roe >= $6) AND ($7::numeric IS NULL OR volume >= $7) AND ($8='' OR ($8='above_ma20' AND price>ma20) OR ($8='above_ma50' AND price>ma50)))
+        SELECT *,count(*) OVER()::int AS total FROM filtered ORDER BY ${orderBy[v.sort]},symbol LIMIT 50 OFFSET $9`,[v.q,v.industry,v.decision,v.minReturn??null,v.maxPe??null,v.minRoe??null,v.minVolume??null,v.trend,(v.page-1)*50]);
+      const industries=await pool.query(`SELECT title_fa FROM industries ORDER BY title_fa`);
+      res.set("Cache-Control","public, max-age=30, stale-while-revalidate=120");
+      res.json({success:true,rows:result.rows,total:result.rows[0]?.total??0,page:v.page,industries:industries.rows.map(row=>row.title_fa)});
+    }),
+  );
+  app.get(
     "/api/admin/data-status",
     requireUser,
     requireAdmin,

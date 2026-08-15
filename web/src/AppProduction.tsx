@@ -4,6 +4,7 @@ import { DecisionReport, type AnalysisPayload } from './components/DecisionRepor
 import { AccountDashboard } from './components/AccountDashboard';
 import { LegalModal, type LegalDocument } from './components/LegalModal';
 import { StockPage } from './components/StockPage';
+import { MarketExplorer } from './components/MarketExplorer';
 import './dashboard.css';
 
 export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
@@ -98,7 +99,7 @@ export function AppProduction() {
   if (stockMatch) return <><StockPage symbol={decodeURIComponent(stockMatch[1])} analysis={result} analysisLoading={loading} analysisError={error} onAnalyze={(stockSymbol)=>{ setPendingAnalysis(stockSymbol); if(!user) setAuthOpen(true); }}/>{authOpen && <AuthDialog onClose={() => { setAuthOpen(false); setPendingAnalysis(''); }} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</>;
   return <div className="app-shell" dir="rtl">
     <header className="topbar"><a className="brand" href="#top" aria-label="بورس‌نگار"><span className="brand-mark"><BarChart3 /></span><span><b>بورس‌نگار</b><small>تحلیل بنیادی شفاف</small></span></a>
-      <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
+      <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#market">بازار و اسکرینر</a><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
       <div className="header-actions">{user ? <><button className="credit-pill dashboard-trigger" onClick={()=>setDashboardOpen(true)}>{user.credits.toLocaleString('fa-IR')} اعتبار · پنل من</button><button className="icon-button" onClick={logout} aria-label="خروج"><LogOut /></button></> : <button className="button ghost" onClick={() => setAuthOpen(true)}>ورود / ثبت‌نام</button>}<button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="منو">{menuOpen ? <X /> : <Menu />}</button></div>
     </header>
     <main id="top">
@@ -107,6 +108,7 @@ export function AppProduction() {
         {error && <div className="error-state" role="alert">{error}</div>}<div className="trust-line"><ShieldCheck/> تاریخچه بازار از ۱۴۰۴ <span/> اطلاعیه‌های رسمی کدال <span/> بدون عدد ساختگی</div></div>
         <div className="hero-panel"><div className="panel-head"><span>وضعیت زندهٔ پایگاه داده</span><span className="live-dot">متصل</span></div><div className="database-number"><strong>{overview ? overview.catalog.instruments.toLocaleString('fa-IR') : '—'}</strong><span>نماد و ابزار فعال</span></div><div className="database-grid"><div><b>{overview ? overview.prices.rows.toLocaleString('fa-IR') : '—'}</b><small>رکورد قیمت روزانه</small></div><div><b>{overview ? overview.disclosures.rows.toLocaleString('fa-IR') : '—'}</b><small>نسخه اطلاعیه کدال</small></div><div><b>{overview ? overview.prices.instruments.toLocaleString('fa-IR') : '—'}</b><small>نماد با تاریخچه ۱۴۰۴</small></div><div><b>{overview ? overview.analysis.analyzed.toLocaleString('fa-IR') : '—'}</b><small>نسخه تحلیل ثبت‌شده</small></div></div><div className="panel-note">این اعداد مستقیماً از پایگاه دادهٔ عملیاتی بورس‌نگار خوانده می‌شوند.</div></div>
       </section>
+      <MarketExplorer/>
       <section className="method-section" id="method"><div className="section-heading"><span>روش کار</span><h2>از داده خام تا پاسخ روشن</h2><p>هر نتیجه، مسیر قابل مشاهده‌ای از منبع تا محاسبه دارد.</p></div><div className="steps-grid">{[[Database,'گردآوری','قیمت از BrsApi و گزارش رسمی از کدال'],[BarChart3,'محاسبه','نسبت‌های deterministic با دوره و واحد مشخص'],[Sparkles,'توضیح','پاسخ فارسی محتاطانه و قابل حسابرسی']].map(([Icon,title,text],i)=><article key={String(title)}><span className="step-index">۰{i+1}</span><Icon/><h3>{title as string}</h3><p>{text as string}</p></article>)}</div></section>
       <section className="source-band" id="sources"><div><Database/><span><b>منبع بازار</b><small>BrsApi — قیمت و مشخصات تابلو</small></span></div><div><ShieldCheck/><span><b>منبع مالی</b><small>کدال — صورت‌های مالی رسمی</small></span></div><p>زمان گزارش، وضعیت حسابرسی و تاریخ به‌روزرسانی در هر تحلیل نمایش داده می‌شود.</p></section>
       {loading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
