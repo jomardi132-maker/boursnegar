@@ -539,7 +539,7 @@ app.post(
       });
     }
     const cached = await pool.query(
-      `SELECT s.quality_summary
+      `SELECT s.id AS snapshot_id,s.quality_summary
        FROM symbol_aliases a
        JOIN analytical_snapshots s ON s.instrument_id=a.instrument_id
        JOIN recommendation_results r ON r.snapshot_id=s.id
@@ -552,7 +552,7 @@ app.post(
     );
     const cachedPayload = cached.rows[0]?.quality_summary;
     const data = cachedPayload && typeof cachedPayload === "object"
-      ? cachedPayload
+      ? { ...cachedPayload, analysisId: cached.rows[0].snapshot_id }
       : await generateV2Analysis(symbol, parsed.data.reportMode);
     const charge = data.decision !== "INSUFFICIENT_DATA";
     const saved = await withTransaction(async (client) => {
