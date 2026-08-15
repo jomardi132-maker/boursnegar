@@ -6,6 +6,7 @@ from typing import Iterable
 
 PILOT_INDUSTRIES = {
     "فلزات اساسی": "metals",
+    "استخراج کانه های فلزی": "metals",
     "محصولات شیمیایی": "petrochemical",
     "فرآورده های نفتی، کک و سوخت هسته ای": "refinery",
     "فرآورده‌های نفتی، کک و سوخت هسته‌ای": "refinery",

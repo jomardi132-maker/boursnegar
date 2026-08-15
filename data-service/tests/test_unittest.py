@@ -2,6 +2,8 @@ import unittest
 import importlib.util
 from pathlib import Path
 
+from app.ingestion.market_history import model_family
+
 
 class DataServiceContractTests(unittest.TestCase):
     def setUp(self):
@@ -52,6 +54,9 @@ class DataServiceContractTests(unittest.TestCase):
         first = [{"id": "2", "l18": "ب", "pc": 20, "py": 19, "pl": 20, "tvol": 2, "tval": 40, "tno": 1},
                  {"id": "1", "l18": "الف", "pc": 10, "py": 9, "pl": 10, "tvol": 1, "tval": 10, "tno": 1}]
         self.assertEqual(module.market_fingerprint(first), module.market_fingerprint(list(reversed(first))))
+
+    def test_metal_ore_miners_use_the_metals_valuation_family(self):
+        self.assertEqual(model_family("استخراج کانه‌های فلزی"), "metals")
 
 
 if __name__ == "__main__":

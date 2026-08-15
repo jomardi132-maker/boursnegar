@@ -31,6 +31,9 @@ describe("production hardening contract", () => {
     expect(source).toContain("analysis_usage");
     expect(source).toContain("charge ? -1 : 0");
   });
+  it("does not reuse an insufficient snapshot after upstream data is repaired", () => {
+    expect(source).toContain("r.decision <> 'INSUFFICIENT_DATA'");
+  });
   it("renders stock-specific search metadata on public share URLs", () => {
     expect(source).toContain("og:title");
     expect(source).toContain('req.path.match(/^\\/s\\/');
