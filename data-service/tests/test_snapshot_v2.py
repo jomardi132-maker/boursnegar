@@ -76,6 +76,24 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["keyMetrics"]["revenueGrowth"], 80)
         self.assertTrue(payload["report"]["audited"])
 
+    def test_pharmaceutical_operating_loss_produces_sourced_sell_warning(self):
+        payload = build_snapshot_payload({
+            "symbol": "دکوثر", "company_name": "داروسازی کوثر",
+            "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 18980, "market_category": "مواد و محصولات دارویی", "eps": 1030, "pe_ratio": 18.4},
+            "financial_metrics": {"revenue": 12392616, "operating_profit": -553453,
+                "net_profit": 20204422, "operating_cash_flow": None, "total_assets": 43078723,
+                "total_liabilities": 12448069, "total_equity": 30630654, "eps_basic": 5945},
+            "financial_metrics_missing": ["operating_cash_flow"],
+            "ratios": {"roe_percent": 65.96, "roa_percent": 46.9, "operating_margin_percent": -4.47,
+                "net_margin_percent": 163.04, "debt_ratio_percent": 28.9, "pe_ratio": 18.4},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 61.4},
+        }, "audited")
+        self.assertEqual(payload["decision"], "SELL")
+        self.assertEqual(payload["valuation"]["fairValueBase"], 7210)
+        self.assertIn("زیان عملیاتی", payload["criticalWarning"])
+        self.assertEqual(payload["coreQuestions"]["earnings_vs_bank"]["status"], "FAIL")
+
 
 if __name__ == "__main__":
     unittest.main()

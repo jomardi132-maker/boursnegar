@@ -18,6 +18,7 @@ MODEL_SPECS = {
     "petrochemical": ModelSpec("normalized_pe", 6.5),
     "refinery": ModelSpec("normalized_pe", 5.5, 0.25, 0.25),
     "cement": ModelSpec("normalized_pe", 7.0),
+    "pharmaceutical": ModelSpec("normalized_pe", 7.0),
     "bank": ModelSpec("price_to_book", 1.0, 0.20, 0.15),
 }
 
@@ -35,7 +36,9 @@ def health_score(metrics: dict, ratios: dict, family: str, inflation: float | No
     dimensions = {}
     roe = _number(ratios.get("roe_percent"))
     cash = _number(ratios.get("cash_to_profit_ratio_percent"))
-    margin = _number(ratios.get("net_margin_percent"))
+    margin = _number(ratios.get("operating_margin_percent"))
+    if margin is None:
+        margin = _number(ratios.get("net_margin_percent"))
     debt = _number(ratios.get("debt_ratio_percent"))
     roa = _number(ratios.get("roa_percent"))
     if roe is not None:
@@ -75,7 +78,7 @@ def value_company(raw: dict) -> dict | None:
             return None
         per_share_basis = equity_million_rial * 1_000_000 / shares
     else:
-        per_share_basis = _number(metrics.get("eps_basic"))
+        per_share_basis = _number(live.get("eps")) or _number(metrics.get("eps_basic"))
         if (not per_share_basis or per_share_basis <= 0) and shares and shares > 0:
             profit = _number(metrics.get("net_profit"))
             if profit and profit > 0:
@@ -98,6 +101,7 @@ def value_company(raw: dict) -> dict | None:
             "scenarioDownside": spec.downside,
             "scenarioUpside": spec.upside,
             "currency": "IRR_PER_SHARE",
+            "basisSource": "market_ttm_eps" if _number(live.get("eps")) else "audited_report_eps",
         },
         "scenarios": {"bear": round(low), "base": round(base), "bull": round(high)},
     }

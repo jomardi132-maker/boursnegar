@@ -5,8 +5,8 @@ Decision = Literal["BUY", "HOLD", "SELL", "INSUFFICIENT_DATA"]
 
 @dataclass(frozen=True)
 class Policy:
-    version: str = "recommendation-v1.0.0"
-    model_version: str = "fundamental-engine-v1.0.0"
+    version: str = "recommendation-v1.1.0"
+    model_version: str = "fundamental-engine-v1.1.0"
     minimum_coverage: float = 70.0
     minimum_confidence: float = 65.0
     cash_quality_threshold: float = 80.0
@@ -20,9 +20,8 @@ def ratio(numerator: float | None, denominator: float | None) -> float | None:
 def core_questions(*, ttm_eps=None, price=None, pe=None, bank_rate=None,
                    operating_cash_flow=None, net_profit=None,
                    nominal_growth=None, matched_inflation=None, policy=Policy()):
-    earnings_yield = ratio(ttm_eps, price)
-    if earnings_yield is not None: earnings_yield *= 100
-    elif pe is not None and pe > 0: earnings_yield = 100 / pe
+    earnings_yield = 100 / pe if pe is not None and pe > 0 else ratio(ttm_eps, price)
+    if (pe is None or pe <= 0) and earnings_yield is not None: earnings_yield *= 100
     cash_quality = ratio(operating_cash_flow, net_profit)
     if cash_quality is not None: cash_quality *= 100
     real_growth = None if nominal_growth is None or matched_inflation is None else nominal_growth - matched_inflation

@@ -3,6 +3,10 @@ from app.analytics.engine import Policy, core_questions, decide
 from app.ingestion.codal import discover_pages, sha256_bytes
 
 class EngineV1Tests(unittest.TestCase):
+    def test_current_market_pe_takes_precedence_for_earnings_yield(self):
+        result = core_questions(ttm_eps=5945, price=18980, pe=18.4, bank_rate=20.5)
+        self.assertAlmostEqual(result["earnings_vs_bank"]["value"], 100 / 18.4)
+        self.assertEqual(result["earnings_vs_bank"]["status"], "FAIL")
     def test_core_questions_and_missing_data(self):
         q=core_questions(ttm_eps=200,price=1000,bank_rate=18,operating_cash_flow=90,net_profit=100,nominal_growth=30,matched_inflation=25)
         self.assertEqual([q[x]["status"] for x in q],["PASS","PASS","PASS"])

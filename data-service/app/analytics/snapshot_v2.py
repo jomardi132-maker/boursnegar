@@ -46,9 +46,10 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         inflation,
         (raw.get("period_comparison") or {}).get("revenue_growth_percent"),
     )
-    critical_warning = bool(
-        metrics.get("net_profit") is not None and metrics.get("net_profit") <= 0
-    ) or bool(metrics.get("total_equity") is not None and metrics.get("total_equity") <= 0)
+    has_net_loss = bool(metrics.get("net_profit") is not None and metrics.get("net_profit") <= 0)
+    has_nonpositive_equity = bool(metrics.get("total_equity") is not None and metrics.get("total_equity") <= 0)
+    has_operating_loss = bool(metrics.get("operating_profit") is not None and metrics.get("operating_profit") <= 0)
+    critical_warning = has_net_loss or has_nonpositive_equity or has_operating_loss
 
     questions = core_questions(
         ttm_eps=metrics.get("eps_basic"),
@@ -109,12 +110,20 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "reasons": [
             f"امتیاز سلامت بنیادی {score} از ۱۰۰ است." if score is not None else "امتیاز سلامت به‌دلیل کمبود داده محاسبه نشد.",
             f"ارزش منصفانه پایه با مدل {valuation['method']} محاسبه شد." if valuation else "مدل تخصصی معتبر برای این صنعت یا داده موجود نیست.",
-        ],
+        ] + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
         "risks": [
             "ارزش‌گذاری سناریویی است و به کیفیت آخرین صورت مالی وابسته است.",
             "تغییر نرخ ارز، قیمت جهانی کالا و مقررات می‌تواند نتیجه را تغییر دهد.",
         ],
-        "criticalWarning": "زیان یا حقوق صاحبان سهام نامثبت مشاهده شد." if critical_warning else ("داده برای تصمیم کافی نیست." if decision == "INSUFFICIENT_DATA" else None),
+        "criticalWarning": (
+            "در آخرین صورت مالی، زیان عملیاتی مشاهده شد."
+            if has_operating_loss and not has_net_loss
+            else "زیان خالص یا حقوق صاحبان سهام نامثبت مشاهده شد."
+            if critical_warning
+            else "داده برای تصمیم کافی نیست."
+            if decision == "INSUFFICIENT_DATA"
+            else None
+        ),
         "policyVersion": policy.version,
         "modelVersion": policy.model_version,
         "dataAsOf": report.get("publish_datetime"),

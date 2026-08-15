@@ -4,6 +4,14 @@ from app.analytics.industry_valuation import health_score, value_company
 
 
 class IndustryValuationTests(unittest.TestCase):
+    def test_values_pharmaceuticals_from_current_market_eps(self):
+        result = value_company({
+            "live_price": {"market_category": "مواد و محصولات دارویی", "eps": 1030},
+            "financial_metrics": {"eps_basic": 5945},
+        })
+        self.assertEqual(result["family"], "pharmaceutical")
+        self.assertEqual(result["fairValueBase"], 7210)
+        self.assertEqual(result["assumptions"]["basisSource"], "market_ttm_eps")
     def test_values_metal_company_with_normalized_pe(self):
         value = value_company({
             "live_price": {"market_category": "فلزات اساسی", "total_shares": 1000},
