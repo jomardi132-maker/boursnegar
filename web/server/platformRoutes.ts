@@ -85,9 +85,8 @@ export function installPlatformRoutes(app: express.Express) {
           .then(async (response) => ({ ok: response.ok, status: response.status, detail: await response.json().catch(() => null) }))
           .catch(() => ({ ok: false, status: 0, detail: null })),
       ]);
-      const latestRuns = new Map<string, any>();
-      for (const run of pipelines.rows)
-        if (!latestRuns.has(run.pipeline)) latestRuns.set(run.pipeline, run);
+      const latestByKind = (kind: string) =>
+        pipelines.rows.find((run: any) => String(run.pipeline).toLowerCase().includes(kind)) ?? null;
       res.json({
         success: true,
         counts: counts.rows[0],
@@ -95,8 +94,8 @@ export function installPlatformRoutes(app: express.Express) {
         issues: issues.rows,
         providers: {
           data_service: dataService,
-          market: latestRuns.get("market_daily") ?? latestRuns.get("market_backfill") ?? null,
-          codal: latestRuns.get("codal_backfill") ?? null,
+          market: latestByKind("market"),
+          codal: latestByKind("codal"),
         },
       });
     }),
