@@ -9,6 +9,7 @@ const campaignSql = fs.readFileSync(
 );
 const emailAuthSql = fs.readFileSync(path.resolve("migrations/005_email_password_auth.sql"), "utf8");
 const creditPackagesSql = fs.readFileSync(path.resolve("migrations/008_credit_packages.sql"), "utf8");
+const screenerSql = fs.readFileSync(path.resolve("migrations/010_market_screener.sql"), "utf8");
 describe("core migration safety contract", () => {
   it("never executes rollback files in the forward migration runner", () => {
     const runner = fs.readFileSync(path.resolve("scripts/migrate.ts"), "utf8");
@@ -72,5 +73,9 @@ describe("core migration safety contract", () => {
     expect(creditPackagesSql).toContain("generate_series(6,20)");
     expect(creditPackagesSql).toContain("(credits - 1) * 100000");
     expect(creditPackagesSql).toContain("بدون تاریخ انقضا");
+  });
+  it("indexes the latest valid prices used by the market screener", () => {
+    expect(screenerSql).toContain("daily_prices_date_instrument_idx");
+    expect(screenerSql).toContain("WHERE quality_status='VALID'");
   });
 });
