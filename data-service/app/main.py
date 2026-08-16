@@ -363,6 +363,36 @@ def _stored_codal_letters(db: Session, symbol: str) -> list[dict]:
     return letters
 
 
+def _stored_live_snapshot(db: Session, symbol: str) -> dict | None:
+    """Use the latest real, persisted BrsApi observation when the provider is down."""
+    company = db.query(models.Company).filter(models.Company.symbol == symbol).first()
+    if not company:
+        return None
+    snapshot = (
+        db.query(models.PriceSnapshot)
+        .filter(models.PriceSnapshot.company_id == company.id)
+        .order_by(models.PriceSnapshot.fetched_at.desc(), models.PriceSnapshot.id.desc())
+        .first()
+    )
+    if not snapshot:
+        return None
+    raw = dict(snapshot.raw_json or {})
+    mapped = tsetmc_service._map_symbol_record(raw) if raw else {}
+    mapped.update({
+        "symbol": symbol,
+        "full_name": mapped.get("full_name") or company.company_name,
+        "isin": mapped.get("isin") or company.ins_code,
+        "market_category": mapped.get("market_category") or company.industry,
+        "last_price": snapshot.price if snapshot.price is not None else mapped.get("last_price"),
+        "closing_price": snapshot.close_price if snapshot.close_price is not None else mapped.get("closing_price"),
+        "eps": snapshot.eps if snapshot.eps is not None else mapped.get("eps"),
+        "pe_ratio": snapshot.pe_ratio if snapshot.pe_ratio is not None else mapped.get("pe_ratio"),
+        "market_cap": snapshot.market_cap if snapshot.market_cap is not None else mapped.get("market_cap"),
+        "_fallback": True,
+    })
+    return mapped
+
+
 def _is_financial_statement(letter: dict) -> bool:
     title = str(letter.get("Title") or "").replace("\u200c", " ")
     code = str(letter.get("LetterCode") or "").replace("۰", "0").replace("۱", "1")
@@ -422,6 +452,8 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         live_error = str(e)
     except (tsetmc_service.TsetmcUnavailableError, tsetmc_service.TsetmcConfigError) as e:
         live_error = str(e)
+    if live_data is None:
+        live_data = _stored_live_snapshot(db, symbol)
 
     # ۲. فهرست گزارش‌های کدال
     try:

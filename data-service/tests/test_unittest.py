@@ -37,6 +37,16 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("def _stored_codal_letters", source)
         self.assertIn("letters = _stored_codal_letters(db, symbol)", source)
 
+    def test_analysis_uses_stored_real_market_snapshot_when_provider_is_down(self):
+        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        self.assertIn("def _stored_live_snapshot", source)
+        self.assertIn("live_data = _stored_live_snapshot(db, symbol)", source)
+
+    def test_html_codal_parser_dependencies_are_pinned(self):
+        requirements = self.root.joinpath("requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("beautifulsoup4==", requirements)
+        self.assertIn("html5lib==", requirements)
+
     def test_analysis_falls_back_from_broken_codal_amendments(self):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
         self.assertIn("def _parse_first_usable_report", source)

@@ -50,6 +50,12 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     has_nonpositive_equity = bool(metrics.get("total_equity") is not None and metrics.get("total_equity") <= 0)
     has_operating_loss = bool(metrics.get("operating_profit") is not None and metrics.get("operating_profit") <= 0)
     critical_warning = has_net_loss or has_nonpositive_equity or has_operating_loss
+    # A normalized score based only on available positive dimensions can look
+    # deceptively healthy while the latest statement contains a critical loss.
+    # Keep the dimensions auditable, but cap the headline score consistently
+    # with the mandatory SELL warning.
+    if score is not None and critical_warning:
+        score = min(score, 39.0)
 
     questions = core_questions(
         ttm_eps=metrics.get("eps_basic"),
@@ -132,7 +138,13 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "sourceLineage": {
             "codalTracingNo": report.get("tracing_no"),
             "codalDocument": report.get("excel_url"),
-            "marketSource": "BrsApi" if live else None,
+            "marketSource": (
+                "BrsApi (آخرین داده ذخیره‌شده)"
+                if live.get("_fallback")
+                else "BrsApi"
+                if live
+                else None
+            ),
         },
     }
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

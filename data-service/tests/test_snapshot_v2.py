@@ -92,6 +92,7 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["decision"], "SELL")
         self.assertEqual(payload["valuation"]["fairValueBase"], 7210)
         self.assertIn("زیان عملیاتی", payload["criticalWarning"])
+        self.assertLessEqual(payload["healthScore"], 39)
         self.assertEqual(payload["coreQuestions"]["earnings_vs_bank"]["status"], "FAIL")
 
 

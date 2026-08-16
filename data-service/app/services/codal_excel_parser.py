@@ -197,7 +197,7 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
     """
     try:
         tables = pd.read_html(html_bytes)
-    except ValueError as e:
+    except (ValueError, ImportError) as e:
         raise CodalExcelParseError(f"هیچ جدولی در فایل پیدا نشد: {e}") from e
 
     result = {key: None for key in TARGET_ITEMS}
