@@ -11,6 +11,7 @@ from app.database import engine, Base, get_db
 from app import models
 from app.services import tsetmc_service, codal_service, codal_excel_parser, ratio_engine
 from app.analytics.snapshot_v2 import build_snapshot_payload
+from app.analytics.period_comparison import build_period_comparison, period_label_from_title
 
 # ساخت جدول‌ها در صورت عدم وجود (برای MVP کافیه؛ بعداً می‌تونیم Alembic اضافه کنیم)
 Base.metadata.create_all(bind=engine)
@@ -433,6 +434,20 @@ def _parse_first_usable_report(candidates: list[dict]) -> tuple[dict, str, dict]
     raise HTTPException(status_code=422, detail=detail)
 
 
+def _build_period_comparison(
+    candidate: dict, parsed: dict, letters: list[dict]
+) -> tuple[dict | None, str | None]:
+    """گزارش هم‌طول قبلی برای رشد واقعی؛ شکست این بخش تحلیل اصلی را متوقف نمی‌کند."""
+    period_label = period_label_from_title(str(candidate.get("Title") or ""))
+    previous_candidates = [
+        rec for rec in _financial_candidates(letters, "latest_codal")
+        if rec is not candidate and period_label is not None and period_label in str(rec.get("Title") or "")
+    ]
+    return build_period_comparison(
+        candidate, parsed, previous_candidates, _parse_first_usable_report
+    )
+
+
 @app.get("/api/analyze/{symbol}")
 def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depends(get_db)):
     """
@@ -481,38 +496,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         )
     candidate, excel_url, parsed = _parse_first_usable_report(candidates)
 
-    # گزارش هم‌طول قبلی برای محاسبه رشد واقعی؛ شکست این بخش تحلیل اصلی را متوقف نمی‌کند.
-    title = candidate.get("Title") or ""
-    period_label = next((p for p in ("۱۲ ماهه", "۹ ماهه", "۶ ماهه", "۳ ماهه") if p in title), None)
-    comparison = None
-    comparison_unavailable_reason = "گزارش دوره هم‌طول قبلی دارای فایل اکسل پیدا نشد."
-    if period_label:
-        previous_candidates = [
-            rec for rec in _financial_candidates(letters, "latest_codal")
-            if rec is not candidate and period_label in str(rec.get("Title") or "")
-        ]
-        if previous_candidates:
-            try:
-                previous, _previous_url, previous_parsed = _parse_first_usable_report(previous_candidates)
-                current_revenue = parsed["metrics"].get("revenue")
-                previous_revenue = previous_parsed["metrics"].get("revenue")
-                current_profit = parsed["metrics"].get("net_profit")
-                previous_profit = previous_parsed["metrics"].get("net_profit")
-                comparison = {
-                    "period_label": period_label,
-                    "current_report": candidate.get("TracingNo"),
-                    "previous_report": previous.get("TracingNo"),
-                    "current_revenue": current_revenue,
-                    "previous_revenue": previous_revenue,
-                    "revenue_growth_percent": ((current_revenue / previous_revenue) - 1) * 100 if current_revenue is not None and previous_revenue not in (None, 0) else None,
-                    "current_net_profit": current_profit,
-                    "previous_net_profit": previous_profit,
-                    "net_profit_growth_percent": ((current_profit / previous_profit) - 1) * 100 if current_profit is not None and previous_profit not in (None, 0) else None,
-                    "source": "صورت‌های مالی رسمی کدال",
-                }
-                comparison_unavailable_reason = None
-            except (codal_excel_parser.CodalExcelDownloadError, codal_excel_parser.CodalExcelParseError):
-                comparison_unavailable_reason = "فایل گزارش دوره هم‌طول قبلی قابل دریافت یا استخراج نبود."
+    comparison, comparison_unavailable_reason = _build_period_comparison(candidate, parsed, letters)
 
     # ۵. محاسبه‌ی نسبت‌ها
     live_pe = live_data.get("pe_ratio") if live_data else None

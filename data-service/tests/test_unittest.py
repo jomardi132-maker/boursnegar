@@ -2,7 +2,10 @@ import unittest
 import importlib.util
 from pathlib import Path
 
+from fastapi import HTTPException
+
 from app.ingestion.market_history import model_family
+from app.analytics.period_comparison import build_period_comparison
 
 
 class DataServiceContractTests(unittest.TestCase):
@@ -20,11 +23,43 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertNotIn("anthropic", source.lower())
 
     def test_comparable_period_is_real_and_graceful(self):
-        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        source = "\n".join(
+            (
+                self.root.joinpath("app", "main.py").read_text(encoding="utf-8"),
+                self.root.joinpath("app", "analytics", "period_comparison.py").read_text(encoding="utf-8"),
+            )
+        )
         self.assertIn("period_comparison", source)
         self.assertIn("previous_revenue", source)
         self.assertIn("revenue_growth_percent", source)
+        self.assertIn("except HTTPException", source)
         self.assertNotIn("random", source.lower())
+
+    def test_unusable_comparable_period_does_not_abort_analysis(self):
+        candidate = {"Title": "صورت های مالی ۱۲ ماهه حسابرسی شده", "TracingNo": "1"}
+        previous = {"Title": "صورت های مالی ۱۲ ماهه حسابرسی نشده", "TracingNo": "2"}
+        parsed = {"metrics": {"revenue": 100, "net_profit": 20}}
+
+        def parse_previous(_candidates):
+            raise HTTPException(status_code=422, detail="گزارش قبلی فاقد اقلام اصلی بود.")
+
+        comparison, reason = build_period_comparison(
+            candidate, parsed, [previous], parse_previous
+        )
+        self.assertIsNone(comparison)
+        self.assertIn("قابل دریافت", reason)
+
+        def parse_ok(_candidates):
+            return previous, "https://example.invalid/prev.xls", {
+                "metrics": {"revenue": 80, "net_profit": 10},
+            }
+
+        comparison, reason = build_period_comparison(
+            candidate, parsed, [previous], parse_ok
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(comparison["previous_report"], "2")
+        self.assertAlmostEqual(comparison["revenue_growth_percent"], 25)
 
     def test_persian_codal_dates_are_normalized_for_history_sync(self):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
