@@ -19,7 +19,6 @@ from app.services.codal_service import fetch_direct_letters_page
 
 SOURCE = "codal-search-api"
 PIPELINE = "codal-metadata-1404-v1"
-PILOT_FAMILIES = ("metals", "petrochemical", "refinery", "bank", "cement")
 YEAR_RE = re.compile(r"14(?:04|05)")
 DATE_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
 
@@ -69,11 +68,10 @@ def _symbols(connection) -> list[dict]:
       FROM symbol_aliases sa
       JOIN instruments i ON i.id=sa.instrument_id
       JOIN issuers ir ON ir.id=i.issuer_id
-      JOIN industries ind ON ind.id=ir.industry_id
-      WHERE sa.valid_to IS NULL AND i.active AND ind.model_family = ANY(:families)
+      WHERE sa.valid_to IS NULL AND i.active
         AND sa.symbol !~ '[0-9۰-۹]$'
       ORDER BY sa.symbol
-    """), {"families": list(PILOT_FAMILIES)}).mappings())
+    """)).mappings())
 
 
 def _save_letter(connection, symbol: dict, letter: dict) -> bool:
