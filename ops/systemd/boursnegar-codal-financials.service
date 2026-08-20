@@ -1,0 +1,15 @@
+[Unit]
+Description=Boursnegar resumable Codal financial document ingestion
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+EnvironmentFile=/var/www/boursnegar-data-current/.env
+Environment=PYTHONPATH=.
+ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/ingest_codal_financials.py --limit 100
+TimeoutStartSec=6h
+Nice=10
+
