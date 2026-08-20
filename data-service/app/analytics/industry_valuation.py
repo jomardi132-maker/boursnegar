@@ -20,6 +20,10 @@ MODEL_SPECS = {
     "cement": ModelSpec("normalized_pe", 7.0),
     "pharmaceutical": ModelSpec("normalized_pe", 7.0),
     "bank": ModelSpec("price_to_book", 1.0, 0.20, 0.15),
+    # Conservative accounting book-value proxy. This is not an NAV model;
+    # the payload must make that limitation explicit until sourced NAV data is
+    # available.
+    "real_estate": ModelSpec("price_to_book", 1.0, 0.25, 0.25),
 }
 
 
@@ -101,7 +105,11 @@ def value_company(raw: dict) -> dict | None:
             "scenarioDownside": spec.downside,
             "scenarioUpside": spec.upside,
             "currency": "IRR_PER_SHARE",
-            "basisSource": "market_ttm_eps" if _number(live.get("eps")) else "audited_report_eps",
+            "basisSource": (
+                "book_value_proxy"
+                if spec.method == "price_to_book"
+                else "market_ttm_eps" if _number(live.get("eps")) else "audited_report_eps"
+            ),
         },
         "scenarios": {"bear": round(low), "base": round(base), "bull": round(high)},
     }

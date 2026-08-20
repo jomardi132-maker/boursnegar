@@ -28,7 +28,10 @@ HEADERS = {
     "Accept": "application/json, text/plain, */*",
 }
 
-CACHE_TTL_SECONDS = 20  # چند ثانیه کش کافیه تا در بار زیاد به سقف نخوریم
+# AllSymbols is a bulk response and BrsApi documents a rolling request limit.
+# Keep it for several minutes so page loads and analysis requests share one
+# provider call instead of consuming quota repeatedly.
+CACHE_TTL_SECONDS = 300
 _cache_lock = threading.Lock()
 _cache = {"data": None, "fetched_at": 0.0}
 

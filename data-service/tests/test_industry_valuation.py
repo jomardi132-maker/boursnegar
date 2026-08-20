@@ -28,6 +28,15 @@ class IndustryValuationTests(unittest.TestCase):
         self.assertEqual(value["method"], "price_to_book")
         self.assertEqual(value["fairValueBase"], 2000)
 
+    def test_values_real_estate_with_explicit_book_value_proxy(self):
+        value = value_company({
+            "live_price": {"market_category": "انبوه‌سازی، املاک و مستغلات", "total_shares": 1_000_000},
+            "financial_metrics": {"total_equity": 2_000},
+        })
+        self.assertEqual(value["family"], "real_estate")
+        self.assertEqual(value["method"], "price_to_book")
+        self.assertEqual(value["assumptions"]["basisSource"], "book_value_proxy")
+
     def test_rejects_negative_earnings_and_unknown_industry(self):
         self.assertIsNone(value_company({"live_price": {"market_category": "خودرو و ساخت قطعات"}, "financial_metrics": {"eps_basic": 10}}))
         self.assertIsNone(value_company({"live_price": {"market_category": "فلزات اساسی"}, "financial_metrics": {"eps_basic": -10}}))
