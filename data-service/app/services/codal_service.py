@@ -52,6 +52,22 @@ def fetch_letters_page(
     from_date: str | None = None,
     to_date: str | None = None,
 ) -> dict:
+    """Fetch a page, using the configured BrsApi fallback only for online analysis."""
+    try:
+        return fetch_direct_letters_page(symbol, page, from_date, to_date)
+    except CodalUnavailableError:
+        if BRSAPI_KEY:
+            return _fetch_brsapi_letters_page(symbol, page)
+        raise
+
+
+def fetch_direct_letters_page(
+    symbol: str | None,
+    page: int = 1,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict:
+    """Fetch only from public Codal; historical backfills must not consume BrsApi quota."""
     params = dict(DEFAULT_PARAMS)
     if symbol:
         params["Symbol"] = symbol
@@ -65,10 +81,6 @@ def fetch_letters_page(
         resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=CODAL_TIMEOUT_SECONDS)
         resp.raise_for_status()
     except requests.exceptions.RequestException as e:
-        # Direct Codal may reject the server by rate limit or close the
-        # connection. BrsApi is the configured provider fallback for both.
-        if BRSAPI_KEY:
-            return _fetch_brsapi_letters_page(symbol, page)
         raise CodalUnavailableError(f"خطا در اتصال به کدال: {e}") from e
 
     return resp.json()

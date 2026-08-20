@@ -14,7 +14,7 @@ from sqlalchemy import text
 from app.config import CODAL_RATE_LIMIT_SECONDS
 from app.database import engine
 from app.ingestion.market_history import gregorian_to_jalali, normalize_persian
-from app.services.codal_service import fetch_letters_page
+from app.services.codal_service import fetch_direct_letters_page
 
 
 SOURCE = "codal-search-api"
@@ -40,7 +40,7 @@ def _is_in_scope(letter: dict) -> bool:
 def _fetch_with_backoff(symbol: str, page: int) -> dict:
     for attempt in range(5):
         try:
-            return fetch_letters_page(symbol, page)
+            return fetch_direct_letters_page(symbol, page)
         except Exception as exc:
             if "429" not in str(exc) or attempt == 4:
                 raise
@@ -53,7 +53,7 @@ def _fetch_with_backoff(symbol: str, page: int) -> dict:
 def _fetch_global_with_backoff(page: int, from_date: str, to_date: str) -> dict:
     for attempt in range(6):
         try:
-            return fetch_letters_page(None, page, from_date, to_date)
+            return fetch_direct_letters_page(None, page, from_date, to_date)
         except Exception as exc:
             if "429" not in str(exc) or attempt == 5:
                 raise

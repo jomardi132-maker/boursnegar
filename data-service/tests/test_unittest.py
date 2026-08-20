@@ -88,6 +88,13 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("metrics.get(\"revenue\") is not None", source)
         self.assertIn("_financial_candidates(letters, report_mode)", source)
 
+    def test_historical_codal_backfill_never_uses_brsapi_fallback(self):
+        service = self.root.joinpath("app", "services", "codal_service.py").read_text(encoding="utf-8")
+        importer = self.root.joinpath("scripts", "backfill_codal_1404.py").read_text(encoding="utf-8")
+        self.assertIn("def fetch_direct_letters_page", service)
+        self.assertIn("fetch_direct_letters_page", importer)
+        self.assertNotIn("fetch_letters_page(symbol, page)", importer)
+
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")
         spec = importlib.util.spec_from_file_location("update_market_daily", path)
