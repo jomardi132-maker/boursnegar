@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from app.ingestion.market_history import model_family
 from app.analytics.period_comparison import build_period_comparison
+from app.services.codal_excel_parser import extract_period_end_jalali
 
 
 class DataServiceContractTests(unittest.TestCase):
@@ -94,6 +95,14 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("def fetch_direct_letters_page", service)
         self.assertIn("fetch_direct_letters_page", importer)
         self.assertNotIn("fetch_letters_page(symbol, page)", importer)
+
+    def test_codal_period_requires_explicit_valid_persian_date(self):
+        self.assertEqual(
+            extract_period_end_jalali("صورت‌های مالی دوره ۶ ماهه منتهی به ۱۴۰۴/۰۶/۳۱"),
+            "1404/06/31",
+        )
+        self.assertIsNone(extract_period_end_jalali("گزارش عملکرد ماهانه بدون تاریخ دوره"))
+        self.assertIsNone(extract_period_end_jalali("دوره منتهی به ۱۴۰۴/۱۳/۴۰"))
 
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")

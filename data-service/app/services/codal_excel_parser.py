@@ -25,6 +25,7 @@ PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
 ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
 ASCII_DIGITS = "0123456789"
 _DIGIT_TRANS = str.maketrans(PERSIAN_DIGITS + ARABIC_INDIC_DIGITS, ASCII_DIGITS + ASCII_DIGITS)
+JALALI_DATE_RE = re.compile(r"(?<!\d)(14\d{2})[\-/](\d{1,2})[\-/](\d{1,2})(?!\d)")
 
 # قلم‌های هدف: کلید داخلی -> لیستی از برچسب‌های محتمل فارسی (بعد از نرمال‌سازی، بدون فاصله)
 TARGET_ITEMS = {
@@ -52,6 +53,20 @@ class CodalExcelDownloadError(Exception):
 
 class CodalExcelParseError(Exception):
     pass
+
+
+def extract_period_end_jalali(title: str | None) -> str | None:
+    """Return an explicit Persian report end date; never infer a date from the publish date."""
+    if not title:
+        return None
+    normalized = str(title).translate(_DIGIT_TRANS)
+    match = JALALI_DATE_RE.search(normalized)
+    if not match:
+        return None
+    year, month, day = (int(part) for part in match.groups())
+    if not (1400 <= year <= 1499 and 1 <= month <= 12 and 1 <= day <= 31):
+        return None
+    return f"{year:04d}/{month:02d}/{day:02d}"
 
 
 def _normalize_label(value) -> str:

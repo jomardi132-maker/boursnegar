@@ -37,10 +37,10 @@ def _is_in_scope(letter: dict) -> bool:
     return bool(YEAR_RE.search(searchable))
 
 
-def _fetch_with_backoff(symbol: str, page: int) -> dict:
+def _fetch_with_backoff(symbol: str, page: int, from_date: str | None = None, to_date: str | None = None) -> dict:
     for attempt in range(5):
         try:
-            return fetch_direct_letters_page(symbol, page)
+            return fetch_direct_letters_page(symbol, page, from_date, to_date)
         except Exception as exc:
             if "429" not in str(exc) or attempt == 4:
                 raise
@@ -130,7 +130,8 @@ def _save_letter(connection, symbol: dict, letter: dict) -> bool:
     return True
 
 
-def run(max_pages: int, resume: bool) -> dict:
+def run(max_pages: int, resume: bool, requested_symbols: set[str] | None = None,
+        from_date: str = "1404/01/01", to_date: str | None = None) -> dict:
     run_id = str(uuid.uuid4())
     with engine.begin() as connection:
         connection.execute(text("""
@@ -138,6 +139,9 @@ def run(max_pages: int, resume: bool) -> dict:
           VALUES(:id,:pipeline,:source,'pilot-industries','RUNNING')
         """), {"id": run_id, "pipeline": PIPELINE, "source": SOURCE})
         symbols = _symbols(connection)
+        if requested_symbols:
+            requested = {normalize_persian(item) for item in requested_symbols}
+            symbols = [item for item in symbols if normalize_persian(item["symbol"]) in requested]
         done = set()
         if resume:
             done = {row[0] for row in connection.execute(text("""
@@ -154,7 +158,7 @@ def run(max_pages: int, resume: bool) -> dict:
         try:
             letters = []
             for page in range(1, max_pages + 1):
-                payload = _fetch_with_backoff(symbol, page)
+                payload = _fetch_with_backoff(symbol, page, from_date, to_date)
                 page_letters = payload.get("Letters") or []
                 letters.extend(letter for letter in page_letters if _is_in_scope(letter))
                 if not page_letters or page >= int(payload.get("Page") or page):
@@ -279,6 +283,11 @@ if __name__ == "__main__":
     parser.add_argument("--max-pages", type=int, default=12)
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--global-pages", action="store_true")
+    parser.add_argument("--symbols", nargs="+", help="Only backfill these symbols")
+    parser.add_argument("--from-date", default="1404/01/01")
+    parser.add_argument("--to-date")
     args = parser.parse_args()
-    result = run_global(not args.no_resume) if args.global_pages else run(args.max_pages, not args.no_resume)
+    result = run_global(not args.no_resume) if args.global_pages else run(
+        args.max_pages, not args.no_resume, set(args.symbols or []), args.from_date, args.to_date
+    )
     print(json.dumps(result, ensure_ascii=False))
