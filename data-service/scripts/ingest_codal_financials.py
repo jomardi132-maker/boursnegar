@@ -66,6 +66,8 @@ def ingest(limit: int, root: Path) -> dict:
           LEFT JOIN raw_documents rd ON rd.disclosure_version_id=dv.id
           WHERE rd.id IS NULL AND (dv.metadata->>'excel_url') IS NOT NULL
             AND d.published_date_jalali >= '1404/01/01'
+            AND d.title ~ '(صورت|مالی|ترازنامه|سود|زیان)'
+            AND d.title !~ 'فعالیت ماهانه'
           ORDER BY d.published_date_jalali,d.source_disclosure_id
           LIMIT :limit
         """), {"limit": limit}).mappings())
