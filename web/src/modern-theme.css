@@ -1,4 +1,7 @@
 /* Unified dark market surface for the modern production theme. */
+:root{--paper:#07110e;--paper-2:#0c1b16;--navy:#eaf7ef;--muted:#91a79d}
+body{background:#07110e!important;color:#eaf7ef!important;background-image:linear-gradient(rgba(114,231,173,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(114,231,173,.035) 1px,transparent 1px)!important;background-size:44px 44px!important}
+.topbar{background:rgba(7,17,14,.88)!important;border-color:rgba(114,231,173,.18)!important}
 .market-explorer{color:#eaf7ef}
 .market-heading h2{color:#f2fff7}
 .market-heading p,.screener-meta{color:#91a79d}
