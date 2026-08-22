@@ -92,7 +92,7 @@ const otpVerifySchema = z.object({
   referralCode: z.string().max(16).optional(),
 });
 const emailSchema = z.string().trim().email().max(254);
-const passwordSchema = z.string().min(12).max(128);
+const passwordSchema = z.string().min(8).max(128);
 const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
@@ -176,7 +176,7 @@ app.post(
     const parsed = registerSchema.safeParse(req.body);
     const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
     if (!parsed.success || !email)
-      return res.status(400).json({ success: false, error: "ایمیل یا رمز عبور معتبر نیست. رمز باید حداقل ۱۲ نویسه باشد." });
+      return res.status(400).json({ success: false, error: "ایمیل یا رمز عبور معتبر نیست. رمز باید حداقل ۸ نویسه باشد." });
     try {
       const result = await registerWithEmail(email, parsed.data.password, req.ip || "127.0.0.1", req.header("user-agent") || "", parsed.data.referralCode);
       setSessionCookie(res, result.sessionToken);
