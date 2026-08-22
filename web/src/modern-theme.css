@@ -9,6 +9,7 @@ body{background:#07110e!important;color:#eaf7ef!important;background-image:linea
 .trust-section{border-color:#29483e}.app-shell>footer{border-color:#29483e;color:#91a79d}.app-shell>footer b{color:#eaf7ef}.app-shell>footer button{color:#72e7ad}
 .auth-dialog{background:#0c1b16;color:#eaf7ef}.auth-dialog>p,.auth-dialog>small{color:#91a79d}.auth-dialog input{background:#07110e;color:#eaf7ef;border-color:#315448}.auth-dialog input:focus{border-color:#72e7ad;box-shadow:0 0 0 3px rgba(114,231,173,.16)}
 .search-box{border-color:#315448;background:#0c1b16}.search-box input{color:#f2fff7}.search-box button{background:#72e7ad;color:#06130e}.trust-line{color:#91a79d}.trust-line svg{color:#72e7ad}
+.hero-panel{background:linear-gradient(145deg,#102c23,#07110e);color:#eaf7ef;border-color:rgba(114,231,173,.2);box-shadow:20px 24px 0 #0d221a,0 45px 100px rgba(0,0,0,.45)}.panel-head{color:#eaf7ef}.database-number strong{color:#72e7ad}.database-number span,.database-grid small,.panel-note{color:#91a79d}.database-grid b{color:#f2fff7}
 .error-state{background:#2d1715;border-color:#78423c;color:#ffb2a9}
 .stock-shell{background:#07110e;color:#eaf7ef}
 .stock-topbar{background:rgba(7,17,14,.9);border-color:#29483e}
