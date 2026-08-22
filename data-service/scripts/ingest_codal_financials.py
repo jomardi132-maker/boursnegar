@@ -137,10 +137,11 @@ def ingest(limit: int, root: Path) -> dict:
                 with engine.begin() as connection:
                     connection.execute(text("""
                       INSERT INTO raw_documents(disclosure_version_id,source_url,storage_key,checksum_sha256,mime_type,byte_size,retrieved_at,parser_status)
-                      VALUES(:version,:url,NULL,:checksum,'text/html',:size,now(),'FAILED')
+                      VALUES(:version,:url,:key,:checksum,'text/html',:size,now(),'FAILED')
                       ON CONFLICT(disclosure_version_id,checksum_sha256) DO UPDATE SET
                         parser_status='FAILED',retrieved_at=now()
                     """), {"version": row["version_id"], "url": row["excel_url"],
+                           "key": str(root / f"{hashlib.sha256(content).hexdigest()}.failed.html"),
                            "checksum": hashlib.sha256(content).hexdigest(), "size": len(content)})
             failed += 1
             print(json.dumps({"disclosure": row["source_disclosure_id"], "error": str(exc)[:300], "permanent": True}, ensure_ascii=False), flush=True)
