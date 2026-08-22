@@ -42,7 +42,7 @@ export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysis
   return <div className="stock-shell" dir="rtl">
     <header className="stock-topbar"><a href="/" className="brand"><span className="brand-mark"><BarChart3/></span><span><b>بورس‌نگار</b><small>مرجع تحلیلی بازار ایران</small></span></a><a href="/" className="back-home"><ArrowRight/> جست‌وجوی سهم دیگر</a></header>
     <main className="stock-page">
-      <section className="stock-identity"><div><span className="stock-symbol">{data.stock.symbol}</span><div><h1 style={{color:"var(--navy)"}}>{data.stock.legal_name}</h1><p>{data.stock.industry || "بازار سرمایه"} · {data.stock.isin}</p></div></div><button disabled={analysisLoading} onClick={() => onAnalyze(data.stock.symbol)}>{analysisLoading ? "در حال تحلیل…" : "تحلیل بنیادی کامل"}</button></section>
+      <section className="stock-identity"><div><span className="stock-symbol">{data.stock.symbol}</span><div><h1>{data.stock.legal_name}</h1><p>{data.stock.industry || "بازار سرمایه"} · {data.stock.isin}</p></div></div><button disabled={analysisLoading} onClick={() => onAnalyze(data.stock.symbol)}>{analysisLoading ? "در حال تحلیل…" : "تحلیل بنیادی کامل"}</button></section>
       <section className="market-strip">
         <Metric label="آخرین قیمت" value={`${fa(data.latest?.adjusted_close)} ریال`} detail={data.latest?.trading_date_jalali || "—"}/>
         <ReturnMetric label="بازده یک‌ماهه" value={data.returns.oneMonth}/>
@@ -84,11 +84,11 @@ function PriceChart({ prices }: { prices: Price[] }) {
     cutoff?.setUTCFullYear(cutoff.getUTCFullYear() - 1);
     const visible = cutoff ? prices.filter(p => new Date(p.trading_date) >= cutoff) : prices;
     const values = visible.map(p => Number(p.adjusted_close ?? p.close)).filter(Number.isFinite);
-    if (values.length < 2) return { line: "", area: "", min: 0, max: 0 };
+    if (values.length < 2) return { line: "", area: "", min: 0, max: 0, count: 0 };
     const min = Math.min(...values), max = Math.max(...values), spread = max - min || 1;
     const coords = values.map((v, i) => `${(i/(values.length-1))*900},${260-((v-min)/spread)*220}`);
-    return { line: `M${coords.join(" L")}`, area: `M0,280 L${coords.join(" L")} L900,280 Z`, min, max };
+    return { line: `M${coords.join(" L")}`, area: `M0,280 L${coords.join(" L")} L900,280 Z`, min, max, count: values.length };
   }, [prices]);
   if (!points.line) return <div className="chart-empty">دادهٔ کافی برای نمودار وجود ندارد.</div>;
-  return <div className="price-chart"><svg viewBox="0 0 900 300" preserveAspectRatio="none" role="img" aria-label="نمودار قیمت سهم"><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#15b8a6" stopOpacity=".32"/><stop offset="100%" stopColor="#15b8a6" stopOpacity="0"/></linearGradient></defs>{[60,115,170,225,280].map(y => <line key={y} x1="0" y1={y} x2="900" y2={y} className="grid-line"/>)}<path d={points.area} fill="url(#chartFill)"/><path d={points.line} className="price-line"/></svg><span className="chart-max">{fa(points.max)}</span><span className="chart-min">{fa(points.min)}</span></div>;
+  return <><div className="price-chart"><svg viewBox="0 0 900 300" preserveAspectRatio="none" role="img" aria-label="نمودار قیمت تعدیل‌شده سهم"><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#15b8a6" stopOpacity=".32"/><stop offset="100%" stopColor="#15b8a6" stopOpacity="0"/></linearGradient></defs>{[60,115,170,225,280].map(y => <line key={y} x1="0" y1={y} x2="900" y2={y} className="grid-line"/>)}<path d={points.area} fill="url(#chartFill)"/><path d={points.line} className="price-line"/></svg><span className="chart-max">{fa(points.max)}</span><span className="chart-min">{fa(points.min)}</span></div><div className="chart-summary"><span>بیشینه {fa(points.max)} ریال</span><span>{fa(points.count)} روز معاملاتی</span><span>کمینه {fa(points.min)} ریال</span></div></>;
 }

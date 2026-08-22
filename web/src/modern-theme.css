@@ -11,11 +11,12 @@ body{background:#07110e!important;color:#eaf7ef!important;background-image:linea
 .search-box{border-color:#315448;background:#0c1b16}.search-box input{color:#f2fff7}.search-box button{background:#72e7ad;color:#06130e}.trust-line{color:#91a79d}.trust-line svg{color:#72e7ad}
 .hero-panel{background:linear-gradient(145deg,#102c23,#07110e);color:#eaf7ef;border-color:rgba(114,231,173,.2);box-shadow:20px 24px 0 #0d221a,0 45px 100px rgba(0,0,0,.45)}.panel-head{color:#eaf7ef}.database-number strong{color:#72e7ad}.database-number span,.database-grid small,.panel-note{color:#91a79d}.database-grid b{color:#f2fff7}
 .error-state{background:#2d1715;border-color:#78423c;color:#ffb2a9}
-.stock-shell{background:#07110e;color:#eaf7ef}
+.stock-shell{background:#07110e;color:#eaf7ef}.stock-identity h1{color:#f2fff7!important}.stock-identity button{background:#72e7ad;color:#06130e}.stock-identity{border-color:#315448}
 .stock-topbar{background:rgba(7,17,14,.9);border-color:#29483e}
 .back-home{color:#eaf7ef}.stock-identity{border-color:#315448}.stock-identity p,.market-strip small,.market-strip span{color:#91a79d}
 .market-strip{border-color:#29483e}.market-strip article{border-color:#29483e}.positive{color:#72e7ad!important}.negative{color:#ff9288!important}
 .chart-card,.disclosure-section{background:#0c1b16;border-color:#29483e;color:#eaf7ef}.chart-card header span,.disclosure-section header span{color:#72e7ad}.chart-card h2,.disclosure-section h2{color:#f2fff7}.grid-line{stroke:#29483e}.chart-max,.chart-min{background:#0c1b16;color:#91a79d}.chart-card>footer{border-color:#29483e;color:#91a79d}
+.chart-summary{display:flex;justify-content:space-between;gap:10px;margin-top:10px;color:#91a79d;font-size:9px}.chart-summary span{padding:6px 9px;border:1px solid #29483e;border-radius:8px;background:#10231c}
 .disclosure-list{background:#29483e;border-color:#29483e}.disclosure-list>a{background:#10231c;color:#eaf7ef}.doc-icon{background:#17362b;color:#72e7ad}.disclosure-list small{color:#91a79d}.stock-disclaimer{border-color:#315448}.stock-disclaimer p{color:#a7b9b0}
 .stock-loading i{background:#102c23}
 .report-badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}.report-badges em{font-style:normal;font-size:10px;padding:6px 9px;border-radius:999px;border:1px solid #315448;color:#b7cbc0;background:#102c23}.report-badges .audited{color:#72e7ad;border-color:#357b5d}.report-badges .unaudited{color:#f0bf62;border-color:#80652f}
