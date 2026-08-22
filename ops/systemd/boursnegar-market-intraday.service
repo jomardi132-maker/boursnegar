@@ -1,0 +1,15 @@
+[Unit]
+Description=Boursnegar intraday market snapshot
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+EnvironmentFile=/var/www/boursnegar-data-current/.env
+Environment=PYTHONPATH=.
+ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/update_market_daily.py --pipeline market-intraday-v1 --source brsapi-intraday-market
+TimeoutStartSec=20min
+Nice=5
+

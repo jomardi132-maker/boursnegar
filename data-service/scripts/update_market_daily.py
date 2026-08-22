@@ -61,6 +61,8 @@ def main() -> None:
     parser.add_argument("--date", type=date.fromisoformat)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-non-market-day", action="store_true")
+    parser.add_argument("--pipeline", default=PIPELINE)
+    parser.add_argument("--source", default=SOURCE)
     args = parser.parse_args()
 
     trading_date = args.date or datetime.now(TEHRAN).date()
@@ -86,11 +88,11 @@ def main() -> None:
           SELECT watermark->>'fingerprint' FROM ingestion_runs
           WHERE pipeline=:pipeline AND source=:source AND status='PASSED'
           ORDER BY finished_at DESC NULLS LAST LIMIT 1
-        """), {"pipeline": PIPELINE, "source": SOURCE}).scalar()
+        """), {"pipeline": args.pipeline, "source": args.source}).scalar()
         connection.execute(text("""
           INSERT INTO ingestion_runs(id,pipeline,source,partition_key,status,watermark)
           VALUES(:id,:pipeline,:source,:partition,'RUNNING',CAST(:watermark AS jsonb))
-        """), {"id": run_id, "pipeline": PIPELINE, "source": SOURCE,
+        """), {"id": run_id, "pipeline": args.pipeline, "source": args.source,
                  "partition": str(trading_date),
                  "watermark": json.dumps({"date": str(trading_date), "fingerprint": fingerprint})})
         if previous == fingerprint:
@@ -132,7 +134,7 @@ def main() -> None:
                     adjusted_close(instrument["previous_adjusted"], instrument["previous_close"],
                                    quote.get("pc"), quote.get("py")),
                     quote.get("tvol"), quote.get("tval"), quote.get("tno"), quote.get("mv"), quote.get("z"),
-                    SOURCE, retrieved_at,
+                    args.source, retrieved_at,
                 ))
             if len(values) < 1000 or missing > 100:
                 raise RuntimeError(f"catalog coverage failed: values={len(values)}, missing={missing}")

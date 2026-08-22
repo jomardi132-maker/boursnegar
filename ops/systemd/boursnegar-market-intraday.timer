@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh Boursnegar market data during trading hours
+
+[Timer]
+OnCalendar=Sat,Sun,Mon,Tue,Wed *-*-* 09:15:00 Asia/Tehran
+OnCalendar=Sat,Sun,Mon,Tue,Wed *-*-* 10:15:00 Asia/Tehran
+OnCalendar=Sat,Sun,Mon,Tue,Wed *-*-* 11:15:00 Asia/Tehran
+OnCalendar=Sat,Sun,Mon,Tue,Wed *-*-* 12:15:00 Asia/Tehran
+Persistent=false
+Unit=boursnegar-market-intraday.service
+
+[Install]
+WantedBy=multi-user.target
