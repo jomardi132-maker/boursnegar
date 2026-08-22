@@ -113,3 +113,30 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .button,.search-box button,.credit-pill,.icon-button,.menu-button,.close,.screener-filters button,.dashboard button,.comments-section button,.market-summary article,.leader-grid>article{transition:none!important}
   .button:hover,.search-box button:hover:not(:disabled),.screener-filters button:hover,.dashboard button:hover,.comments-section button:hover,.market-summary article:hover,.leader-grid>article:hover{transform:none!important}
 }
+
+/* Keep the production dark surface authoritative when stock.css is injected
+   after the app theme by the bundler. */
+.stock-shell{background:#050b09!important;color:#eaf7ef!important}
+.stock-topbar{background:rgba(7,17,14,.92)!important;border-color:#29483e!important}
+.stock-identity{border-color:#315448!important}
+.stock-identity h1{color:#f2fff7!important}
+.stock-identity p,.market-strip small,.market-strip span{color:#91a79d!important}
+.stock-identity button{background:#72e7ad!important;color:#06130e!important}
+.market-strip{border-color:#29483e!important}
+.market-strip article{background:#0c1b16!important;border-color:#29483e!important}
+.chart-card,.snapshot-card,.disclosure-section{background:#0c1b16!important;border-color:#29483e!important;color:#eaf7ef!important}
+.chart-card h2,.disclosure-section h2,.disclosure-list b{color:#f2fff7!important}
+.chart-card header span,.disclosure-section header span{color:#72e7ad!important}
+.grid-line{stroke:#29483e!important}
+.chart-max,.chart-min{background:#0c1b16!important;color:#91a79d!important}
+.chart-card>footer{border-color:#29483e!important;color:#91a79d!important}
+.disclosure-list{background:#29483e!important;border-color:#29483e!important}
+.disclosure-list>a{background:#10231c!important;color:#eaf7ef!important}
+.disclosure-list small{color:#91a79d!important}
+.stock-disclaimer{border-color:#315448!important}
+.stock-disclaimer p{color:#a7b9b0!important}
+.snapshot-card header span,.snapshot-card header em,.snapshot-card small{color:#a7b9b0!important}
+.snapshot-card header em{background:#17362b!important}
+.snapshot-card .fair-band{background:#17362b!important}
+.fundamental-metrics,.valuation-panel,.question-grid article,.decision-details section{background:#0c1b16!important;color:#eaf7ef!important;border-color:#29483e!important}
+.valuation-panel h3,.valuation-panel b,.valuation-panel small,.valuation-panel p{color:#eaf7ef!important}
