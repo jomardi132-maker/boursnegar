@@ -841,7 +841,8 @@ app.post(
 );
 app.use("/api/admin", rateLimit("admin", 120, 60_000));
 app.get("/api/admin/comments", requireUser, requireAdmin, asyncRoute(async (req,res)=>{
-  const rows=await pool.query(`SELECT c.*,e.email,cr.comment_id IS NOT NULL AS rewarded FROM comments c JOIN email_identities e ON e.user_id=c.user_id LEFT JOIN comment_rewards cr ON cr.comment_id=c.id WHERE c.status IN ('pending','published') AND cr.comment_id IS NULL ORDER BY c.created_at ASC LIMIT 200`);
+  const status=String(req.query.status||"all"); const rewarded=String(req.query.rewarded||"all"); const day=String(req.query.day||""); const search=String(req.query.q||"").slice(0,80);
+  const rows=await pool.query(`SELECT c.*,e.email,cr.comment_id IS NOT NULL AS rewarded,cr.created_at AS rewarded_at FROM comments c JOIN email_identities e ON e.user_id=c.user_id LEFT JOIN comment_rewards cr ON cr.comment_id=c.id WHERE ($1='all' OR c.status=$1) AND ($2='all' OR ($2='yes' AND cr.comment_id IS NOT NULL) OR ($2='no' AND cr.comment_id IS NULL)) AND ($3='' OR c.created_at::date=$3::date) AND ($4='' OR c.body ILIKE '%'||$4||'%' OR e.email ILIKE '%'||$4||'%') ORDER BY c.created_at DESC LIMIT 500`,[status,rewarded,day,search]);
   res.json({success:true,comments:rows.rows});
 }));
 app.patch("/api/admin/comments/:id", requireUser, requireAdmin, requireCsrf, asyncRoute(async (req,res)=>{
