@@ -79,7 +79,12 @@ def ingest(limit: int, root: Path) -> dict:
             AND d.published_date_jalali >= '1404/01/01'
             AND d.title ~ '(صورت|مالی|ترازنامه|سود|زیان)'
             AND d.title !~ 'فعالیت ماهانه'
-          ORDER BY d.published_date_jalali,d.source_disclosure_id
+          ORDER BY (NOT EXISTS (
+                    SELECT 1 FROM raw_documents pending
+                    WHERE pending.disclosure_version_id=dv.id
+                      AND pending.parser_status NOT IN ('PARSED', 'FAILED_PERMANENT')
+                  )) DESC,
+                   d.published_date_jalali,d.source_disclosure_id
           LIMIT :limit
         """), {"limit": limit}).mappings())
     processed = saved = skipped = failed = 0
