@@ -13,6 +13,7 @@ from app import models
 from app.services import tsetmc_service, codal_service, codal_excel_parser, ratio_engine
 from app.analytics.snapshot_v2 import build_snapshot_payload
 from app.analytics.period_comparison import build_period_comparison, period_label_from_title
+from app.ingestion.market_history import model_family
 
 # ساخت جدول‌ها در صورت عدم وجود (برای MVP کافیه؛ بعداً می‌تونیم Alembic اضافه کنیم)
 Base.metadata.create_all(bind=engine)
@@ -594,12 +595,19 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
 
     # ۵. محاسبه‌ی نسبت‌ها
     live_pe = live_data.get("pe_ratio") if live_data else None
+    company = db.query(models.Company).filter(models.Company.symbol == symbol).first()
     industry_category = live_data.get("market_category") if live_data else None
+    # TSETMC/BrsApi can return a visually different spelling of the industry
+    # (for example a zero-width joiner). Prefer the official company industry
+    # when the provider value cannot be mapped to a supported model family.
+    if model_family(industry_category) == "unclassified" and company and company.industry:
+        industry_category = company.industry
+        if live_data is not None:
+            live_data["market_category"] = industry_category
     ratios = ratio_engine.compute_ratios(parsed["metrics"], live_pe_ratio=live_pe)
     health = ratio_engine.evaluate_health_status(ratios, industry_category=industry_category)
 
     # ۶. ذخیره در دیتابیس
-    company = db.query(models.Company).filter(models.Company.symbol == symbol).first()
     if not company:
         company = models.Company(symbol=symbol, company_name=candidate.get("CompanyName", ""))
         db.add(company)
