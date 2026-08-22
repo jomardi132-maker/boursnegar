@@ -841,7 +841,7 @@ app.post(
 );
 app.use("/api/admin", rateLimit("admin", 120, 60_000));
 app.get("/api/admin/comments", requireUser, requireAdmin, asyncRoute(async (req,res)=>{
-  const rows=await pool.query(`SELECT c.*,e.email FROM comments c JOIN email_identities e ON e.user_id=c.user_id WHERE c.status='pending' ORDER BY c.created_at ASC LIMIT 200`);
+  const rows=await pool.query(`SELECT c.*,e.email,cr.comment_id IS NOT NULL AS rewarded FROM comments c JOIN email_identities e ON e.user_id=c.user_id LEFT JOIN comment_rewards cr ON cr.comment_id=c.id WHERE c.status IN ('pending','published') AND cr.comment_id IS NULL ORDER BY c.created_at ASC LIMIT 200`);
   res.json({success:true,comments:rows.rows});
 }));
 app.patch("/api/admin/comments/:id", requireUser, requireAdmin, requireCsrf, asyncRoute(async (req,res)=>{
