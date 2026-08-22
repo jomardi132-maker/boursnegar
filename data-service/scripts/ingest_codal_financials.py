@@ -80,9 +80,8 @@ def ingest(limit: int, root: Path) -> dict:
             AND d.title ~ '(صورت|مالی|ترازنامه|سود|زیان)'
             AND d.title !~ 'فعالیت ماهانه'
           ORDER BY (NOT EXISTS (
-                    SELECT 1 FROM raw_documents pending
-                    WHERE pending.disclosure_version_id=dv.id
-                      AND pending.parser_status NOT IN ('PARSED', 'FAILED_PERMANENT')
+                    SELECT 1 FROM raw_documents attempted
+                    WHERE attempted.disclosure_version_id=dv.id
                   )) DESC,
                    d.published_date_jalali,d.source_disclosure_id
           LIMIT :limit
