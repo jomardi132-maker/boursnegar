@@ -17,6 +17,7 @@ import { pool, withTransaction } from "./server/postgres";
 import {
   authenticate,
   createPasswordReset,
+  createEmailVerification,
   createOtp,
   loginWithEmail,
   normalizeEmail,
@@ -30,9 +31,10 @@ import {
   resetPassword,
   sessionCsrfToken,
   verifyOtp,
+  verifyEmailCode,
 } from "./server/auth";
 import { installPlatformRoutes } from "./server/platformRoutes";
-import { mailDeliveryReady, sendPasswordResetEmail } from "./server/mailer";
+import { mailDeliveryReady, sendPasswordResetEmail, sendEmailVerificationEmail } from "./server/mailer";
 
 dotenv.config({ quiet: true });
 const app = express();
@@ -100,6 +102,7 @@ const registerSchema = z.object({
 });
 const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(128) });
 const forgotSchema = z.object({ email: emailSchema });
+const verifyEmailSchema = z.object({ email: emailSchema, code: z.string().regex(/^\d{6}$/) });
 const resetSchema = z.object({ token: z.string().min(32).max(128), password: passwordSchema });
 const analyzeSchema = z.object({
   query: z.string().min(1).max(32),
@@ -179,8 +182,11 @@ app.post(
       return res.status(400).json({ success: false, error: "ایمیل یا رمز عبور معتبر نیست. رمز باید حداقل ۸ نویسه باشد." });
     try {
       const result = await registerWithEmail(email, parsed.data.password, req.ip || "127.0.0.1", req.header("user-agent") || "", parsed.data.referralCode);
-      setSessionCookie(res, result.sessionToken);
-      res.status(201).json({ success: true, csrfToken: result.csrfToken, user: result.user });
+      if (!mailDeliveryReady()) return res.status(503).json({ success: false, error: "سرویس ایمیل موقتاً آماده نیست. لطفاً بعداً دوباره تلاش کنید." });
+      const code = await createEmailVerification(email, req.ip || "127.0.0.1");
+      if (!code) return res.status(409).json({ success: false, error: "این ایمیل قبلاً ثبت و تأیید شده است." });
+      await sendEmailVerificationEmail(email, code);
+      res.status(202).json({ success: true, verificationRequired: true, email });
     } catch (error) {
       if ((error as { code?: string })?.code === "23505")
         return res.status(409).json({ success: false, error: "امکان ثبت این حساب وجود ندارد. اگر قبلاً ثبت‌نام کرده‌اید، وارد شوید." });
@@ -201,10 +207,41 @@ app.post(
       setSessionCookie(res, result.sessionToken);
       res.json({ success: true, csrfToken: result.csrfToken, user: result.user });
     } catch (error) {
+      if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED")
+        return res.status(403).json({ success: false, error: "ایمیل شما هنوز تأیید نشده است. کد تأیید ارسال‌شده را وارد کنید." });
       if (error instanceof Error && error.message === "INVALID_CREDENTIALS")
         return res.status(401).json({ success: false, error: "ایمیل یا رمز عبور نادرست است." });
       throw error;
     }
+  }),
+);
+app.post(
+  "/api/auth/email/verify",
+  rateLimit("verify-email", 8, 15 * 60_000),
+  asyncRoute(async (req, res) => {
+    const parsed = verifyEmailSchema.safeParse(req.body);
+    const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
+    if (!parsed.success || !email) return res.status(400).json({ success: false, error: "کد تأیید معتبر نیست." });
+    try {
+      await verifyEmailCode(email, parsed.data.code);
+      res.json({ success: true, message: "ایمیل با موفقیت تأیید شد. اکنون وارد شوید." });
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_EMAIL_VERIFICATION") return res.status(400).json({ success: false, error: "کد تأیید نامعتبر یا منقضی شده است." });
+      throw error;
+    }
+  }),
+);
+app.post(
+  "/api/auth/email/resend",
+  rateLimit("verify-email-resend", 3, 15 * 60_000),
+  asyncRoute(async (req, res) => {
+    const parsed = z.object({ email: emailSchema }).safeParse(req.body);
+    const email = parsed.success ? normalizeEmail(parsed.data.email) : null;
+    if (email && mailDeliveryReady()) {
+      const code = await createEmailVerification(email, req.ip || "127.0.0.1");
+      if (code) await sendEmailVerificationEmail(email, code);
+    }
+    res.status(202).json({ success: true, message: "اگر حساب تأییدنشده‌ای با این ایمیل وجود داشته باشد، کد جدید ارسال می‌شود." });
   }),
 );
 app.post(

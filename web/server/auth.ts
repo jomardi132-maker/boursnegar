@@ -134,6 +134,27 @@ export async function registerWithEmail(
   });
 }
 
+export async function createEmailVerification(email: string, ip: string): Promise<string | null> {
+  const found = await pool.query(`SELECT user_id FROM email_identities WHERE email=$1 AND email_verified_at IS NULL`, [email]);
+  if (!found.rows[0]) return null;
+  const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+  await withTransaction(async (client) => {
+    await client.query(`UPDATE email_verification_tokens SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL`, [found.rows[0].user_id]);
+    await client.query(`INSERT INTO email_verification_tokens(user_id,code_hash,expires_at,request_ip) VALUES($1,$2,now()+interval '10 minutes',$3::inet)`, [found.rows[0].user_id, sha256(`${email}:${code}`), ip]);
+  });
+  return code;
+}
+
+export async function verifyEmailCode(email: string, code: string): Promise<string> {
+  return withTransaction(async (client) => {
+    const found = await client.query(`SELECT t.id,t.user_id FROM email_verification_tokens t JOIN email_identities e ON e.user_id=t.user_id WHERE e.email=$1 AND t.code_hash=$2 AND t.consumed_at IS NULL AND t.expires_at>now() FOR UPDATE`, [email, sha256(`${email}:${code}`)]);
+    if (!found.rows[0]) throw new Error('INVALID_EMAIL_VERIFICATION');
+    await client.query(`UPDATE email_identities SET email_verified_at=now() WHERE user_id=$1`, [found.rows[0].user_id]);
+    await client.query(`UPDATE email_verification_tokens SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL`, [found.rows[0].user_id]);
+    return found.rows[0].user_id as string;
+  });
+}
+
 export async function loginWithEmail(
   email: string,
   password: string,
@@ -141,7 +162,7 @@ export async function loginWithEmail(
   userAgent: string,
 ) {
   const found = await pool.query(
-    `SELECT e.user_id AS id,e.email,e.password_hash,e.failed_attempts,e.locked_until,u.mobile_e164,u.status,r.code AS role FROM email_identities e JOIN users u ON u.id=e.user_id JOIN roles r ON r.id=u.role_id WHERE e.email=$1`,
+    `SELECT e.user_id AS id,e.email,e.password_hash,e.failed_attempts,e.locked_until,e.email_verified_at,u.mobile_e164,u.status,r.code AS role FROM email_identities e JOIN users u ON u.id=e.user_id JOIN roles r ON r.id=u.role_id WHERE e.email=$1`,
     [email],
   );
   const identity = found.rows[0];
@@ -160,6 +181,7 @@ export async function loginWithEmail(
       );
     throw new Error('INVALID_CREDENTIALS');
   }
+  if (!identity.email_verified_at) throw new Error('EMAIL_NOT_VERIFIED');
   return withTransaction(async (client) => {
     await client.query(
       `UPDATE email_identities SET failed_attempts=0,locked_until=NULL,last_login_at=now() WHERE user_id=$1`,
@@ -277,7 +299,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   try {
     const token = req.cookies?.[SESSION_COOKIE];
     if (!token) return next();
-    const result = await pool.query(`SELECT s.id,u.id AS user_id,u.mobile_e164,e.email,r.code AS role,coalesce(c.balance,0)::int AS credits FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN email_identities e ON e.user_id=u.id JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active'`, [sha256(token)]);
+    const result = await pool.query(`SELECT s.id,u.id AS user_id,u.mobile_e164,e.email,r.code AS role,coalesce(c.balance,0)::int AS credits FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN email_identities e ON e.user_id=u.id JOIN roles r ON r.id=u.role_id LEFT JOIN analysis_credits c ON c.user_id=u.id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND (e.user_id IS NULL OR e.email_verified_at IS NOT NULL)`, [sha256(token)]);
     if (result.rows[0]) {
       const row = result.rows[0];
       req.sessionId = row.id;
