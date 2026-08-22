@@ -364,6 +364,51 @@ def _stored_codal_letters(db: Session, symbol: str) -> list[dict]:
     return letters
 
 
+def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tuple[dict, str, dict] | None:
+    """Use a validated local v1 financial snapshot before making a Codal request."""
+    audited_clause = "AND fp.audited" if report_mode == "audited" else ""
+    annual_clause = "AND fp.length_months = 12" if report_mode == "audited" else ""
+    rows = db.execute(text(f"""
+      SELECT d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
+             fp.end_date_jalali,fp.length_months,fp.audited,
+             dv.metadata->>'excel_url' AS excel_url,ff.fact_key,ff.normalized_value,
+             ff.quality_status,ff.normalized_unit
+      FROM symbol_aliases sa
+      JOIN instruments i ON i.id=sa.instrument_id
+      JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+      JOIN financial_facts ff ON ff.period_id=fp.id
+      JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
+      JOIN disclosures d ON d.id=dv.disclosure_id
+      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
+        AND ff.quality_status='VALID'
+      ORDER BY fp.end_date DESC,fp.audited DESC,ff.fact_key
+    """), {"symbol": symbol}).mappings().all()
+    if not rows:
+        return None
+    metrics = {key: None for key in (
+        "revenue", "cogs", "gross_profit", "operating_profit", "net_profit",
+        "eps_basic", "total_assets", "total_liabilities", "total_equity",
+        "operating_cash_flow",
+    )}
+    first = rows[0]
+    for row in rows:
+        if row["fact_key"] in metrics and row["normalized_value"] is not None:
+            metrics[row["fact_key"]] = float(row["normalized_value"])
+    if metrics["revenue"] is None or metrics["net_profit"] is None:
+        return None
+    candidate = {
+        "Title": first["title"], "TracingNo": first["source_disclosure_id"],
+        "PublishDateTime": first["published_date_jalali"], "ExcelUrl": first["excel_url"],
+        "HasExcel": bool(first["excel_url"]), "scope": first["scope"],
+    }
+    return candidate, str(first["excel_url"] or ""), {
+        "metrics": metrics,
+        "found_items": sorted(key for key, value in metrics.items() if value is not None),
+        "missing_items": sorted(key for key, value in metrics.items() if value is None),
+        "source": "local_codal_financial_facts",
+    }
+
+
 def _stored_live_snapshot(db: Session, symbol: str) -> dict | None:
     """Use the latest real, persisted BrsApi observation when the provider is down."""
     company = db.query(models.Company).filter(models.Company.symbol == symbol).first()
@@ -470,31 +515,34 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     if live_data is None:
         live_data = _stored_live_snapshot(db, symbol)
 
-    # ۲. فهرست گزارش‌های کدال
-    try:
-        letters = codal_service.fetch_all_letters(symbol, max_pages=2)
-    except codal_service.CodalUnavailableError as e:
-        letters = _stored_codal_letters(db, symbol)
-        if not letters:
-            raise HTTPException(status_code=503, detail=str(e))
-
-    if not letters:
-        raise HTTPException(status_code=404, detail=f"هیچ گزارشی برای نماد «{symbol}» در کدال پیدا نشد.")
-
     if report_mode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="report_mode نامعتبر است.")
 
-    # ۳. انتخاب نخستین صورت مالی واقعاً قابل استخراج. بعضی اصلاحیه‌های کدال
+    # ۲. ترجیح آرشیو محلی معتبر؛ در نبود آن، فهرست گزارش‌های کدال را می‌گیریم.
+    local_report = _stored_financial_report(db, symbol, report_mode)
+    letters = _stored_codal_letters(db, symbol)
+    if local_report:
+        candidate, excel_url, parsed = local_report
+    else:
+        try:
+            letters = codal_service.fetch_all_letters(symbol, max_pages=2)
+        except codal_service.CodalUnavailableError as e:
+            if not letters:
+                raise HTTPException(status_code=503, detail=str(e))
+        if not letters:
+            raise HTTPException(status_code=404, detail=f"هیچ گزارشی برای نماد «{symbol}» در کدال پیدا نشد.")
+
+        # ۳. انتخاب نخستین صورت مالی واقعاً قابل استخراج. بعضی اصلاحیه‌های کدال
     # به‌اشتباه فایل گزارش تفسیری مدیریت را در ExcelUrl برمی‌گردانند؛ در این
     # حالت به نسخه معتبر قبلی همان صورت مالی برمی‌گردیم.
-    candidates = _financial_candidates(letters, report_mode)
-    if not candidates:
-        report_label = "حسابرسی‌شده سالانه" if report_mode == "audited" else "دارای فایل اکسل"
-        raise HTTPException(
-            status_code=404,
-            detail=f"هیچ گزارش {report_label} برای «{symbol}» در {len(letters)} اطلاعیه‌ی اخیر پیدا نشد.",
-        )
-    candidate, excel_url, parsed = _parse_first_usable_report(candidates)
+        candidates = _financial_candidates(letters, report_mode)
+        if not candidates:
+            report_label = "حسابرسی‌شده سالانه" if report_mode == "audited" else "دارای فایل اکسل"
+            raise HTTPException(
+                status_code=404,
+                detail=f"هیچ گزارش {report_label} برای «{symbol}» در {len(letters)} اطلاعیه‌ی اخیر پیدا نشد.",
+            )
+        candidate, excel_url, parsed = _parse_first_usable_report(candidates)
 
     comparison, comparison_unavailable_reason = _build_period_comparison(candidate, parsed, letters)
 
