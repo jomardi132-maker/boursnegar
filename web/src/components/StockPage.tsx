@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArrowRight, BarChart3, CalendarDays, Database, ExternalLink, FileText, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { api } from "../AppProduction";
 import { DecisionReport, type AnalysisPayload } from "./DecisionReport";
+import { Comments } from "./Comments";
 
 type Price = { trading_date: string; trading_date_jalali: string; close: string | null; adjusted_close: string | null; volume: string | null; value: string | null; trade_count: number | null };
 type Payload = {
@@ -14,7 +15,7 @@ type Payload = {
 const fa = (value: unknown, digits = 0) => value == null ? "—" : Number(value).toLocaleString("fa-IR", { maximumFractionDigits: digits });
 const decisionFa: Record<string, string> = { BUY: "خرید", HOLD: "نگهداری", SELL: "فروش", INSUFFICIENT_DATA: "داده ناکافی" };
 
-export function StockPage({ symbol, onAnalyze, analysis, analysisLoading, analysisError }: { symbol: string; onAnalyze: (symbol: string) => void; analysis: AnalysisPayload | null; analysisLoading: boolean; analysisError: string }) {
+export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysisLoading, analysisError }: { symbol: string; user: import("../AppProduction").User | null; onLogin:()=>void; onAnalyze: (symbol: string) => void; analysis: AnalysisPayload | null; analysisLoading: boolean; analysisError: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -58,6 +59,7 @@ export function StockPage({ symbol, onAnalyze, analysis, analysisLoading, analys
       {analysisLoading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
       {analysis && <DecisionReport report={analysis}/>}
       <section className="disclosure-section"><header><div><span>اسناد رسمی</span><h2>آخرین اطلاعیه‌های کدال</h2></div><FileText/></header>{data.disclosures.length ? <div className="disclosure-list">{data.disclosures.map((item) => <a key={item.source_disclosure_id} href={item.detail_url || `https://codal.ir/ReportList.aspx?search&Symbol=${encodeURIComponent(data.stock.symbol)}`} target="_blank" rel="noreferrer"><span className="doc-icon"><FileText/></span><span><b>{item.title}</b><small><CalendarDays/> {item.published_date_jalali || "تاریخ نامشخص"} {item.is_audited ? "· حسابرسی‌شده" : ""}</small></span><ExternalLink/></a>)}</div> : <div className="empty-docs">هنوز اطلاعیه‌ای برای این نماد وارد نشده است.</div>}</section>
+      <Comments kind="symbol_comment" symbol={data.stock.symbol} user={user} onLogin={onLogin}/>
       <section className="stock-disclaimer"><ShieldCheck/><p><b>داده را از نتیجه جدا می‌کنیم.</b><br/>قیمت و اطلاعیه‌ها مستقیماً از منابع بازار گردآوری شده‌اند. برچسب تحلیلی توصیهٔ خرید یا فروش نیست و در نبود دادهٔ کافی نمایش داده نمی‌شود.</p></section>
     </main>
   </div>;

@@ -108,6 +108,7 @@ const analyzeSchema = z.object({
   query: z.string().min(1).max(32),
   reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
 });
+const commentSchema = z.object({ kind: z.enum(["site_feedback", "symbol_comment"]), symbol: z.string().max(32).optional(), body: z.string().trim().min(3).max(2000) });
 
 async function auditAuth(action: string, ip: string, targetId?: string, metadata: Record<string, unknown> = {}) {
   await pool.query(
@@ -244,6 +245,18 @@ app.post(
     res.status(202).json({ success: true, message: "اگر حساب تأییدنشده‌ای با این ایمیل وجود داشته باشد، کد جدید ارسال می‌شود." });
   }),
 );
+app.get("/api/comments", asyncRoute(async (req, res) => {
+  const kind = String(req.query.kind || "site_feedback");
+  const symbol = req.query.symbol ? String(req.query.symbol) : null;
+  if (!['site_feedback','symbol_comment'].includes(kind)) return res.status(400).json({ success:false });
+  const rows = await pool.query(`SELECT c.id,c.body,c.created_at,coalesce(split_part(e.email,'@',1),'کاربر') AS user_label,0::int AS likes FROM comments c JOIN users u ON u.id=c.user_id LEFT JOIN email_identities e ON e.user_id=u.id WHERE c.kind=$1 AND ($2::text IS NULL OR c.symbol=$2) AND c.status='published' ORDER BY c.created_at DESC LIMIT 100`, [kind, symbol]);
+  res.json({ success:true, comments:rows.rows });
+}));
+app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*60_000), asyncRoute(async (req,res)=>{
+  const p=commentSchema.safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
+  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,body) VALUES($1,$2,$3,$4) RETURNING id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.body]);
+  res.status(201).json({success:true,comment:row.rows[0]});
+}));
 app.post(
   "/api/auth/password/forgot",
   rateLimit("forgot-password", 5, 30 * 60_000),
@@ -827,6 +840,21 @@ app.post(
   }),
 );
 app.use("/api/admin", rateLimit("admin", 120, 60_000));
+app.get("/api/admin/comments", requireUser, requireAdmin, asyncRoute(async (req,res)=>{
+  const rows=await pool.query(`SELECT c.*,e.email FROM comments c JOIN email_identities e ON e.user_id=c.user_id WHERE c.status='pending' ORDER BY c.created_at ASC LIMIT 200`);
+  res.json({success:true,comments:rows.rows});
+}));
+app.patch("/api/admin/comments/:id", requireUser, requireAdmin, requireCsrf, asyncRoute(async (req,res)=>{
+  const p=z.object({status:z.enum(['published','hidden','rejected']), reward:z.number().int().min(0).max(100).default(0)}).safeParse(req.body);
+  if(!p.success)return res.status(400).json({success:false,error:"تصمیم معتبر نیست."});
+  const result=await withTransaction(async c=>{
+    const found=await c.query(`SELECT id,user_id FROM comments WHERE id=$1 FOR UPDATE`,[req.params.id]); if(!found.rows[0]) throw new Error('COMMENT_NOT_FOUND');
+    await c.query(`UPDATE comments SET status=$2,updated_at=now() WHERE id=$1`,[req.params.id,p.data.status]);
+    if(p.data.reward>0){const balance=await c.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`,[found.rows[0].user_id,p.data.reward]);if(!balance.rows[0])throw new Error('CREDITS_NOT_FOUND');await c.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5) ON CONFLICT DO NOTHING`,[found.rows[0].user_id,p.data.reward,balance.rows[0].balance,req.params.id,`comment-reward:${req.params.id}`]);await c.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[req.params.id,req.authUser!.id,p.data.reward]);}
+    return {status:p.data.status,reward:p.data.reward};
+  });
+  res.json({success:true,result});
+}));
 app.get(
   "/api/admin/stats",
   requireUser,

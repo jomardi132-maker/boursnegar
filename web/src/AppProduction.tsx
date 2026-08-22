@@ -4,6 +4,7 @@ import { DecisionReport, type AnalysisPayload } from './components/DecisionRepor
 import { AccountDashboard } from './components/AccountDashboard';
 import { LegalModal, type LegalDocument } from './components/LegalModal';
 import { StockPage } from './components/StockPage';
+import { Comments } from './components/Comments';
 import { MarketExplorer } from './components/MarketExplorer';
 import './dashboard.css';
 
@@ -96,7 +97,7 @@ export function AppProduction() {
 
   async function logout() { await api('/api/auth/logout', { method: 'POST', body: '{}' }); sessionStorage.removeItem(csrfStorage); setUser(null); setResult(null); }
   const stockMatch = window.location.pathname.match(/^\/s\/([^/]+)\/?$/);
-  if (stockMatch) return <><StockPage symbol={decodeURIComponent(stockMatch[1])} analysis={result} analysisLoading={loading} analysisError={error} onAnalyze={(stockSymbol)=>{ setPendingAnalysis(stockSymbol); if(!user) setAuthOpen(true); }}/>{authOpen && <AuthDialog onClose={() => { setAuthOpen(false); setPendingAnalysis(''); }} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</>;
+  if (stockMatch) return <><StockPage symbol={decodeURIComponent(stockMatch[1])} user={user} analysis={result} analysisLoading={loading} analysisError={error} onAnalyze={(stockSymbol)=>{ setPendingAnalysis(stockSymbol); if(!user) setAuthOpen(true); }} onLogin={()=>setAuthOpen(true)}/>{authOpen && <AuthDialog onClose={() => { setAuthOpen(false); setPendingAnalysis(''); }} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>}</>;
   return <div className="app-shell" dir="rtl">
     <header className="topbar"><a className="brand" href="#top" aria-label="بورس‌نگار"><span className="brand-mark"><BarChart3 /></span><span><b>بورس‌نگار</b><small>تحلیل بنیادی شفاف</small></span></a>
       <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="ناوبری اصلی"><a href="#market">بازار و اسکرینر</a><a href="#method">روش تحلیل</a><a href="#sources">منابع داده</a><a href="#trust">اعتمادپذیری</a></nav>
@@ -113,6 +114,7 @@ export function AppProduction() {
       <section className="source-band" id="sources"><div><Database/><span><b>منبع بازار</b><small>BrsApi — قیمت و مشخصات تابلو</small></span></div><div><ShieldCheck/><span><b>منبع مالی</b><small>کدال — صورت‌های مالی رسمی</small></span></div><p>زمان گزارش، وضعیت حسابرسی و تاریخ به‌روزرسانی در هر تحلیل نمایش داده می‌شود.</p></section>
       {loading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
       {result && <DecisionReport report={result}/>}
+      <Comments kind="site_feedback" user={user} onLogin={()=>setAuthOpen(true)}/>
       <section className="trust-section" id="trust"><div><span className="eyebrow"><span/> تعهد بورس‌نگار</span><h2>ابهام را پنهان نمی‌کنیم.</h2></div><p>هرجا داده کافی نباشد، وضعیت «نامشخص» همراه با دلیل دقیق نمایش داده می‌شود. این سامانه ابزار آموزشی و تحلیلی است و توصیه سرمایه‌گذاری محسوب نمی‌شود.</p></section>
     </main><footer><b>بورس‌نگار</b><span>صاحب‌امتیاز: محمد جوانمردی راد</span><button onClick={()=>setLegalDocument('terms')}>شرایط استفاده</button><button onClick={()=>setLegalDocument('privacy')}>حریم خصوصی</button><small>© ۱۴۰۵ — مسئولیت تصمیم نهایی سرمایه‌گذاری با کاربر است.</small></footer>
     {dashboardOpen&&user&&<AccountDashboard user={user} onClose={()=>setDashboardOpen(false)} onCredits={(credits)=>setUser({...user,credits})}/>} {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onLogin={(next, csrf) => { sessionStorage.setItem(csrfStorage, csrf); setUser(next); setAuthOpen(false); }}/>} {legalDocument&&<LegalModal document={legalDocument} onClose={()=>setLegalDocument(null)}/>}</div>;
