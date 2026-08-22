@@ -67,11 +67,14 @@ def ingest(limit: int, root: Path) -> dict:
           SELECT d.id AS disclosure_id,d.issuer_id,d.source_disclosure_id,d.title,d.is_audited,d.scope,
                  dv.id AS version_id,(dv.metadata->>'excel_url') AS excel_url
           FROM disclosures d JOIN disclosure_versions dv ON dv.disclosure_id=d.id AND dv.is_current
-          LEFT JOIN raw_documents rd ON rd.disclosure_version_id=dv.id
           -- Permanent parser failures (for example Codal error pages with no
           -- tables) are audited but must not monopolize every retry batch.
           -- Network/download failures remain retryable as FAILED.
-          WHERE (rd.id IS NULL OR rd.parser_status NOT IN ('PARSED', 'FAILED_PERMANENT'))
+          WHERE NOT EXISTS (
+                  SELECT 1 FROM raw_documents rd
+                  WHERE rd.disclosure_version_id=dv.id
+                    AND rd.parser_status IN ('PARSED', 'FAILED_PERMANENT')
+                )
             AND (dv.metadata->>'excel_url') IS NOT NULL
             AND d.published_date_jalali >= '1404/01/01'
             AND d.title ~ '(صورت|مالی|ترازنامه|سود|زیان)'
