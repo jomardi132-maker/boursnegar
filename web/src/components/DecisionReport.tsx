@@ -58,14 +58,17 @@ const metricLabels: Record<string, { label: string; suffix: string }> = {
 const number = (value: number | null, suffix = "") =>
   value == null ? "نامشخص" : `${value.toLocaleString("fa-IR", { maximumFractionDigits: 1 })}${suffix}`;
 
+const dateFa = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("fa-IR") : "نامشخص";
+
 export function DecisionReport({ report }: { report: AnalysisPayload }) {
   const actionable = report.decision !== "INSUFFICIENT_DATA";
   const availableMetrics = Object.keys(metricLabels).filter((key) => report.keyMetrics?.[key] != null).length;
   return <section id="analysis" className="decision-report">
     <header className={`decision-hero decision-${report.decision.toLowerCase()}`}>
-      <div><small>نتیجه موتور تحلیل نسخه‌دار</small><h2>{report.companyName || report.symbol}</h2><span>{report.symbol}</span></div>
+      <div><small>نتیجه موتور تحلیل نسخه‌دار</small><h2>{report.companyName || report.symbol}</h2><span>{report.symbol}</span><div className="report-badges"><em className={report.report?.audited ? "audited" : "unaudited"}>{report.report?.audited ? "گزارش حسابرسی‌شده" : "گزارش حسابرسی‌نشده"}</em><em>محاسبه {dateFa(report.calculatedAt)}</em></div></div>
       <div className="decision-seal"><small>جمع‌بندی</small><strong>{decisionFa[report.decision]}</strong><em>{actionable ? `اطمینان ${number(report.confidence, "٪")}` : "بدون کسر اعتبار"}</em></div>
     </header>
+    <div className="analysis-context"><span><b>مبنای تحلیل:</b> {report.report?.title || "آخرین داده‌های رسمی در دسترس"}</span><span><b>تازگی:</b> تا {dateFa(report.staleAfter)}</span></div>
     {report.criticalWarning&&<div className="critical-warning"><AlertTriangle/><span>{report.criticalWarning}</span></div>}
     <div className="evidence-strip">
       <article><ShieldCheck/><span><small>امتیاز سلامت</small><b>{number(report.healthScore, " از ۱۰۰")}</b></span></article>

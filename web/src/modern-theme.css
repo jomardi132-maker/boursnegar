@@ -9,6 +9,9 @@ body{background:#07110e!important;color:#eaf7ef!important;background-image:linea
 .chart-card,.disclosure-section{background:#0c1b16;border-color:#29483e;color:#eaf7ef}.chart-card header span,.disclosure-section header span{color:#72e7ad}.chart-card h2,.disclosure-section h2{color:#f2fff7}.grid-line{stroke:#29483e}.chart-max,.chart-min{background:#0c1b16;color:#91a79d}.chart-card>footer{border-color:#29483e;color:#91a79d}
 .disclosure-list{background:#29483e;border-color:#29483e}.disclosure-list>a{background:#10231c;color:#eaf7ef}.doc-icon{background:#17362b;color:#72e7ad}.disclosure-list small{color:#91a79d}.stock-disclaimer{border-color:#315448}.stock-disclaimer p{color:#a7b9b0}
 .stock-loading i{background:#102c23}
+.report-badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}.report-badges em{font-style:normal;font-size:10px;padding:6px 9px;border-radius:999px;border:1px solid #315448;color:#b7cbc0;background:#102c23}.report-badges .audited{color:#72e7ad;border-color:#357b5d}.report-badges .unaudited{color:#f0bf62;border-color:#80652f}
+.analysis-context{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:12px 0 16px;padding:13px 16px;border:1px solid #29483e;border-radius:12px;background:#0c1b16;color:#9fb5aa;font-size:11px}.analysis-context b{color:#d9eee3}
+@media(max-width:760px){.analysis-context{flex-direction:column}.report-badges{gap:5px}}
 .market-explorer{color:#eaf7ef}
 .market-heading h2{color:#f2fff7}
 .market-heading p,.screener-meta{color:#91a79d}
