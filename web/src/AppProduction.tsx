@@ -70,7 +70,7 @@ export function AppProduction() {
     setError('');
     setLoading(true);
     try {
-      const response = await api<{ data: AnalysisPayload; analysis: { remainingCredits: number } }>('/api/v2/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query: symbolQuery, reportMode: 'audited' }) });
+      const response = await api<{ data: AnalysisPayload; analysis: { remainingCredits: number } }>('/api/v2/analyze', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ query: symbolQuery, reportMode: 'latest_codal' }) });
       setResult(response.data);
       setUser({ ...user, credits: response.analysis.remainingCredits });
       requestAnimationFrame(() => document.getElementById('analysis')?.scrollIntoView({ behavior: 'smooth' }));

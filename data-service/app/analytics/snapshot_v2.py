@@ -111,6 +111,11 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             "title": report.get("title"),
             "publishedAt": report.get("publish_datetime"),
             "audited": audited,
+            "basisNote": (
+                "این تحلیل بر اساس آخرین گزارش دارای فایل اکسل کدال تهیه شده است؛ گزارش حسابرسی‌نشده است و با انتشار گزارش بعدی باید بازبینی شود."
+                if not audited else
+                "این تحلیل بر اساس آخرین گزارش حسابرسی‌شده انتخاب‌شده تهیه شده است؛ اطلاعیه‌های جدیدتر ممکن است روند کوتاه‌مدت را تغییر دهند."
+            ),
         },
         "coreQuestions": questions,
         "reasons": [
