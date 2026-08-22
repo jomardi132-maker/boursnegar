@@ -140,3 +140,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .snapshot-card .fair-band{background:#17362b!important}
 .fundamental-metrics,.valuation-panel,.question-grid article,.decision-details section{background:#0c1b16!important;color:#eaf7ef!important;border-color:#29483e!important}
 .valuation-panel h3,.valuation-panel b,.valuation-panel small,.valuation-panel p{color:#eaf7ef!important}
+
+/* Status pills and shared report surfaces must stay readable on the OLED theme. */
+.screener-table em[data-decision=BUY]{background:#173f31!important;color:#72e7ad!important}
+.screener-table em[data-decision=HOLD]{background:#493b1d!important;color:#f0bf62!important}
+.screener-table em[data-decision=SELL]{background:#48221f!important;color:#ff9a8f!important}
+.screener-table em[data-decision=INSUFFICIENT_DATA],.screener-table em[data-decision=NONE]{background:#26352f!important;color:#c2d0c9!important}
+.market-summary article,.leader-grid>article,.screener-table,.disclosure-list>a,.chart-card,.snapshot-card,.valuation-panel,.question-grid article,.decision-details section{color:#eaf7ef!important}
+.market-summary article strong,.leader-grid h3,.leader-grid a,.screener-table td a,.screener-table td a b{color:#f2fff7!important}
+.market-summary article small,.leader-grid a small,.screener-table td a small{color:#91a79d!important}
+.snapshot-card.empty p,.stock-disclaimer p,.empty-docs{color:#a7b9b0!important}
