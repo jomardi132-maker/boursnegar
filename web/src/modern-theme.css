@@ -2,6 +2,14 @@
 :root{--paper:#07110e;--paper-2:#0c1b16;--navy:#eaf7ef;--muted:#91a79d}
 body{background:#07110e!important;color:#eaf7ef!important;background-image:linear-gradient(rgba(114,231,173,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(114,231,173,.035) 1px,transparent 1px)!important;background-size:44px 44px!important}
 .topbar{background:rgba(7,17,14,.88)!important;border-color:rgba(114,231,173,.18)!important}
+.app-shell{background:transparent}.brand b,.nav a{color:#eaf7ef}.nav a{opacity:.78}.nav a:hover{opacity:1;color:#72e7ad}
+.hero{min-height:680px}.hero-copy>p{color:#a7bbb1}.hero:after{background:#1f8062;opacity:.18}.hero h1{color:#f2fff7}.hero h1 em{color:#72e7ad}.hero h1 em:after{background:rgba(114,231,173,.14)}
+.method-section{background:linear-gradient(180deg,#0a1713,#0c1b16);color:#eaf7ef;border-top:1px solid #1b382e;border-bottom:1px solid #1b382e}.section-heading h2,.trust-section h2{color:#f2fff7}.section-heading p,.trust-section p{color:#91a79d}.steps-grid article{background:#10231c;border-color:#29483e;color:#eaf7ef}.steps-grid p{color:#a7b9b0}.steps-grid article>svg{color:#72e7ad}
+.source-band{background:#29483e;border-color:#29483e}.source-band>div,.source-band>p{background:#0c1b16;color:#eaf7ef}.source-band small,.source-band p{color:#91a79d}.source-band svg{color:#72e7ad}
+.trust-section{border-color:#29483e}.app-shell>footer{border-color:#29483e;color:#91a79d}.app-shell>footer b{color:#eaf7ef}.app-shell>footer button{color:#72e7ad}
+.auth-dialog{background:#0c1b16;color:#eaf7ef}.auth-dialog>p,.auth-dialog>small{color:#91a79d}.auth-dialog input{background:#07110e;color:#eaf7ef;border-color:#315448}.auth-dialog input:focus{border-color:#72e7ad;box-shadow:0 0 0 3px rgba(114,231,173,.16)}
+.search-box{border-color:#315448;background:#0c1b16}.search-box input{color:#f2fff7}.search-box button{background:#72e7ad;color:#06130e}.trust-line{color:#91a79d}.trust-line svg{color:#72e7ad}
+.error-state{background:#2d1715;border-color:#78423c;color:#ffb2a9}
 .stock-shell{background:#07110e;color:#eaf7ef}
 .stock-topbar{background:rgba(7,17,14,.9);border-color:#29483e}
 .back-home{color:#eaf7ef}.stock-identity{border-color:#315448}.stock-identity p,.market-strip small,.market-strip span{color:#91a79d}
