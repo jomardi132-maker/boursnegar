@@ -17,8 +17,8 @@ from app.ingestion.market_history import jalali_to_gregorian
 from app.services.codal_excel_parser import (
     CodalExcelParseError,
     extract_period_end_jalali,
-    fetch_and_parse,
     download_codal_excel,
+    parse_financial_statement,
 )
 
 PERIOD_RE = re.compile(r"(?P<months>۳|۶|۹|۱۲|3|6|9|12)\s*ماهه")
@@ -95,7 +95,10 @@ def ingest(limit: int, root: Path) -> dict:
             file_path = root / f"{checksum}.html"
             if not file_path.exists():
                 file_path.write_bytes(content)
-            parsed = fetch_and_parse(row["excel_url"])
+            # Reuse the already downloaded bytes.  Downloading the same Codal
+            # file a second time needlessly increases load and transient 5xx
+            # failures.
+            parsed = parse_financial_statement(content)
             end_jalali = extract_period_end_jalali(row["title"])
             months = period_months(row["title"])
             if not end_jalali or not months:
