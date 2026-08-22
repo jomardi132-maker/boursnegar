@@ -470,6 +470,24 @@ def _financial_candidates(letters: list[dict], report_mode: str) -> list[dict]:
     ]
 
 
+def _related_codal_disclosures(letters: list[dict], candidate: dict) -> list[dict]:
+    """Return nearby explanation/amendment notices as context, never as metrics."""
+    published = str(candidate.get("PublishDateTime") or "")
+    related = []
+    for letter in letters:
+        title = str(letter.get("Title") or "")
+        if letter is candidate or not ("توضیحات" in title or "اصلاحیه" in title):
+            continue
+        related.append({
+            "title": title,
+            "publishedAt": letter.get("PublishDateTime"),
+            "tracingNo": letter.get("TracingNo"),
+            "detailUrl": letter.get("Url") or letter.get("URL") or letter.get("DetailUrl"),
+            "nearby": bool(published and str(letter.get("PublishDateTime") or "") <= published),
+        })
+    return related[:8]
+
+
 def _excel_url(letter: dict) -> str:
     value = str(letter.get("ExcelUrl") or "")
     return f"https://excel.codal.ir{value}" if value.startswith("/") else value
@@ -558,6 +576,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         candidate, excel_url, parsed = _parse_first_usable_report(candidates)
 
     comparison, comparison_unavailable_reason = _build_period_comparison(candidate, parsed, letters)
+    related_disclosures = _related_codal_disclosures(letters, candidate)
 
     # ۵. محاسبه‌ی نسبت‌ها
     live_pe = live_data.get("pe_ratio") if live_data else None
@@ -610,6 +629,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,
         "period_comparison_unavailable_reason": comparison_unavailable_reason,
+        "related_codal_disclosures": related_disclosures,
         "ratios": ratios,
         "health": health,
         "history_sync": {

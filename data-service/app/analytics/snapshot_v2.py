@@ -116,6 +116,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
                 if not audited else
                 "این تحلیل بر اساس آخرین گزارش حسابرسی‌شده انتخاب‌شده تهیه شده است؛ اطلاعیه‌های جدیدتر ممکن است روند کوتاه‌مدت را تغییر دهند."
             ),
+            "relatedDisclosures": raw.get("related_codal_disclosures") or [],
         },
         "coreQuestions": questions,
         "reasons": [
@@ -125,7 +126,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "risks": [
             "ارزش‌گذاری سناریویی است و به کیفیت آخرین صورت مالی وابسته است.",
             "تغییر نرخ ارز، قیمت جهانی کالا و مقررات می‌تواند نتیجه را تغییر دهد.",
-        ],
+        ] + (["برای این گزارش اطلاعیه توضیحی یا اصلاحیه مرتبط وجود دارد؛ متن آن باید پیش از تصمیم نهایی بررسی شود."] if raw.get("related_codal_disclosures") else []),
         "criticalWarning": (
             "در آخرین صورت مالی، زیان عملیاتی مشاهده شد."
             if has_operating_loss and not has_net_loss
