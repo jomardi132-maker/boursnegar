@@ -104,6 +104,10 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIsNone(extract_period_end_jalali("گزارش عملکرد ماهانه بدون تاریخ دوره"))
         self.assertIsNone(extract_period_end_jalali("دوره منتهی به ۱۴۰۴/۱۳/۴۰"))
 
+    def test_financial_ingest_treats_annual_reports_as_twelve_month_periods(self):
+        from scripts.ingest_codal_financials import period_months
+        self.assertEqual(period_months("صورت‌های مالی سال مالی منتهی به ۱۴۰۳/۱۲/۳۰"), 12)
+
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")
         spec = importlib.util.spec_from_file_location("update_market_daily", path)

@@ -27,7 +27,10 @@ FACT_KEYS = ("revenue", "cogs", "gross_profit", "operating_profit", "net_profit"
 
 
 def period_months(title: str) -> int | None:
-    match = PERIOD_RE.search(str(title or "").translate(str.maketrans("۱۲۳۴۵۶۷۸۹۰", "1234567890")))
+    normalized = str(title or "").translate(str.maketrans("۱۲۳۴۵۶۷۸۹۰", "1234567890"))
+    if "سال مالی" in normalized or "۱۲ ماهه" in normalized or "12 ماهه" in normalized:
+        return 12
+    match = PERIOD_RE.search(normalized)
     return int(match.group("months")) if match else None
 
 
@@ -64,7 +67,8 @@ def ingest(limit: int, root: Path) -> dict:
                  dv.id AS version_id,(dv.metadata->>'excel_url') AS excel_url
           FROM disclosures d JOIN disclosure_versions dv ON dv.disclosure_id=d.id AND dv.is_current
           LEFT JOIN raw_documents rd ON rd.disclosure_version_id=dv.id
-          WHERE rd.id IS NULL AND (dv.metadata->>'excel_url') IS NOT NULL
+          WHERE (rd.id IS NULL OR rd.parser_status <> 'PARSED')
+            AND (dv.metadata->>'excel_url') IS NOT NULL
             AND d.published_date_jalali >= '1404/01/01'
             AND d.title ~ '(صورت|مالی|ترازنامه|سود|زیان)'
             AND d.title !~ 'فعالیت ماهانه'
