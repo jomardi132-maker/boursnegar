@@ -44,3 +44,11 @@ export async function sendEmailVerificationEmail(email: string, code: string): P
     html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;line-height:1.9"><h2>تأیید ایمیل بورس‌نگار</h2><p>کد تأیید شما:</p><p style="font-size:28px;letter-spacing:8px;font-weight:bold">${code}</p><p>این کد تا ۱۰ دقیقه معتبر است.</p></div>`,
   });
 }
+
+export async function sendCreditNoticeEmail(email: string, delta: number, reason: string, balance: number): Promise<void> {
+  const config = smtpConfiguration();
+  if (!config) throw new Error('MAIL_NOT_CONFIGURED');
+  const transport = nodemailer.createTransport({ host: config.host, port: config.port, secure: config.port === 465, auth: { user: config.user, pass: config.password }, requireTLS: config.port !== 465 });
+  const subject = `افزایش اعتبار بورس‌نگار — ${reason}`;
+  await transport.sendMail({ from: config.from, to: email, subject, text: `${delta} اعتبار به حساب شما اضافه شد.\nدلیل: ${reason}\nموجودی جدید: ${balance} اعتبار`, html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;line-height:1.9"><h2>${subject}</h2><p><b>${delta} اعتبار</b> به حساب شما اضافه شد.</p><p>دلیل: ${reason}<br/>موجودی جدید: ${balance} اعتبار</p></div>` });
+}

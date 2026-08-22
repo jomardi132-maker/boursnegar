@@ -5,6 +5,7 @@ import type express from "express";
 import { z } from "zod";
 import { pool, withTransaction } from "./postgres";
 import { requireAdmin, requireCsrf, requireUser } from "./auth";
+import { mailDeliveryReady, sendCreditNoticeEmail } from "./mailer";
 
 const asyncRoute =
   (fn: express.RequestHandler): express.RequestHandler =>
@@ -755,6 +756,10 @@ export function installPlatformRoutes(app: express.Express) {
         req.ip || "127.0.0.1",
         { delta: p.data.delta, note: p.data.note },
       );
+      if (p.data.delta > 0 && mailDeliveryReady()) {
+        const recipient = await pool.query(`SELECT email FROM email_identities WHERE user_id=$1 AND email_verified_at IS NOT NULL`, [req.params.id]);
+        if (recipient.rows[0]?.email) void sendCreditNoticeEmail(recipient.rows[0].email, p.data.delta, p.data.note, balance).catch(() => undefined);
+      }
       res.json({ success: true, balance });
     }),
   );

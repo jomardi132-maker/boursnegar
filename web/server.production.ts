@@ -254,7 +254,7 @@ app.get("/api/comments", asyncRoute(async (req, res) => {
 }));
 app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*60_000), asyncRoute(async (req,res)=>{
   const p=commentSchema.safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
-  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,body) VALUES($1,$2,$3,$4) RETURNING id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.body]);
+  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,body,status) VALUES($1,$2,$3,$4,'published') RETURNING id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.body]);
   res.status(201).json({success:true,comment:row.rows[0]});
 }));
 app.post(
