@@ -5,8 +5,8 @@ Decision = Literal["BUY", "HOLD", "SELL", "INSUFFICIENT_DATA"]
 
 @dataclass(frozen=True)
 class Policy:
-    version: str = "recommendation-v1.1.0"
-    model_version: str = "fundamental-engine-v1.1.0"
+    version: str = "recommendation-v1.2.0"
+    model_version: str = "fundamental-engine-v1.2.0"
     minimum_coverage: float = 70.0
     minimum_confidence: float = 65.0
     cash_quality_threshold: float = 80.0
@@ -36,8 +36,15 @@ def core_questions(*, ttm_eps=None, price=None, pe=None, bank_rate=None,
 
 def decide(*, health_score, coverage, confidence, current_price=None,
            fair_value_low=None, fair_value_base=None, fair_value_high=None,
-           critical_warning=False, industry_model_ready=False, policy=Policy()) -> Decision:
-    if coverage < policy.minimum_coverage or confidence < policy.minimum_confidence or not industry_model_ready:
+           critical_warning=False, industry_model_ready=False, report_mode="audited", policy=Policy()) -> Decision:
+    confidence_floor = policy.minimum_confidence
+    # An unaudited report can still support a conditional valuation when the
+    # required metrics and industry model are present. Keep the lower floor
+    # explicit so the UI can show reduced confidence instead of hiding the
+    # result behind a generic insufficient-data state.
+    if report_mode == "latest_codal":
+        confidence_floor = min(confidence_floor, 50.0)
+    if coverage < policy.minimum_coverage or confidence < confidence_floor or not industry_model_ready:
         return "INSUFFICIENT_DATA"
     if None in (health_score, current_price, fair_value_low, fair_value_base, fair_value_high):
         return "INSUFFICIENT_DATA"

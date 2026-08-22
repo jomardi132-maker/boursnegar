@@ -81,6 +81,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         fair_value_high=valuation.get("fairValueHigh") if valuation else None,
         critical_warning=critical_warning,
         industry_model_ready=valuation is not None,
+        report_mode=report_mode,
         policy=policy,
     )
     now = datetime.now(timezone.utc)

@@ -95,6 +95,22 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertLessEqual(payload["healthScore"], 39)
         self.assertEqual(payload["coreQuestions"]["earnings_vs_bank"]["status"], "FAIL")
 
+    def test_latest_unaudited_report_can_produce_conditional_decision(self):
+        payload = build_snapshot_payload({
+            "symbol": "دکوثر", "report_used": {"title": "صورت‌های مالی ۶ ماهه حسابرسی نشده"},
+            "live_price": {"last_price": 5000, "market_category": "مواد و محصولات دارویی", "eps": 1000},
+            "financial_metrics": {"revenue": 1000, "net_profit": 200, "operating_cash_flow": 180,
+                "total_assets": 3000, "total_liabilities": 900, "total_equity": 2100, "eps_basic": 1000},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": 20, "roa_percent": 6, "operating_margin_percent": 15,
+                "net_margin_percent": 20, "debt_ratio_percent": 30, "cash_to_profit_ratio_percent": 90,
+                "pe_ratio": 5},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 61.4},
+        }, "latest_codal")
+        self.assertIn(payload["decision"], {"BUY", "HOLD", "SELL"})
+        self.assertFalse(payload["report"]["audited"])
+        self.assertLess(payload["confidence"], 65)
+
 
 if __name__ == "__main__":
     unittest.main()
