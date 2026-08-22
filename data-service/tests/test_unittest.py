@@ -18,6 +18,12 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("/api/analyze/{symbol}", source)
         self.assertIn("report_mode", source)
 
+    def test_long_provider_tracing_url_is_compacted_deterministically(self):
+        source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
+        self.assertIn("hashlib.sha256", source)
+        self.assertIn('[:44]', source)
+        self.assertIn("tracing_no = _safe_tracing_no(rec)", source)
+
     def test_no_external_ai_runtime(self):
         source = "\n".join(p.read_text(encoding="utf-8") for p in self.root.joinpath("app").rglob("*.py"))
         self.assertNotIn("gemini", source.lower())

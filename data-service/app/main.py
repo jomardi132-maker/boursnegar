@@ -1,5 +1,6 @@
 import re
 import json
+import hashlib
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -23,6 +24,18 @@ _DATE_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "012345
 class AnalysisV2Request(BaseModel):
     query: str = Field(min_length=1, max_length=32)
     report_mode: str = Field(default="audited", alias="reportMode")
+
+
+def _safe_tracing_no(letter: dict) -> str:
+    """Keep legacy report keys within the varchar(50) database limit.
+
+    BrsApi can return a full Codal URL in TracingNo. Preserve that URL in
+    raw_json/detail_url, while using a deterministic compact key for lookup.
+    """
+    raw = str(letter.get("TracingNo") or "").strip()
+    if len(raw) <= 50:
+        return raw
+    return "url:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:44]
 
 
 def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
@@ -156,7 +169,7 @@ def _persist_letters(db: Session, company: models.Company, letters: list[dict]) 
     """ذخیره idempotent فراداده گزارش‌های ۱۴۰۴ و ۱۴۰۵ برای مقایسه‌های بعدی."""
     inserted = 0
     for rec in letters:
-        tracing_no = str(rec.get("TracingNo") or "")
+        tracing_no = _safe_tracing_no(rec)
         if not tracing_no:
             continue
         period_end = _period_end_from_letter(rec)
@@ -282,7 +295,7 @@ def get_codal_reports(symbol: str, db: Session = Depends(get_db)):
 
     inserted = 0
     for rec in letters:
-        tracing_no = str(rec.get("TracingNo", ""))
+        tracing_no = _safe_tracing_no(rec)
         if not tracing_no:
             continue
         exists = db.query(models.FinancialReport).filter(
@@ -565,7 +578,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
 
     history_reports_added = _persist_letters(db, company, letters)
     used_report = db.query(models.FinancialReport).filter(
-        models.FinancialReport.tracing_no == str(candidate.get("TracingNo") or "")
+        models.FinancialReport.tracing_no == _safe_tracing_no(candidate)
     ).first()
     history_line_items_added = _persist_parsed_metrics(db, used_report, parsed)
 
