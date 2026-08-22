@@ -49,14 +49,22 @@ def _fetch_with_backoff(symbol: str, page: int, from_date: str | None = None, to
     raise RuntimeError("unreachable")
 
 
+def _retryable_network_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(token in message for token in (
+        "429", "connection reset", "connection aborted", "connection refused",
+        "timed out", "timeout", "temporarily unavailable", "502", "503", "504",
+    ))
+
+
 def _fetch_global_with_backoff(page: int, from_date: str, to_date: str) -> dict:
-    for attempt in range(6):
+    for attempt in range(8):
         try:
             return fetch_direct_letters_page(None, page, from_date, to_date)
         except Exception as exc:
-            if "429" not in str(exc) or attempt == 5:
+            if not _retryable_network_error(exc) or attempt == 7:
                 raise
-            wait_seconds = 30 * (attempt + 1)
+            wait_seconds = min(300, 20 * (2 ** attempt))
             print(json.dumps({"page": page, "retryIn": wait_seconds}), flush=True)
             time.sleep(wait_seconds)
     raise RuntimeError("unreachable")
