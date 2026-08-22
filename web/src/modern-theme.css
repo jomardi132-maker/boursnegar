@@ -60,3 +60,56 @@ body{background:#07110e!important;color:#eaf7ef!important;background-image:linea
 .comment-list article{border-color:#29483e}
 .comment-list article p{color:#dbece3}
 @media(max-width:760px){.market-summary,.leader-grid{grid-template-columns:1fr}.screener-table{display:block;overflow-x:auto;white-space:nowrap}}
+
+/* Android reference polish: deeper OLED surfaces, clearer market hierarchy,
+   and denser trading-dashboard affordances without changing product data. */
+:root{
+  --surface-0:#050b09;
+  --surface-1:#09130f;
+  --surface-2:#0d1d17;
+  --surface-3:#102c23;
+  --border-soft:rgba(114,231,173,.16);
+  --border-strong:rgba(114,231,173,.30);
+  --accent:#72e7ad;
+  --accent-warm:#f0bf62;
+}
+
+body{background-color:var(--surface-0)!important;background-image:linear-gradient(rgba(114,231,173,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(114,231,173,.025) 1px,transparent 1px)!important;background-size:56px 56px!important}
+.app-shell{background:radial-gradient(circle at 76% 8%,rgba(39,126,94,.12),transparent 30rem)}
+.topbar{height:72px;box-shadow:0 12px 36px rgba(0,0,0,.18)}
+.brand-mark{box-shadow:0 0 0 1px rgba(114,231,173,.24),0 10px 28px rgba(114,231,173,.16)}
+.hero{padding-top:82px;padding-bottom:104px}
+.hero-copy{max-width:680px}
+.hero h1{max-width:650px;text-shadow:0 10px 36px rgba(114,231,173,.08)}
+.hero-panel{isolation:isolate;overflow:hidden}
+.hero-panel:after{content:"";position:absolute;inset:auto -18% -45% 18%;height:240px;background:radial-gradient(circle,rgba(114,231,173,.18),transparent 68%);z-index:-1;pointer-events:none}
+.database-number{padding:22px 0 18px;border-bottom:1px solid rgba(114,231,173,.12)}
+.database-number strong{font-size:clamp(2.3rem,5vw,4rem);letter-spacing:-.06em;line-height:1}
+.database-number span{display:block;margin-top:9px;font-size:11px}
+.database-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0 18px}
+.database-grid>div{padding:18px 0;border-bottom:1px solid rgba(114,231,173,.10)}
+.database-grid b{font-size:1.15rem}
+.database-grid small{display:block;margin-top:5px;font-size:10px}
+.market-explorer{position:relative}
+.market-explorer:before{content:"MARKET / ۰۱";position:absolute;top:-30px;left:0;color:rgba(240,191,98,.42);font-size:10px;letter-spacing:.18em}
+.market-summary article,.leader-grid>article,.screener-table,.chart-card,.disclosure-section,.comments-section{box-shadow:0 20px 55px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.025)}
+.market-summary article:hover,.leader-grid>article:hover{transform:translateY(-4px);box-shadow:0 24px 60px rgba(0,0,0,.30),0 0 0 1px rgba(114,231,173,.16)}
+.screener-table thead th{position:sticky;top:0;z-index:1}
+.decision-hero{box-shadow:0 28px 80px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.04)}
+.decision-seal{box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.valuation-panel{box-shadow:0 20px 55px rgba(0,0,0,.22)}
+.button,.search-box button,.credit-pill,.icon-button,.menu-button,.close,.screener-filters button,.dashboard button,.comments-section button{transition:transform .18s ease,background-color .18s ease,border-color .18s ease,box-shadow .18s ease}
+.button:hover,.search-box button:hover:not(:disabled),.screener-filters button:hover,.dashboard button:hover,.comments-section button:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(114,231,173,.14)}
+button:disabled{cursor:not-allowed;opacity:.55}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent-warm)!important;outline-offset:3px}
+@media(max-width:760px){
+  .topbar{height:66px;padding-inline:16px}
+  .hero{padding-top:52px;padding-bottom:76px}
+  .hero-panel{box-shadow:10px 12px 0 #0d221a,0 30px 70px rgba(0,0,0,.42)}
+  .market-explorer:before{left:16px}
+  .database-number strong{font-size:2.8rem}
+}
+@media(prefers-reduced-motion:reduce){
+  .button,.search-box button,.credit-pill,.icon-button,.menu-button,.close,.screener-filters button,.dashboard button,.comments-section button,.market-summary article,.leader-grid>article{transition:none!important}
+  .button:hover,.search-box button:hover:not(:disabled),.screener-filters button:hover,.dashboard button:hover,.comments-section button:hover,.market-summary article:hover,.leader-grid>article:hover{transform:none!important}
+}
