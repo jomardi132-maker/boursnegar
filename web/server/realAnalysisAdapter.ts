@@ -66,8 +66,9 @@ function fmtNum(n: number | null | undefined, digits = 0): string {
   return n.toLocaleString('fa-IR', { maximumFractionDigits: digits });
 }
 
-function statusFromNote(note: string): StatusType {
-  if (note.includes('خوب') || note.includes('بالا') || note.includes('کم‌ریسک') || note.includes('طبیعی')) {
+function statusFromNote(note: string, explicitStatus?: unknown): StatusType {
+  if (explicitStatus === 'good' || explicitStatus === 'mid' || explicitStatus === 'bad') return explicitStatus;
+  if (note.includes('خوب') || note.includes('کم‌ریسک') || note.includes('طبیعی')) {
     return 'good';
   }
   if (note.includes('متوسط') || note.includes('نیازمند بررسی') || note.includes('کمی بالاتر')) {
@@ -252,7 +253,7 @@ export async function generateRealHealthCard(
   pushBanner('debt_ratio', 'نسبت بدهی', ratios.debt_ratio_percent, '٪', false, [40, 65]);
 
   // --- Golden Summary (بر پایه‌ی health.flags واقعی) ---
-  const badFlags = (health.flags || []).filter((f: any) => statusFromNote(f.note) === 'bad').length;
+  const badFlags = (health.flags || []).filter((f: any) => statusFromNote(f.note, f.status) === 'bad').length;
   const overallStatus: StatusType = badFlags >= 2 ? 'bad' : badFlags === 1 ? 'mid' : 'good';
   const badgeTitle =
     overallStatus === 'good' ? 'بنیاد قوی و باثبات' : overallStatus === 'mid' ? 'بنیاد متوسط / تحت فشار' : 'بنیاد ضعیف و پرریسک';
@@ -364,19 +365,19 @@ export async function generateRealHealthCard(
             label: 'حاشیه سود ناخالص',
             valuePercentage: Math.min(Math.max(ratios.gross_margin_percent, 0), 100),
             displayValue: `${ratios.gross_margin_percent}٪`,
-            status: statusFromNote(ratios.gross_margin_percent >= 30 ? 'خوب' : 'متوسط'),
+            status: statusBanner.find((item) => item.key === 'gross_margin')?.status || 'bad',
           },
           ratios.net_margin_percent != null && {
             label: 'حاشیه سود خالص',
             valuePercentage: Math.min(Math.max(ratios.net_margin_percent, 0), 100),
             displayValue: `${ratios.net_margin_percent}٪`,
-            status: statusFromNote(ratios.net_margin_percent >= 15 ? 'خوب' : 'متوسط'),
+            status: statusBanner.find((item) => item.key === 'net_margin')?.status || 'bad',
           },
           ratios.debt_ratio_percent != null && {
             label: 'نسبت بدهی',
             valuePercentage: Math.min(Math.max(ratios.debt_ratio_percent, 0), 100),
             displayValue: `${ratios.debt_ratio_percent}٪`,
-            status: statusFromNote(ratios.debt_ratio_percent <= 40 ? 'خوب' : 'متوسط'),
+            status: statusBanner.find((item) => item.key === 'debt_ratio')?.status || 'bad',
           },
         ].filter(Boolean) as any,
       },

@@ -1,9 +1,15 @@
 import unittest
 
 from app.analytics.industry_valuation import health_score, value_company
+from app.services.ratio_engine import evaluate_health_status
 
 
 class IndustryValuationTests(unittest.TestCase):
+    def test_non_financial_high_debt_is_explicitly_bad(self):
+        result = evaluate_health_status({"debt_ratio_percent": 80}, "فلزات اساسی")
+        debt = next(flag for flag in result["flags"] if flag["key"] == "debt")
+        self.assertEqual(debt["status"], "bad")
+
     def test_values_pharmaceuticals_from_current_market_eps(self):
         result = value_company({
             "live_price": {"market_category": "مواد و محصولات دارویی", "eps": 1030},

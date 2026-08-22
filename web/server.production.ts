@@ -133,6 +133,7 @@ async function rewardReferralAfterFirstAnalysis(userId: string) {
   return withTransaction(async (client) => {
     const ref = await client.query(`SELECT id,referrer_user_id FROM referrals WHERE referred_user_id=$1 AND status='pending' FOR UPDATE`, [userId]);
     if (!ref.rows[0]) return null;
+    await client.query(`SELECT id FROM users WHERE id=$1 FOR UPDATE`, [ref.rows[0].referrer_user_id]);
     const cap = Number((await client.query(`SELECT value::text AS value FROM system_settings WHERE key='referral_monthly_cap'`)).rows[0]?.value || 10);
     const count = Number((await client.query(`SELECT count(*) FROM referrals WHERE referrer_user_id=$1 AND status='rewarded' AND rewarded_at>=date_trunc('month',now())`, [ref.rows[0].referrer_user_id])).rows[0].count);
     if (count >= cap) return null;

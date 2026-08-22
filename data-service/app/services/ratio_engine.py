@@ -105,15 +105,18 @@ def evaluate_health_status(ratios: dict, industry_category: str | None = None) -
 
     flags = []
 
+    def add_flag(key, label, value, note, status):
+        flags.append({"key": key, "label": label, "value": value, "note": note, "status": status})
+
     # --- ROE: آستانه‌ها برای بانک/بیمه و شرکت‌های عادی مشترکه (ROE بالا همیشه خوبه) ---
     roe = ratios.get("roe_percent")
     if roe is not None:
         if roe >= 20:
-            flags.append({"key": "roe", "label": "بازده حقوق صاحبان سهام", "value": f"{roe}%", "note": "بالا"})
+            add_flag("roe", "بازده حقوق صاحبان سهام", f"{roe}%", "بالا", "good")
         elif roe >= 10:
-            flags.append({"key": "roe", "label": "بازده حقوق صاحبان سهام", "value": f"{roe}%", "note": "متوسط"})
+            add_flag("roe", "بازده حقوق صاحبان سهام", f"{roe}%", "متوسط", "mid")
         else:
-            flags.append({"key": "roe", "label": "بازده حقوق صاحبان سهام", "value": f"{roe}%", "note": "پایین"})
+            add_flag("roe", "بازده حقوق صاحبان سهام", f"{roe}%", "پایین", "bad")
 
     # --- ROA: برای شرکت‌های مالی چون دارایی‌ها خیلی بزرگ‌اند (سپرده‌ها)، آستانه پایین‌تره ---
     roa = ratios.get("roa_percent")
@@ -132,7 +135,7 @@ def evaluate_health_status(ratios: dict, industry_category: str | None = None) -
                 note = "متوسط"
             else:
                 note = "پایین"
-        flags.append({"key": "roa", "label": "بازده دارایی‌ها", "value": f"{roa}%", "note": note})
+        add_flag("roa", "بازده دارایی‌ها", f"{roa}%", note, "good" if "خوب" in note else "mid" if "متوسط" in note else "bad")
 
     # --- نسبت بدهی: تفاوت اصلی بین شرکت مالی و غیرمالی همینجاست ---
     debt_ratio = ratios.get("debt_ratio_percent")
@@ -152,15 +155,15 @@ def evaluate_health_status(ratios: dict, industry_category: str | None = None) -
                 note = "متوسط"
             else:
                 note = "بالا/پرریسک"
-        flags.append({"key": "debt", "label": "نسبت بدهی", "value": f"{debt_ratio}%", "note": note})
+        add_flag("debt", "نسبت بدهی", f"{debt_ratio}%", note, "good" if note in {"کم‌ریسک", "طبیعی برای یک نهاد مالی"} else "mid" if "متوسط" in note or "کمی بالاتر" in note else "bad")
 
     cash_ratio = ratios.get("cash_to_profit_ratio_percent")
     if cash_ratio is not None:
         if cash_ratio >= 80:
-            flags.append({"key": "cash_quality", "label": "کیفیت نقدینگی سود", "value": f"{cash_ratio}%", "note": "خوب"})
+            add_flag("cash_quality", "کیفیت نقدینگی سود", f"{cash_ratio}%", "خوب", "good")
         elif cash_ratio >= 40:
-            flags.append({"key": "cash_quality", "label": "کیفیت نقدینگی سود", "value": f"{cash_ratio}%", "note": "متوسط"})
+            add_flag("cash_quality", "کیفیت نقدینگی سود", f"{cash_ratio}%", "متوسط", "mid")
         else:
-            flags.append({"key": "cash_quality", "label": "کیفیت نقدینگی سود", "value": f"{cash_ratio}%", "note": "نیازمند بررسی بیشتر"})
+            add_flag("cash_quality", "کیفیت نقدینگی سود", f"{cash_ratio}%", "نیازمند بررسی بیشتر", "bad")
 
     return {"flags": flags, "industry_classified_as": "مالی (بانک/بیمه/واسطه‌گری)" if is_financial else "عادی (تولیدی/خدماتی/سایر)"}

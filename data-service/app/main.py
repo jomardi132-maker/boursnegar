@@ -1,6 +1,8 @@
 import re
 import json
 import hashlib
+import datetime
+import jdatetime
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -162,7 +164,8 @@ def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
 
 def _period_end_from_letter(letter: dict) -> str | None:
     text = " ".join(str(letter.get(k) or "") for k in ("Title", "PublishDateTime")).translate(_DATE_DIGITS)
-    match = re.search(r"14(?:04|05)[/\-]\d{1,2}[/\-]\d{1,2}", text)
+    current_year = jdatetime.date.fromgregorian(date=datetime.date.today()).year
+    match = re.search(rf"(?:{current_year - 1}|{current_year})[/\-]\d{{1,2}}[/\-]\d{{1,2}}", text)
     return match.group(0).replace("-", "/") if match else None
 
 
@@ -175,7 +178,8 @@ def _persist_letters(db: Session, company: models.Company, letters: list[dict]) 
             continue
         period_end = _period_end_from_letter(rec)
         searchable = " ".join(str(rec.get(k) or "") for k in ("Title", "PublishDateTime")).translate(_DATE_DIGITS)
-        if "1404" not in searchable and "1405" not in searchable and period_end is None:
+        current_year = jdatetime.date.fromgregorian(date=datetime.date.today()).year
+        if not any(str(year) in searchable for year in (current_year - 1, current_year)) and period_end is None:
             continue
         existing = db.query(models.FinancialReport).filter(models.FinancialReport.tracing_no == tracing_no).first()
         if existing:
@@ -655,7 +659,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "ratios": ratios,
         "health": health,
         "history_sync": {
-            "years": [1404, 1405],
+            "years": [jdatetime.date.fromgregorian(date=datetime.date.today()).year - 1, jdatetime.date.fromgregorian(date=datetime.date.today()).year],
             "reports_added": history_reports_added,
             "line_items_added": history_line_items_added,
             "policy": "on_symbol_search",
