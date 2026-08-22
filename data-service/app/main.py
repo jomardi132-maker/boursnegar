@@ -549,31 +549,45 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     if report_mode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="report_mode نامعتبر است.")
 
-    # ۲. ترجیح آرشیو محلی معتبر؛ در نبود آن، فهرست گزارش‌های کدال را می‌گیریم.
-    local_report = _stored_financial_report(db, symbol, report_mode)
+    # حالت latest_codal باید برای کشف گزارش‌های تازه، کدال را اول بررسی کند؛
+    # آرشیو محلی فقط fallback است. در حالت audited، facts معتبر محلی اولویت دارد.
+    local_report = None if report_mode == "latest_codal" else _stored_financial_report(db, symbol, report_mode)
     letters = _stored_codal_letters(db, symbol)
     if local_report:
         candidate, excel_url, parsed = local_report
     else:
         try:
-            letters = codal_service.fetch_all_letters(symbol, max_pages=2)
+            letters = codal_service.fetch_all_letters(symbol, max_pages=4)
         except codal_service.CodalUnavailableError as e:
-            if not letters:
+            local_report = _stored_financial_report(db, symbol, report_mode)
+            if local_report:
+                candidate, excel_url, parsed = local_report
+            elif not letters:
                 raise HTTPException(status_code=503, detail=str(e))
-        if not letters:
+        if local_report:
+            pass
+        elif not letters:
             raise HTTPException(status_code=404, detail=f"هیچ گزارشی برای نماد «{symbol}» در کدال پیدا نشد.")
-
-        # ۳. انتخاب نخستین صورت مالی واقعاً قابل استخراج. بعضی اصلاحیه‌های کدال
-    # به‌اشتباه فایل گزارش تفسیری مدیریت را در ExcelUrl برمی‌گردانند؛ در این
-    # حالت به نسخه معتبر قبلی همان صورت مالی برمی‌گردیم.
-        candidates = _financial_candidates(letters, report_mode)
-        if not candidates:
-            report_label = "حسابرسی‌شده سالانه" if report_mode == "audited" else "دارای فایل اکسل"
-            raise HTTPException(
-                status_code=404,
-                detail=f"هیچ گزارش {report_label} برای «{symbol}» در {len(letters)} اطلاعیه‌ی اخیر پیدا نشد.",
-            )
-        candidate, excel_url, parsed = _parse_first_usable_report(candidates)
+        if not local_report:
+            # ۳. انتخاب نخستین صورت مالی واقعاً قابل استخراج. بعضی اصلاحیه‌های کدال
+            # به‌اشتباه فایل گزارش تفسیری مدیریت را در ExcelUrl برمی‌گردانند؛ در این
+            # حالت به نسخه معتبر قبلی همان صورت مالی برمی‌گردیم.
+            candidates = _financial_candidates(letters, report_mode)
+            if not candidates:
+                report_label = "حسابرسی‌شده سالانه" if report_mode == "audited" else "دارای فایل اکسل"
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"هیچ گزارش {report_label} برای «{symbol}» در {len(letters)} اطلاعیه‌ی اخیر پیدا نشد.",
+                )
+            try:
+                candidate, excel_url, parsed = _parse_first_usable_report(candidates)
+            except HTTPException:
+                # اگر provider گزارش تازه را داد اما فایل‌های آن موقتاً خراب بودند،
+                # تحلیل را با آخرین fact معتبر محلی از کار نمی‌اندازیم.
+                fallback = _stored_financial_report(db, symbol, report_mode)
+                if not fallback:
+                    raise
+                candidate, excel_url, parsed = fallback
 
     comparison, comparison_unavailable_reason = _build_period_comparison(candidate, parsed, letters)
     related_disclosures = _related_codal_disclosures(letters, candidate)
