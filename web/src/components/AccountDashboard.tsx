@@ -6,6 +6,7 @@ import {
   Gauge,
   History,
   Megaphone,
+  MessageSquare,
   Settings,
   Shield,
   Users,
@@ -530,6 +531,8 @@ function AdminPanel() {
               ? "/api/admin/plans"
               : section === "campaigns"
                 ? "/api/admin/campaigns"
+                : section === "comments"
+                  ? "/api/admin/comments"
                 : section === "referrals"
                   ? "/api/admin/referrals"
                   : section === "settings"
@@ -553,6 +556,7 @@ function AdminPanel() {
           ["payments", CreditCard, "پرداخت‌ها"],
           ["plans", CreditCard, "پلن‌ها"],
           ["campaigns", Megaphone, "کمپین‌ها"],
+          ["comments", MessageSquare, "نظرات"],
           ["referrals", Users, "معرفی‌ها"],
           ["settings", Settings, "تنظیمات"],
           ["data", Database, "وضعیت داده"],
@@ -610,6 +614,8 @@ function AdminContent({
         ))}
       </div>
     );
+  if (section === "comments")
+    return <div className="dashboard-list">{(data.comments || []).map((c:any)=><article key={c.id}><span><b>{c.email}</b><br/>{c.kind === "site_feedback" ? "بازخورد سایت" : `نظر ${c.symbol}`}<br/>{c.body}</span><div><button onClick={async()=>{await api(`/api/admin/comments/${c.id}`,{method:"PATCH",body:JSON.stringify({status:"published",reward:c.kind==="site_feedback"?10:0})});reload()}}>تأیید{c.kind==="site_feedback"?" و ۱۰ اعتبار":""}</button><button onClick={async()=>{await api(`/api/admin/comments/${c.id}`,{method:"PATCH",body:JSON.stringify({status:"rejected",reward:0})});reload()}}>رد</button></div></article>)}</div>;
   if (section === "payments")
     return (
       <div className="dashboard-list">
