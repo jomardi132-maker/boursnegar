@@ -205,12 +205,12 @@ def run(max_pages: int, resume: bool, requested_symbols: set[str] | None = None,
     return result
 
 
-def run_global(resume: bool) -> dict:
+def run_global(resume: bool, from_date: str = "1404/01/01", to_date: str | None = None) -> dict:
     """Fetch each dated Codal result page once instead of querying every symbol."""
     run_id = str(uuid.uuid4())
     jy, jm, jd = gregorian_to_jalali(datetime.now().date())
-    from_date = "1404/01/01"
-    to_date = f"{jy:04d}/{jm:02d}/{jd:02d}"
+    to_date = to_date or f"{jy:04d}/{jm:02d}/{jd:02d}"
+    partition = f"global-pages:{from_date}:{to_date}"
     with engine.begin() as connection:
         connection.execute(text("""
           UPDATE ingestion_runs SET status='CANCELLED',finished_at=now(),
@@ -219,9 +219,9 @@ def run_global(resume: bool) -> dict:
         """), {"pipeline": PIPELINE})
         connection.execute(text("""
           INSERT INTO ingestion_runs(id,pipeline,source,partition_key,status,watermark)
-          VALUES(:id,:pipeline,:source,'global-pages','RUNNING',CAST(:watermark AS jsonb))
+          VALUES(:id,:pipeline,:source,:partition,'RUNNING',CAST(:watermark AS jsonb))
         """), {"id": run_id, "pipeline": PIPELINE, "source": SOURCE,
-                 "watermark": json.dumps({"from": from_date, "to": to_date})})
+                 "partition": partition, "watermark": json.dumps({"from": from_date, "to": to_date})})
         catalog = list(connection.execute(text("""
           SELECT sa.symbol,i.id AS instrument_id,ir.id AS issuer_id,ir.legal_name
           FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id
@@ -233,8 +233,8 @@ def run_global(resume: bool) -> dict:
         if resume:
             cursor = connection.execute(text("""
               SELECT cursor FROM ingestion_checkpoints
-              WHERE source=:source AND pipeline=:pipeline AND partition_key='global-pages'
-            """), {"source": SOURCE, "pipeline": PIPELINE}).scalar()
+              WHERE source=:source AND pipeline=:pipeline AND partition_key=:partition
+            """), {"source": SOURCE, "pipeline": PIPELINE, "partition": partition}).scalar()
             if cursor and cursor.get("to") == to_date:
                 next_page = max(1, int(cursor.get("nextPage") or 1))
 
@@ -255,10 +255,10 @@ def run_global(resume: bool) -> dict:
                     saved += int(_save_letter(connection, item, letter))
                 connection.execute(text("""
                   INSERT INTO ingestion_checkpoints(source,pipeline,partition_key,cursor,watermark_at)
-                  VALUES(:source,:pipeline,'global-pages',CAST(:cursor AS jsonb),now())
+                  VALUES(:source,:pipeline,:partition,CAST(:cursor AS jsonb),now())
                   ON CONFLICT(source,pipeline,partition_key) DO UPDATE SET
                     cursor=excluded.cursor,watermark_at=excluded.watermark_at,updated_at=now()
-                """), {"source": SOURCE, "pipeline": PIPELINE,
+                """), {"source": SOURCE, "pipeline": PIPELINE, "partition": partition,
                          "cursor": json.dumps({"nextPage": next_page + 1, "totalPages": total_pages,
                                                "from": from_date, "to": to_date})})
             if next_page % 25 == 0 or next_page == total_pages:
@@ -293,7 +293,7 @@ if __name__ == "__main__":
     parser.add_argument("--from-date", default="1404/01/01")
     parser.add_argument("--to-date")
     args = parser.parse_args()
-    result = run_global(not args.no_resume) if args.global_pages else run(
+    result = run_global(not args.no_resume, args.from_date, args.to_date) if args.global_pages else run(
         args.max_pages, not args.no_resume, set(args.symbols or []), args.from_date, args.to_date
     )
     print(json.dumps(result, ensure_ascii=False))
