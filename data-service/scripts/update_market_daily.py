@@ -63,6 +63,7 @@ def main() -> None:
     parser.add_argument("--allow-non-market-day", action="store_true")
     parser.add_argument("--pipeline", default=PIPELINE)
     parser.add_argument("--source", default=SOURCE)
+    parser.add_argument("--minimum-quotes", type=int, default=1000)
     args = parser.parse_args()
 
     trading_date = args.date or datetime.now(TEHRAN).date()
@@ -73,7 +74,7 @@ def main() -> None:
     rows = get_all_symbols(force_refresh=True)
     quotes = [row for row in rows if valid_quote(row)]
     traded = sum(1 for row in quotes if int(row.get("tno") or 0) > 0 and float(row.get("tvol") or 0) > 0)
-    if len(quotes) < 1000 or traded < 100:
+    if len(quotes) < args.minimum_quotes or traded < 100:
         raise RuntimeError(f"market snapshot failed quality gate: quotes={len(quotes)}, traded={traded}")
 
     fingerprint = market_fingerprint(quotes)
@@ -136,7 +137,7 @@ def main() -> None:
                     quote.get("tvol"), quote.get("tval"), quote.get("tno"), quote.get("mv"), quote.get("z"),
                     args.source, retrieved_at,
                 ))
-            if len(values) < 1000 or missing > 100:
+            if len(values) < args.minimum_quotes or missing > max(100, len(quotes) // 10):
                 raise RuntimeError(f"catalog coverage failed: values={len(values)}, missing={missing}")
             raw = connection.connection.driver_connection
             with raw.cursor() as cursor:

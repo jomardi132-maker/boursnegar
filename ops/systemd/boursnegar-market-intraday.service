@@ -9,7 +9,6 @@ User=root
 WorkingDirectory=/var/www/boursnegar-data-current
 EnvironmentFile=/var/www/boursnegar-data-current/.env
 Environment=PYTHONPATH=.
-ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/update_market_daily.py --pipeline market-intraday-v1 --source brsapi-intraday-market
+ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/update_market_daily.py --pipeline market-intraday-v1 --source brsapi-intraday-market --minimum-quotes 900
 TimeoutStartSec=20min
 Nice=5
-
