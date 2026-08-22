@@ -3,7 +3,7 @@ Description=Continue Boursnegar Codal financial ingestion
 
 [Timer]
 OnBootSec=15min
-OnUnitActiveSec=12h
+OnUnitActiveSec=1h
 RandomizedDelaySec=5min
 Persistent=true
 Unit=boursnegar-codal-financials.service
