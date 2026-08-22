@@ -15,6 +15,7 @@ from sqlalchemy import text
 from app.database import engine
 from app.ingestion.market_history import jalali_to_gregorian
 from app.services.codal_excel_parser import (
+    CodalExcelParseError,
     extract_period_end_jalali,
     fetch_and_parse,
     download_codal_excel,
@@ -127,6 +128,22 @@ def ingest(limit: int, root: Path) -> dict:
                            "quality": "VALID" if unit else "UNIT_UNKNOWN"})
             processed += 1
             saved += len(parsed["found_items"])
+        except CodalExcelParseError as exc:
+            # Permanent format failures (for example a Codal error page with
+            # no tables) must not occupy every hourly retry forever. Keep a
+            # durable audit record while allowing network/download failures
+            # to be retried on the next run.
+            if 'content' in locals() and content:
+                with engine.begin() as connection:
+                    connection.execute(text("""
+                      INSERT INTO raw_documents(disclosure_version_id,source_url,storage_key,checksum_sha256,mime_type,byte_size,retrieved_at,parser_status)
+                      VALUES(:version,:url,NULL,:checksum,'text/html',:size,now(),'FAILED')
+                      ON CONFLICT(disclosure_version_id,checksum_sha256) DO UPDATE SET
+                        parser_status='FAILED',retrieved_at=now()
+                    """), {"version": row["version_id"], "url": row["excel_url"],
+                           "checksum": hashlib.sha256(content).hexdigest(), "size": len(content)})
+            failed += 1
+            print(json.dumps({"disclosure": row["source_disclosure_id"], "error": str(exc)[:300], "permanent": True}, ensure_ascii=False), flush=True)
         except Exception as exc:
             failed += 1
             print(json.dumps({"disclosure": row["source_disclosure_id"], "error": str(exc)[:300]}, ensure_ascii=False), flush=True)
