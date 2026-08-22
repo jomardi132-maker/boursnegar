@@ -68,7 +68,10 @@ def ingest(limit: int, root: Path) -> dict:
                  dv.id AS version_id,(dv.metadata->>'excel_url') AS excel_url
           FROM disclosures d JOIN disclosure_versions dv ON dv.disclosure_id=d.id AND dv.is_current
           LEFT JOIN raw_documents rd ON rd.disclosure_version_id=dv.id
-          WHERE (rd.id IS NULL OR rd.parser_status <> 'PARSED')
+          -- Permanent parser failures (for example Codal error pages with no
+          -- tables) are audited but must not monopolize every retry batch.
+          -- Network/download failures remain retryable as FAILED.
+          WHERE (rd.id IS NULL OR rd.parser_status NOT IN ('PARSED', 'FAILED_PERMANENT'))
             AND (dv.metadata->>'excel_url') IS NOT NULL
             AND d.published_date_jalali >= '1404/01/01'
             AND d.title ~ '(صورت|مالی|ترازنامه|سود|زیان)'
@@ -137,9 +140,9 @@ def ingest(limit: int, root: Path) -> dict:
                 with engine.begin() as connection:
                     connection.execute(text("""
                       INSERT INTO raw_documents(disclosure_version_id,source_url,storage_key,checksum_sha256,mime_type,byte_size,retrieved_at,parser_status)
-                      VALUES(:version,:url,:key,:checksum,'text/html',:size,now(),'FAILED')
+                      VALUES(:version,:url,:key,:checksum,'text/html',:size,now(),'FAILED_PERMANENT')
                       ON CONFLICT(disclosure_version_id,checksum_sha256) DO UPDATE SET
-                        parser_status='FAILED',retrieved_at=now()
+                        parser_status='FAILED_PERMANENT',retrieved_at=now()
                     """), {"version": row["version_id"], "url": row["excel_url"],
                            "key": str(root / f"{row['version_id']}-{hashlib.sha256(content).hexdigest()}.failed.html"),
                            "checksum": hashlib.sha256(content).hexdigest(), "size": len(content)})
