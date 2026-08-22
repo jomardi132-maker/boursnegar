@@ -129,6 +129,21 @@ async function recordAnalysisAttempt(
     [userId, symbol, reportMode, success, errorCode?.slice(0, 80) ?? null],
   );
 }
+async function rewardReferralAfterFirstAnalysis(userId: string) {
+  return withTransaction(async (client) => {
+    const ref = await client.query(`SELECT id,referrer_user_id FROM referrals WHERE referred_user_id=$1 AND status='pending' FOR UPDATE`, [userId]);
+    if (!ref.rows[0]) return false;
+    const cap = Number((await client.query(`SELECT value::text AS value FROM system_settings WHERE key='referral_monthly_cap'`)).rows[0]?.value || 10);
+    const count = Number((await client.query(`SELECT count(*) FROM referrals WHERE referrer_user_id=$1 AND status='rewarded' AND rewarded_at>=date_trunc('month',now())`, [ref.rows[0].referrer_user_id])).rows[0].count);
+    if (count >= cap) return false;
+    const reward = Number((await client.query(`SELECT value::text AS value FROM system_settings WHERE key='referral_referrer_reward'`)).rows[0]?.value || 10);
+    const balance = await client.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`, [ref.rows[0].referrer_user_id,reward]);
+    if (!balance.rows[0]) return false;
+    await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'referral','referral',$4,$5) ON CONFLICT DO NOTHING`,[ref.rows[0].referrer_user_id,reward, balance.rows[0].balance,ref.rows[0].id,`referral:first-analysis:${ref.rows[0].id}`]);
+    await client.query(`UPDATE referrals SET status='rewarded',rewarded_at=now() WHERE id=$1`,[ref.rows[0].id]);
+    return true;
+  });
+}
 
 async function sendOtp(mobile: string, code: string): Promise<string> {
   if (process.env.OTP_GATEWAY === "mock") {
@@ -515,6 +530,7 @@ app.post(
         parsed.data.reportMode,
         true,
       );
+      await rewardReferralAfterFirstAnalysis(req.authUser!.id);
       res.json({
         success: true,
         replayed: Boolean(saved.replayed),

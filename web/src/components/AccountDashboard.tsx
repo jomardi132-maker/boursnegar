@@ -183,9 +183,9 @@ function TabContent({
         <section className="dashboard-section">
           <h3>کد معرفی اختصاصی</h3>
           <code>{d.referralCode || "—"}</code>
+          {d.referralCode && <><p>لینک دعوت شما:</p><code>{`${window.location.origin}/?ref=${d.referralCode}`}</code></>}
           <p>
-            پس از اولین خرید تأییدشده دوست شما، پاداش به‌صورت خودکار در دفتر
-            اعتبار ثبت می‌شود.
+            پس از تأیید ایمیل و اولین تحلیل موفق دوست شما، پاداش به‌صورت خودکار در دفتر اعتبار ثبت می‌شود.
           </p>
         </section>
       </>
