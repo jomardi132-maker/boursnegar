@@ -34,7 +34,7 @@ import {
   verifyEmailCode,
 } from "./server/auth";
 import { installPlatformRoutes } from "./server/platformRoutes";
-import { mailDeliveryReady, sendPasswordResetEmail, sendEmailVerificationEmail } from "./server/mailer";
+import { mailDeliveryReady, sendPasswordResetEmail, sendEmailVerificationEmail, sendCreditNoticeEmail } from "./server/mailer";
 
 dotenv.config({ quiet: true });
 const app = express();
@@ -132,16 +132,16 @@ async function recordAnalysisAttempt(
 async function rewardReferralAfterFirstAnalysis(userId: string) {
   return withTransaction(async (client) => {
     const ref = await client.query(`SELECT id,referrer_user_id FROM referrals WHERE referred_user_id=$1 AND status='pending' FOR UPDATE`, [userId]);
-    if (!ref.rows[0]) return false;
+    if (!ref.rows[0]) return null;
     const cap = Number((await client.query(`SELECT value::text AS value FROM system_settings WHERE key='referral_monthly_cap'`)).rows[0]?.value || 10);
     const count = Number((await client.query(`SELECT count(*) FROM referrals WHERE referrer_user_id=$1 AND status='rewarded' AND rewarded_at>=date_trunc('month',now())`, [ref.rows[0].referrer_user_id])).rows[0].count);
-    if (count >= cap) return false;
+    if (count >= cap) return null;
     const reward = Number((await client.query(`SELECT value::text AS value FROM system_settings WHERE key='referral_referrer_reward'`)).rows[0]?.value || 10);
     const balance = await client.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`, [ref.rows[0].referrer_user_id,reward]);
-    if (!balance.rows[0]) return false;
+    if (!balance.rows[0]) return null;
     await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'referral','referral',$4,$5) ON CONFLICT DO NOTHING`,[ref.rows[0].referrer_user_id,reward, balance.rows[0].balance,ref.rows[0].id,`referral:first-analysis:${ref.rows[0].id}`]);
     await client.query(`UPDATE referrals SET status='rewarded',rewarded_at=now() WHERE id=$1`,[ref.rows[0].id]);
-    return true;
+    return { referrerId: ref.rows[0].referrer_user_id, reward, balance: balance.rows[0].balance };
   });
 }
 
@@ -530,7 +530,11 @@ app.post(
         parsed.data.reportMode,
         true,
       );
-      await rewardReferralAfterFirstAnalysis(req.authUser!.id);
+      const referralReward = await rewardReferralAfterFirstAnalysis(req.authUser!.id);
+      if (referralReward && mailDeliveryReady()) {
+        const recipient = await pool.query(`SELECT email FROM email_identities WHERE user_id=$1 AND email_verified_at IS NOT NULL`, [referralReward.referrerId]);
+        if (recipient.rows[0]?.email) void sendCreditNoticeEmail(recipient.rows[0].email, referralReward.reward, "پاداش معرفی دوست", referralReward.balance).catch(() => undefined);
+      }
       res.json({
         success: true,
         replayed: Boolean(saved.replayed),

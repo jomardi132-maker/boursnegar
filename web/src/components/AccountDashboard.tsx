@@ -518,6 +518,10 @@ function AlertForm({ done, initial }: { done: () => void; initial?: any }) {
 }
 function AdminPanel() {
   const [section, setSection] = useState("stats");
+  const [commentStatus, setCommentStatus] = useState("all");
+  const [commentRewarded, setCommentRewarded] = useState("all");
+  const [commentDay, setCommentDay] = useState("");
+  const [commentQuery, setCommentQuery] = useState("");
   const [data, setData] = useState<any>(null);
   const load = () =>
     api(
@@ -532,7 +536,7 @@ function AdminPanel() {
               : section === "campaigns"
                 ? "/api/admin/campaigns"
                 : section === "comments"
-                  ? "/api/admin/comments"
+                  ? `/api/admin/comments?status=${commentStatus}&rewarded=${commentRewarded}&day=${commentDay}&q=${encodeURIComponent(commentQuery)}`
                 : section === "referrals"
                   ? "/api/admin/referrals"
                   : section === "settings"
@@ -546,7 +550,7 @@ function AdminPanel() {
   useEffect(() => {
     setData(null);
     load();
-  }, [section]);
+  }, [section, commentStatus, commentRewarded, commentDay, commentQuery]);
   return (
     <section className="dashboard-section">
       <div className="admin-tabs">
@@ -573,6 +577,7 @@ function AdminPanel() {
           </button>
         ))}
       </div>
+      {section === "comments" && <div className="inline-form"><select value={commentStatus} onChange={e=>setCommentStatus(e.target.value)}><option value="all">همه وضعیت‌ها</option><option value="published">منتشرشده</option><option value="hidden">غیرفعال</option><option value="rejected">ردشده</option></select><select value={commentRewarded} onChange={e=>setCommentRewarded(e.target.value)}><option value="all">همه جایزه‌ها</option><option value="no">بدون جایزه</option><option value="yes">جایزه‌داده‌شده</option></select><input type="date" value={commentDay} onChange={e=>setCommentDay(e.target.value)}/><input placeholder="جست‌وجوی متن یا ایمیل" value={commentQuery} onChange={e=>setCommentQuery(e.target.value)}/></div>}
       {data ? (
         <AdminContent section={section} data={data} reload={load} />
       ) : (
