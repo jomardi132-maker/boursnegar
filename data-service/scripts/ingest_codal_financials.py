@@ -95,6 +95,15 @@ def ingest(limit: int, root: Path) -> dict:
             end_jalali = extract_period_end_jalali(row["title"])
             months = period_months(row["title"])
             if not end_jalali or not months:
+                marker = hashlib.sha256(f"skipped:{row['version_id']}".encode()).hexdigest()
+                with engine.begin() as connection:
+                    connection.execute(text("""
+                      INSERT INTO raw_documents(disclosure_version_id,source_url,storage_key,checksum_sha256,mime_type,byte_size,retrieved_at,parser_status)
+                      VALUES(:version,:url,:key,:checksum,'text/plain',0,now(),'FAILED_PERMANENT')
+                      ON CONFLICT(disclosure_version_id,checksum_sha256) DO UPDATE SET
+                        parser_status='FAILED_PERMANENT',retrieved_at=now()
+                    """), {"version": row["version_id"], "url": row["excel_url"],
+                            "key": f"skipped/{row['version_id']}", "checksum": marker})
                 skipped += 1
                 continue
             end_date = _jalali_to_date(end_jalali)
