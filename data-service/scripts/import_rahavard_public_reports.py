@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -73,12 +74,20 @@ def collect(limit: int, output: Path, delay: float = 1.0, session: requests.Sess
                 text_path = output / "text" / f"{checksum}.txt"
                 if not pdf_path.exists():
                     pdf_path.write_bytes(content)
-                if not text_path.exists():
-                    subprocess.run(["pdftotext", "-raw", str(pdf_path), str(text_path)], check=True, timeout=60)
-                text_sample = normalize_text(text_path.read_text(encoding="utf-8", errors="ignore"))[:500]
+                text_status = "EXTRACTED"
+                if shutil.which("pdftotext"):
+                    if not text_path.exists():
+                        subprocess.run(["pdftotext", "-raw", str(pdf_path), str(text_path)], check=True, timeout=60)
+                    text_sample = normalize_text(text_path.read_text(encoding="utf-8", errors="ignore"))[:500]
+                else:
+                    # PDF collection remains useful/auditable on minimal
+                    # production images; text extraction can be replayed later.
+                    text_status = "PENDING_TEXT_EXTRACTION"
+                    text_sample = ""
                 record = {"status": "QUARANTINED", "source": "rahavard365", "report": detail,
                           "list_report": report, "pdf_url": pdf_url, "checksum_sha256": checksum,
-                          "pdf_path": str(pdf_path), "text_path": str(text_path), "text_sample": text_sample,
+                          "pdf_path": str(pdf_path), "text_path": str(text_path), "text_status": text_status,
+                          "text_sample": text_sample,
                           "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
                 manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
                 manifest.flush()
