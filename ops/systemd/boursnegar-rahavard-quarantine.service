@@ -1,0 +1,15 @@
+[Unit]
+Description=Boursnegar public Rahavard report quarantine collector
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+EnvironmentFile=/var/www/boursnegar-data-current/.env
+Environment=PYTHONPATH=.
+Environment=RAHAVARD_QUARANTINE_ROOT=/var/lib/boursnegar/rahavard-quarantine
+ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/import_rahavard_public_reports.py --limit 100 --delay 1.0
+TimeoutStartSec=6h
+Nice=15

@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh public Rahavard report quarantine
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=24h
+RandomizedDelaySec=30min
+Persistent=true
+Unit=boursnegar-rahavard-quarantine.service
+
+[Install]
+WantedBy=timers.target
