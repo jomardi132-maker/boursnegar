@@ -73,6 +73,8 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("_DATE_DIGITS", source)
         self.assertIn("translate(_DATE_DIGITS)", source)
         self.assertIn('jdatetime.date.fromgregorian', source)
+        self.assertIn('gregorian_date.today()', source)
+        self.assertNotIn('datetime.date.today()', source)
         self.assertNotIn('"years": [1404, 1405]', source)
 
     def test_analysis_uses_provenance_cache_when_codal_is_throttled(self):
