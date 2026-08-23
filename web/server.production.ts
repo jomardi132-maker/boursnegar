@@ -86,6 +86,23 @@ const asyncRoute =
   (handler: express.RequestHandler): express.RequestHandler =>
   (req, res, next) =>
     Promise.resolve(handler(req, res, next)).catch(next);
+
+type CodalScanReport = { title: string; date: string; content: string; excerpt: string; url: string; published_at: string };
+let codalScanCache: { expiresAt: number; report: CodalScanReport | null } = { expiresAt: 0, report: null };
+async function fetchCodalScanLatestReport(): Promise<CodalScanReport | null> {
+  if (codalScanCache.expiresAt > Date.now()) return codalScanCache.report;
+  try {
+    const response = await fetch("https://codalscan.ir/reports/latest-report.json", { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(4_000) });
+    if (!response.ok) throw new Error(`CodalScan HTTP ${response.status}`);
+    const value = (await response.json()) as Partial<CodalScanReport>;
+    if (!value.title || !value.date || !value.content || !value.url || !value.published_at) throw new Error("incomplete CodalScan report");
+    codalScanCache = { expiresAt: Date.now() + 10 * 60_000, report: { title: String(value.title), date: String(value.date), content: String(value.content), excerpt: String(value.excerpt || value.content), url: String(value.url), published_at: String(value.published_at) } };
+    return codalScanCache.report;
+  } catch {
+    codalScanCache = { expiresAt: Date.now() + 60_000, report: null };
+    return null;
+  }
+}
 const otpRequestSchema = z.object({ mobile: z.string().min(10).max(20) });
 const otpVerifySchema = z.object({
   requestId: z.string().uuid(),
@@ -182,6 +199,10 @@ app.get("/healthz", (_req, res) => res.json({ status: "ok", auth: "email_passwor
 app.get("/api/health", (_req, res) =>
   res.json({ status: "ok", auth: "email_password" }),
 );
+app.get("/api/sources/codalscan/latest", rateLimit("codalscan-latest", 30, 60_000), asyncRoute(async (_req, res) => {
+  const report = await fetchCodalScanLatestReport();
+  res.json({ available: Boolean(report), report, source: "CodalScan" });
+}));
 app.get(
   "/readyz",
   asyncRoute(async (_req, res) => {
