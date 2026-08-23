@@ -1,20 +1,33 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# بورس‌نگار
 
-# Run and deploy your AI Studio app
+وب‌اپلیکیشن تحلیل بنیادی سهام بورس تهران؛ با داده‌ی واقعی بازار، تاریخچه‌ی قیمت، اطلاعیه‌های کدال و خروجی‌های تحلیلی قابل ردیابی.
 
-This contains everything you need to run your app locally.
+## اجرای محلی
 
-View your app in AI Studio: https://ai.studio/apps/ec2bc6c7-1adc-4f44-b0e7-ca152b0fd711
+پیش‌نیازها: Node.js 22+، PostgreSQL و سرویس Python داده.
 
-## Run Locally
+```bash
+cp .env.example .env.local
+npm ci
+npm run dev:full
+```
 
-**Prerequisites:**  Node.js
+`PYTHON_API_BASE` باید به سرویس FastAPI داده اشاره کند. اطلاعات اتصال PostgreSQL و secretها فقط در محیط اجرا قرار می‌گیرند و نباید commit شوند.
 
+## کنترل کیفیت
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm run typecheck
+npm run test -- --run
+npm run build
+```
+
+تست‌های Python از ریشه‌ی `data-service` اجرا می‌شوند:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+جزئیات معماری، قرارداد منبع داده و مسیرهای ingestion در [ARCHITECTURE.md](./ARCHITECTURE.md) ثبت شده است. workflow گیت‌هاب نیز در هر push و pull request، تست وب، build و تست سرویس داده را اجرا می‌کند.
+
+در Production، Nginx/HTTPS در لایه‌ی ورودی، PM2 برای وب و systemd برای FastAPI داده استفاده می‌شود. قبل از انتشار، health endpointها، interpreter فعال، PostgreSQL، assetهای `dist` و release قابل rollback باید بررسی شوند.

@@ -14,7 +14,7 @@ from sqlalchemy import text
 from app.config import CODAL_RATE_LIMIT_SECONDS
 from app.database import engine
 from app.ingestion.market_history import gregorian_to_jalali, normalize_persian
-from app.services.codal_service import fetch_direct_letters_page
+from app.services.codal_service import fetch_direct_letters_page, fetch_letters_page
 
 
 SOURCE = "codal-search-api"
@@ -36,10 +36,11 @@ def _is_in_scope(letter: dict) -> bool:
     return bool(YEAR_RE.search(searchable))
 
 
-def _fetch_with_backoff(symbol: str, page: int, from_date: str | None = None, to_date: str | None = None) -> dict:
+def _fetch_with_backoff(symbol: str, page: int, from_date: str | None = None, to_date: str | None = None, provider_fallback: bool = False) -> dict:
     for attempt in range(5):
         try:
-            return fetch_direct_letters_page(symbol, page, from_date, to_date)
+            fetcher = fetch_letters_page if provider_fallback else fetch_direct_letters_page
+            return fetcher(symbol, page, from_date, to_date)
         except Exception as exc:
             if "429" not in str(exc) or attempt == 4:
                 raise
@@ -57,10 +58,11 @@ def _retryable_network_error(exc: Exception) -> bool:
     ))
 
 
-def _fetch_global_with_backoff(page: int, from_date: str, to_date: str) -> dict:
+def _fetch_global_with_backoff(page: int, from_date: str, to_date: str, provider_fallback: bool = False) -> dict:
     for attempt in range(8):
         try:
-            return fetch_direct_letters_page(None, page, from_date, to_date)
+            fetcher = fetch_letters_page if provider_fallback else fetch_direct_letters_page
+            return fetcher(None, page, from_date, to_date)
         except Exception as exc:
             if not _retryable_network_error(exc) or attempt == 7:
                 raise
@@ -137,7 +139,8 @@ def _save_letter(connection, symbol: dict, letter: dict) -> bool:
 
 
 def run(max_pages: int, resume: bool, requested_symbols: set[str] | None = None,
-        from_date: str = "1404/01/01", to_date: str | None = None) -> dict:
+        from_date: str = "1404/01/01", to_date: str | None = None,
+        provider_fallback: bool = False) -> dict:
     run_id = str(uuid.uuid4())
     with engine.begin() as connection:
         connection.execute(text("""
@@ -164,7 +167,7 @@ def run(max_pages: int, resume: bool, requested_symbols: set[str] | None = None,
         try:
             letters = []
             for page in range(1, max_pages + 1):
-                payload = _fetch_with_backoff(symbol, page, from_date, to_date)
+                payload = _fetch_with_backoff(symbol, page, from_date, to_date, provider_fallback)
                 page_letters = payload.get("Letters") or []
                 letters.extend(letter for letter in page_letters if _is_in_scope(letter))
                 if not page_letters or page >= int(payload.get("Page") or page):
@@ -205,7 +208,8 @@ def run(max_pages: int, resume: bool, requested_symbols: set[str] | None = None,
     return result
 
 
-def run_global(resume: bool, from_date: str = "1404/01/01", to_date: str | None = None) -> dict:
+def run_global(resume: bool, from_date: str = "1404/01/01", to_date: str | None = None,
+               provider_fallback: bool = False) -> dict:
     """Fetch each dated Codal result page once instead of querying every symbol."""
     run_id = str(uuid.uuid4())
     jy, jm, jd = gregorian_to_jalali(datetime.now().date())
@@ -242,7 +246,7 @@ def run_global(resume: bool, from_date: str = "1404/01/01", to_date: str | None 
     total_pages = next_page
     try:
         while next_page <= total_pages:
-            payload = _fetch_global_with_backoff(next_page, from_date, to_date)
+            payload = _fetch_global_with_backoff(next_page, from_date, to_date, provider_fallback)
             total_pages = int(payload.get("Page") or 0)
             letters = payload.get("Letters") or []
             with engine.begin() as connection:
@@ -292,8 +296,11 @@ if __name__ == "__main__":
     parser.add_argument("--symbols", nargs="+", help="Only backfill these symbols")
     parser.add_argument("--from-date", default="1404/01/01")
     parser.add_argument("--to-date")
+    parser.add_argument("--provider-fallback", action="store_true",
+                        help="After direct Codal failure, use configured BrsApi provider fallback.")
     args = parser.parse_args()
-    result = run_global(not args.no_resume, args.from_date, args.to_date) if args.global_pages else run(
-        args.max_pages, not args.no_resume, set(args.symbols or []), args.from_date, args.to_date
+    result = run_global(not args.no_resume, args.from_date, args.to_date, args.provider_fallback) if args.global_pages else run(
+        args.max_pages, not args.no_resume, set(args.symbols or []), args.from_date, args.to_date,
+        args.provider_fallback
     )
     print(json.dumps(result, ensure_ascii=False))

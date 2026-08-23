@@ -7,6 +7,7 @@ import { StockPage } from './components/StockPage';
 import { Comments } from './components/Comments';
 import { MarketExplorer } from './components/MarketExplorer';
 import { CodalScanReportCard } from './components/CodalScanReportCard';
+import { FundamentalDashboard } from './components/FundamentalDashboard';
 import './dashboard.css';
 
 export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
@@ -40,7 +41,11 @@ export function AppProduction() {
     const requested = new URLSearchParams(window.location.search).get('analyze');
     api<{ user: User; csrfToken: string }>('/api/auth/me').then((r) => { sessionStorage.setItem(csrfStorage, r.csrfToken); setUser(r.user); if(requested) setQuery(requested); }).catch(() => { sessionStorage.removeItem(csrfStorage); setUser(null); if(requested){ setQuery(requested); setAuthOpen(true); } });
   }, []);
-  useEffect(() => { api<MarketOverview>('/api/market/overview').then(setOverview).catch(()=>setOverview(null)); }, []);
+  useEffect(() => {
+    api<MarketOverview>('/api/market/overview')
+      .then((value) => value?.catalog?.instruments != null ? setOverview(value) : setOverview(null))
+      .catch(() => setOverview(null));
+  }, []);
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get('analyze')?.trim();
     if (!user || !requested || requestedAnalysisStarted.current) return;
@@ -110,6 +115,7 @@ export function AppProduction() {
         {error && <div className="error-state" role="alert">{error}</div>}<div className="trust-line"><ShieldCheck/> تاریخچه بازار از ۱۴۰۴ <span/> اطلاعیه‌های رسمی کدال <span/> بدون عدد ساختگی</div></div>
         <div className="hero-panel"><div className="panel-head"><span>وضعیت زندهٔ پایگاه داده</span><span className="live-dot">متصل</span></div><div className="database-number"><strong>{overview ? overview.catalog.instruments.toLocaleString('fa-IR') : '—'}</strong><span>نماد و ابزار فعال</span></div><div className="database-grid"><div><b>{overview ? overview.prices.rows.toLocaleString('fa-IR') : '—'}</b><small>رکورد قیمت روزانه</small></div><div><b>{overview ? overview.disclosures.rows.toLocaleString('fa-IR') : '—'}</b><small>نسخه اطلاعیه کدال</small></div><div><b>{overview ? overview.prices.instruments.toLocaleString('fa-IR') : '—'}</b><small>نماد با تاریخچه ۱۴۰۴</small></div><div><b>{overview ? overview.analysis.analyzed.toLocaleString('fa-IR') : '—'}</b><small>نسخه تحلیل ثبت‌شده</small></div></div><div className="panel-note">این اعداد مستقیماً از پایگاه دادهٔ عملیاتی بورس‌نگار خوانده می‌شوند.</div></div>
       </section>
+      <FundamentalDashboard overview={overview} />
       <MarketExplorer/>
       <CodalScanReportCard/>
       <section className="method-section" id="method"><div className="section-heading"><span>روش کار</span><h2>از داده خام تا پاسخ روشن</h2><p>هر نتیجه، مسیر قابل مشاهده‌ای از منبع تا محاسبه دارد.</p></div><div className="steps-grid">{[[Database,'گردآوری','قیمت از BrsApi و گزارش رسمی از کدال'],[BarChart3,'محاسبه','نسبت‌های deterministic با دوره و واحد مشخص'],[Sparkles,'توضیح','پاسخ فارسی محتاطانه و قابل حسابرسی']].map(([Icon,title,text],i)=><article key={String(title)}><span className="step-index">۰{i+1}</span><Icon/><h3>{title as string}</h3><p>{text as string}</p></article>)}</div></section>
