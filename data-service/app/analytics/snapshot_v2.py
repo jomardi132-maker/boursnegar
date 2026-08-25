@@ -23,6 +23,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     live = raw.get("live_price") or {}
     present = sum(metrics.get(key) is not None for key in REQUIRED_METRICS)
     coverage = round(present / len(REQUIRED_METRICS) * 100, 2)
+    missing_metrics = [key for key in REQUIRED_METRICS if metrics.get(key) is None]
+    data_status = "READY" if not missing_metrics else "PARTIAL_DATA"
 
     report = raw.get("report_used") or {}
     title = str(report.get("title") or "")
@@ -93,6 +95,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "healthScore": score,
         "healthDimensions": dimensions,
         "dataCoverage": coverage,
+        "dataStatus": data_status,
+        "missingMetrics": missing_metrics,
         "confidence": confidence,
         "valuation": valuation,
         "keyMetrics": {
