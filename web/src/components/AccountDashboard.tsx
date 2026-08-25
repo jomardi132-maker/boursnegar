@@ -27,7 +27,7 @@ type Overview = {
   referralCode: string;
 };
 type Tab =
-  "overview" | "history" | "payments" | "referrals" | "alerts" | "admin";
+  "overview" | "history" | "payments" | "referrals" | "alerts" | "notifications" | "admin";
 
 export function AccountDashboard({ user, onClose, onCredits }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
@@ -55,6 +55,8 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
               ? "/api/account/referrals"
               : next === "alerts"
                 ? "/api/alerts"
+                : next === "notifications"
+                  ? "/api/account/notifications"
                 : "/api/admin/stats";
       setData(await api(url));
     } catch (e) {
@@ -99,6 +101,7 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
                 ["payments", CreditCard, "خرید و پرداخت"],
                 ["referrals", Users, "معرفی دوستان"],
                 ["alerts", Bell, "هشدارها"],
+                ["notifications", MessageSquare, "اعلان‌های گفت‌وگو"],
                 ...(user.role === "admin" ? [["admin", Shield, "مدیریت"]] : []),
               ] as [Tab, any, string][]
             ).map(([id, Icon, label]) => (
@@ -224,6 +227,7 @@ function TabContent({
       />
     );
   if (tab === "alerts") return <Alerts data={data} reload={reload} />;
+  if (tab === "notifications") return <List items={data.notifications} empty="هنوز اعلان گفت‌وگویی ندارید." render={(x:any)=><><b>{x.title}</b><span>{x.body}<br/>{new Date(x.created_at).toLocaleString("fa-IR")}</span>{x.target_url&&<a href={x.target_url}>مشاهده گفت‌وگو</a>}</>} />;
   if (tab === "payments")
     return <Plans plans={data.plans || []} campaigns={data.campaigns || []} />;
   return <AdminPanel />;
