@@ -128,6 +128,38 @@ const analyzeSchema = z.object({
 });
 const commentSchema = z.object({ kind: z.enum(["site_feedback", "symbol_comment"]), symbol: z.string().max(32).optional(), body: z.string().trim().min(3).max(2000) });
 
+function commentQuality(body: string) {
+  const normalized = body.trim();
+  const hasPersian = /[\u0600-\u06ff]/.test(normalized);
+  const hasSubstance = normalized.length >= 40;
+  const looksSpam = /(https?:\/\/|وی‌پی‌ان|تبلیغ|کسب درآمد تضمینی)/i.test(normalized);
+  return Math.max(0, Math.min(100, (hasPersian ? 35 : 0) + (hasSubstance ? 45 : 15) - (looksSpam ? 70 : 0)));
+}
+
+async function automateComment(comment: { id: string; userId: string; kind: string; symbol?: string | null; body: string }) {
+  const quality = commentQuality(comment.body);
+  const actionKind = /(رمز|احراز|باگ|خطا|پیشنهاد|بهبود|مشکل)/i.test(comment.body) ? 'task_candidate' : quality < 40 ? 'safety_review' : 'feedback_logged';
+  const reward = quality >= 80 ? 10 : 0;
+  await withTransaction(async (client) => {
+    const existing = await client.query(`SELECT 1 FROM comment_automation_actions WHERE comment_id=$1`, [comment.id]);
+    if (existing.rowCount) return;
+    const actor = await client.query(`SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id WHERE u.status='active' AND r.code IN ('admin','comment_moderator') AND u.id<>$1 ORDER BY CASE r.code WHEN 'comment_moderator' THEN 0 ELSE 1 END, u.created_at ASC LIMIT 1`, [comment.userId]);
+    if (!actor.rows[0]) return;
+    const replyText = comment.kind === 'site_feedback'
+      ? 'درود بر شما؛ از بازخوردتان سپاسگزاریم. پیشنهاد شما ثبت شد و برای بهبود بورس‌نگار بررسی می‌شود.'
+      : 'از مشارکت شما در گفت‌وگو سپاسگزاریم. دیدگاه شما ثبت شد؛ لطفاً تحلیل‌ها را مستند و بدون توصیه قطعی سرمایه‌گذاری مطرح کنید.';
+    const reply = await client.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id`, [actor.rows[0].id, comment.kind, comment.symbol || null, comment.id, replyText]);
+    if (reward > 0) {
+      const balance = await client.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`, [comment.userId, reward]);
+      if (balance.rows[0]) {
+        await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5) ON CONFLICT DO NOTHING`, [comment.userId, reward, balance.rows[0].balance, comment.id, `comment-auto-reward:${comment.id}`]);
+        await client.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, [comment.id, actor.rows[0].id, reward]);
+      }
+    }
+    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, quality, actionKind, reward, reply.rows[0].id]);
+  });
+}
+
 async function auditAuth(action: string, ip: string, targetId?: string, metadata: Record<string, unknown> = {}) {
   await pool.query(
     `INSERT INTO admin_audit_logs(admin_user_id,action,target_type,target_id,metadata,ip) VALUES(NULL,$1,'auth',$2,$3,$4::inet)`,
@@ -294,6 +326,7 @@ app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*
   const p=z.object({ ...commentSchema.shape, parentId:z.string().uuid().nullable().optional() }).safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
   if (p.data.parentId) { const parent=await pool.query(`SELECT id,kind,symbol,status FROM comments WHERE id=$1`,[p.data.parentId]); const row=parent.rows[0]; if(!row || row.status!=='published' || row.kind!==p.data.kind || (row.symbol||null)!==(p.data.symbol||null)) return res.status(400).json({success:false,error:"پیام مرجع معتبر نیست."}); }
   const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id,parent_id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
+  await automateComment({id: row.rows[0].id, userId: req.authUser!.id, kind: p.data.kind, symbol: p.data.symbol || null, body: p.data.body});
   if(p.data.parentId){await pool.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) SELECT c.user_id,'comment_reply','پاسخ تازه به نظر شما',$1,$2 FROM comments c WHERE c.id=$3 AND c.user_id<>$4`,[p.data.body.slice(0,180),p.data.symbol?`/s/${encodeURIComponent(p.data.symbol)}#symbol-comments`:'#symbol-comments',p.data.parentId,req.authUser!.id]);}
   res.status(201).json({success:true,comment:row.rows[0]});
 }));
