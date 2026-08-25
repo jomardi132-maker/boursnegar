@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from app.ingestion.market_history import model_family
 from app.analytics.period_comparison import build_period_comparison
+from app.analytics.ttm import build_ttm_metrics
 from app.services.codal_excel_parser import extract_period_end_jalali
 
 
@@ -67,6 +68,16 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(comparison["previous_report"], "2")
         self.assertAlmostEqual(comparison["revenue_growth_percent"], 25)
+
+    def test_ttm_uses_annual_plus_current_minus_prior_without_fabricating_missing_values(self):
+        result = build_ttm_metrics(
+            {"revenue": 60, "net_profit": 12, "operating_cash_flow": None},
+            {"revenue": 100, "net_profit": 20, "operating_cash_flow": 18},
+            {"revenue": 50, "net_profit": 10, "operating_cash_flow": 9},
+        )
+        self.assertEqual(result["revenue"], 110)
+        self.assertEqual(result["net_profit"], 22)
+        self.assertIsNone(result["operating_cash_flow"])
 
     def test_persian_codal_dates_are_normalized_for_history_sync(self):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")

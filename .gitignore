@@ -30,3 +30,8 @@ receipts/
 
 uploads/
 coverage/
+
+# Provenanced ingestion artifacts stay local and are imported explicitly.
+artifacts/
+.chrome-codal-profile/
+.venv-codalpy/

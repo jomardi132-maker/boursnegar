@@ -2,17 +2,38 @@
 """Normalize browser-captured Codal financial documents without invented values."""
 from __future__ import annotations
 import argparse, hashlib, json, sys
+import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 from app.services.codal_excel_parser import parse_financial_statement, extract_period_end_jalali
 
-SOURCE = 'codalpy/codal.ir'
+SOURCE = 'browser/codal.ir'
 SCHEMA = 'boursnegar-codalpy-jsonl-v1'
+
+UNIT_PATTERNS = (
+    (re.compile(r'میلیارد\s*ری[ااآ]ل'), 'IRR_billion'),
+    (re.compile(r'میلیون\s*ری[ااآ]ل'), 'IRR_million'),
+    (re.compile(r'هزار\s*ری[ااآ]ل'), 'IRR_thousand'),
+    (re.compile(r'ری[ااآ]ل'), 'IRR'),
+)
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def detect_unit(content: bytes) -> str | None:
+    text = content[:2_000_000].decode('utf-8', errors='ignore')
+    text = text.replace('ي', 'ی').replace('ك', 'ک')
+    for pattern, unit in UNIT_PATTERNS:
+        if pattern.search(text):
+            return unit
+    return None
+
+def statement_metadata(title: str) -> tuple[bool, str]:
+    audited = 'حسابرسی شده' in title and 'حسابرسی نشده' not in title
+    scope = 'consolidated' if 'تلفیقی' in title else 'separate'
+    return audited, scope
 
 def output_type(title: str) -> str:
     if 'فعالیت ماهانه' in title or 'عملکرد ماهانه' in title:
@@ -51,18 +72,23 @@ def main() -> None:
                 if sha(path) != checksum:
                     errors.append({'symbol': symbol, 'tracing_no': tracing, 'file': doc['path'], 'error': 'checksum_mismatch'}); continue
                 source_files.add((str(path), checksum))
+                content = path.read_bytes()
+                unit = detect_unit(content)
                 try: parsed = parse_financial_statement(path.read_bytes())
                 except Exception as exc:
                     errors.append({'symbol': symbol, 'tracing_no': tracing, 'file': doc['path'], 'error': f'parse:{exc}'}); continue
                 for fact_key in parsed['found_items']:
                     value = parsed['metrics'].get(fact_key)
                     if value is None or not period: continue
+                    audited, scope = statement_metadata(title)
+                    fact_unit = 'IRR' if fact_key == 'eps_basic' else unit
                     rows.append({'source': SOURCE, 'symbol': symbol, 'from_jalali': record.get('from_jalali'), 'to_jalali': record.get('to_jalali'),
                                  'retrieved_at': record.get('retrieved_at'), 'output_type': fact_output_type(fact_key, title), 'source_action_id': f'{tracing}:{fact_key}:{period}',
                                  'tracing_no': tracing, 'period_end_jalali': period, 'fact_key': fact_key, 'source_label': fact_key,
-                                 'value': value, 'raw_value': value, 'unit': 'UNKNOWN',
+                                 'value': value, 'raw_value': value, 'unit': fact_unit or 'UNKNOWN',
                                  'payload': {'title': title, 'document': doc['path'], 'document_sha256': checksum,
-                                             'letter_code': letter.get('LetterCode'), 'parser_found_items': parsed['found_items']}})
+                                             'letter_code': letter.get('LetterCode'), 'parser_found_items': parsed['found_items'],
+                                             'audited': audited, 'scope': scope}})
     target = out / 'normalized.jsonl'; target.write_text(''.join(json.dumps(row, ensure_ascii=False, sort_keys=True) + '\n' for row in rows), encoding='utf8')
     manifest = {'schema': SCHEMA, 'source': SOURCE, 'files': [{'path': target.name, 'symbol': '*', 'records': len(rows), 'sha256': sha(target)}],
                 'source_documents': [{'path': path, 'sha256': checksum} for path, checksum in sorted(source_files)], 'errors': errors}

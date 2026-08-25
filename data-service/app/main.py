@@ -14,6 +14,7 @@ from app import models
 from app.services import tsetmc_service, codal_service, codal_excel_parser, ratio_engine
 from app.analytics.snapshot_v2 import build_snapshot_payload
 from app.analytics.period_comparison import build_period_comparison, period_label_from_title
+from app.analytics.ttm import FLOW_FACT_KEYS, build_ttm_metrics
 from app.ingestion.market_history import model_family
 
 # ساخت جدول‌ها در صورت عدم وجود (برای MVP کافیه؛ بعداً می‌تونیم Alembic اضافه کنیم)
@@ -277,10 +278,9 @@ def get_codal_reports(symbol: str, db: Session = Depends(get_db)):
     اطلاعیه‌های کدال برای یک نماد. نتیجه در دیتابیس هم ذخیره می‌شه
     (idempotent - بر اساس tracing_no، تکراری ذخیره نمی‌شه).
     """
-    try:
-        letters = codal_service.fetch_all_letters(symbol, max_pages=4)
-    except codal_service.CodalUnavailableError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    # Production is local-artifact only. Discovery is performed on the
+    # operator workstation and imported before this endpoint is called.
+    letters = _stored_codal_letters(db, symbol)
 
     if not letters:
         return {"success": True, "count": 0, "letters": []}
@@ -386,8 +386,8 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     audited_clause = "AND fp.audited" if report_mode == "audited" else ""
     annual_clause = "AND fp.length_months = 12" if report_mode == "audited" else ""
     rows = db.execute(text(f"""
-      SELECT d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
-             fp.end_date_jalali,fp.length_months,fp.audited,
+      SELECT fp.id AS period_id,d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
+             fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,
              dv.metadata->>'excel_url' AS excel_url,ff.fact_key,ff.normalized_value,
              ff.quality_status,ff.normalized_unit
       FROM symbol_aliases sa
@@ -409,6 +409,8 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     )}
     first = rows[0]
     for row in rows:
+        if row["period_id"] != first["period_id"]:
+            continue
         if row["fact_key"] in metrics and row["normalized_value"] is not None:
             metrics[row["fact_key"]] = float(row["normalized_value"])
     if metrics["revenue"] is None or metrics["net_profit"] is None:
@@ -417,6 +419,8 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
         "Title": first["title"], "TracingNo": first["source_disclosure_id"],
         "PublishDateTime": first["published_date_jalali"], "ExcelUrl": first["excel_url"],
         "HasExcel": bool(first["excel_url"]), "scope": first["scope"],
+        "_period_id": str(first["period_id"]), "_end_date": first["end_date"],
+        "_length_months": first["length_months"],
     }
     return candidate, str(first["excel_url"] or ""), {
         "metrics": metrics,
@@ -424,6 +428,95 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
         "missing_items": sorted(key for key, value in metrics.items() if value is None),
         "source": "local_codal_financial_facts",
     }
+
+
+def _stored_period_comparison(db: Session, symbol: str, candidate: dict, parsed: dict):
+    """Compare the selected persisted period with the closest earlier same-length period."""
+    if not candidate.get("_end_date") or not candidate.get("_length_months"):
+        return None, "گزارش دوره هم‌طول قبلی در داده‌های واردشده پیدا نشد."
+    previous = db.execute(text("""
+      SELECT fp.id AS period_id,d.source_disclosure_id
+      FROM symbol_aliases sa
+      JOIN instruments i ON i.id=sa.instrument_id
+      JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+      JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
+      JOIN disclosures d ON d.id=dv.disclosure_id
+      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
+        AND fp.end_date < :end_date AND fp.length_months=:length
+        AND fp.scope=:scope
+        AND EXISTS (SELECT 1 FROM financial_facts ff WHERE ff.period_id=fp.id AND ff.quality_status='VALID' AND ff.fact_key='revenue')
+      ORDER BY fp.end_date DESC,fp.audited DESC
+      LIMIT 1
+    """), {"symbol": symbol, "end_date": candidate["_end_date"],
+             "length": candidate["_length_months"], "scope": candidate.get("scope") or "unknown"}).mappings().first()
+    if not previous:
+        return None, "گزارش دوره هم‌طول قبلی در داده‌های واردشده پیدا نشد."
+    values = dict(db.execute(text("""
+      SELECT fact_key,normalized_value FROM financial_facts
+      WHERE period_id=:period AND quality_status='VALID' AND fact_key IN ('revenue','net_profit')
+    """), {"period": previous["period_id"]}).all())
+    current_revenue=parsed["metrics"].get("revenue"); previous_revenue=values.get("revenue")
+    current_profit=parsed["metrics"].get("net_profit"); previous_profit=values.get("net_profit")
+    label=period_label_from_title(str(candidate.get("Title") or ""))
+    return {
+      "period_label": label, "current_report": candidate.get("TracingNo"),
+      "previous_report": previous["source_disclosure_id"],
+      "current_revenue": current_revenue, "previous_revenue": float(previous_revenue) if previous_revenue is not None else None,
+      "revenue_growth_percent": ((current_revenue / float(previous_revenue)) - 1) * 100 if current_revenue is not None and previous_revenue not in (None,0) else None,
+      "current_net_profit": current_profit, "previous_net_profit": float(previous_profit) if previous_profit is not None else None,
+      "net_profit_growth_percent": ((current_profit / float(previous_profit)) - 1) * 100 if current_profit is not None and previous_profit not in (None,0) else None,
+      "source": "صورت‌های مالی رسمی کدال (داده واردشده)"
+    }, None
+
+
+def _stored_ttm(db: Session, symbol: str, candidate: dict, parsed: dict):
+    """Build TTM flows without mixing scope, units, or incompatible periods."""
+    length = candidate.get("_length_months")
+    if length == 12:
+        return {
+            "metrics": {key: parsed["metrics"].get(key) for key in FLOW_FACT_KEYS},
+            "method": "latest_annual",
+            "current_report": candidate.get("TracingNo"),
+            "source": "صورت‌های مالی رسمی کدال (داده واردشده)",
+        }, None
+    if not length or not candidate.get("_end_date"):
+        return None, "اجزای سازگار برای محاسبه دوازده‌ماهه اخیر موجود نیست."
+
+    periods = db.execute(text("""
+      SELECT fp.id,fp.length_months,fp.end_date,d.source_disclosure_id
+      FROM symbol_aliases sa
+      JOIN instruments i ON i.id=sa.instrument_id
+      JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+      JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
+      JOIN disclosures d ON d.id=dv.disclosure_id
+      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL AND fp.scope=:scope
+        AND fp.end_date < :end_date AND fp.length_months IN (12,:length)
+      ORDER BY fp.end_date DESC,fp.audited DESC
+    """), {"symbol": symbol, "scope": candidate.get("scope") or "unknown",
+             "end_date": candidate["_end_date"], "length": length}).mappings().all()
+    annual = next((row for row in periods if row["length_months"] == 12), None)
+    if not annual:
+        return None, "گزارش سالانه سازگار برای محاسبه دوازده‌ماهه اخیر موجود نیست."
+    prior = next((row for row in periods if row["length_months"] == length and row["end_date"] < annual["end_date"]), None)
+    if not prior:
+        return None, "دوره هم‌طول سال قبل برای محاسبه دوازده‌ماهه اخیر موجود نیست."
+
+    def period_flows(period_id):
+        return dict(db.execute(text("""
+          SELECT fact_key,normalized_value FROM financial_facts
+          WHERE period_id=:period AND quality_status='VALID'
+            AND fact_key IN ('revenue','cogs','gross_profit','operating_profit','net_profit','operating_cash_flow')
+        """), {"period": period_id}).all())
+
+    metrics = build_ttm_metrics(parsed["metrics"], period_flows(annual["id"]), period_flows(prior["id"]))
+    return {
+        "metrics": metrics, "method": "annual_plus_current_ytd_minus_prior_ytd",
+        "current_report": candidate.get("TracingNo"),
+        "annual_report": annual["source_disclosure_id"],
+        "prior_comparable_report": prior["source_disclosure_id"],
+        "missing_items": sorted(key for key, value in metrics.items() if value is None),
+        "source": "صورت‌های مالی رسمی کدال (داده واردشده)",
+    }, None
 
 
 def _stored_live_snapshot(db: Session, symbol: str) -> dict | None:
@@ -553,47 +646,16 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     if report_mode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="report_mode نامعتبر است.")
 
-    # حالت latest_codal باید برای کشف گزارش‌های تازه، کدال را اول بررسی کند؛
-    # آرشیو محلی فقط fallback است. در حالت audited، facts معتبر محلی اولویت دارد.
-    local_report = None if report_mode == "latest_codal" else _stored_financial_report(db, symbol, report_mode)
+    # Production is artifact-only: Codal discovery/download is local-only.
+    # Both modes use persisted, previously imported data and never call Codal.
+    local_report = _stored_financial_report(db, symbol, report_mode)
     letters = _stored_codal_letters(db, symbol)
-    if local_report:
-        candidate, excel_url, parsed = local_report
-    else:
-        try:
-            letters = codal_service.fetch_all_letters(symbol, max_pages=4)
-        except codal_service.CodalUnavailableError as e:
-            local_report = _stored_financial_report(db, symbol, report_mode)
-            if local_report:
-                candidate, excel_url, parsed = local_report
-            elif not letters:
-                raise HTTPException(status_code=503, detail=str(e))
-        if local_report:
-            pass
-        elif not letters:
-            raise HTTPException(status_code=404, detail=f"هیچ گزارشی برای نماد «{symbol}» در کدال پیدا نشد.")
-        if not local_report:
-            # ۳. انتخاب نخستین صورت مالی واقعاً قابل استخراج. بعضی اصلاحیه‌های کدال
-            # به‌اشتباه فایل گزارش تفسیری مدیریت را در ExcelUrl برمی‌گردانند؛ در این
-            # حالت به نسخه معتبر قبلی همان صورت مالی برمی‌گردیم.
-            candidates = _financial_candidates(letters, report_mode)
-            if not candidates:
-                report_label = "حسابرسی‌شده سالانه" if report_mode == "audited" else "دارای فایل اکسل"
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"هیچ گزارش {report_label} برای «{symbol}» در {len(letters)} اطلاعیه‌ی اخیر پیدا نشد.",
-                )
-            try:
-                candidate, excel_url, parsed = _parse_first_usable_report(candidates)
-            except HTTPException:
-                # اگر provider گزارش تازه را داد اما فایل‌های آن موقتاً خراب بودند،
-                # تحلیل را با آخرین fact معتبر محلی از کار نمی‌اندازیم.
-                fallback = _stored_financial_report(db, symbol, report_mode)
-                if not fallback:
-                    raise
-                candidate, excel_url, parsed = fallback
+    if not local_report:
+        raise HTTPException(status_code=404, detail=f"برای نماد «{symbol}» گزارش واردشده‌ای موجود نیست.")
+    candidate, excel_url, parsed = local_report
 
-    comparison, comparison_unavailable_reason = _build_period_comparison(candidate, parsed, letters)
+    comparison, comparison_unavailable_reason = _stored_period_comparison(db, symbol, candidate, parsed)
+    ttm, ttm_unavailable_reason = _stored_ttm(db, symbol, candidate, parsed)
     related_disclosures = _related_codal_disclosures(letters, candidate)
 
     # ۵. محاسبه‌ی نسبت‌ها
@@ -607,7 +669,10 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         industry_category = company.industry
         if live_data is not None:
             live_data["market_category"] = industry_category
-    ratios = ratio_engine.compute_ratios(parsed["metrics"], live_pe_ratio=live_pe)
+    ratio_metrics = dict(parsed["metrics"])
+    if ttm:
+        ratio_metrics.update({key: value for key, value in ttm["metrics"].items() if value is not None})
+    ratios = ratio_engine.compute_ratios(ratio_metrics, live_pe_ratio=live_pe)
     health = ratio_engine.evaluate_health_status(ratios, industry_category=industry_category)
 
     # ۶. ذخیره در دیتابیس
@@ -654,6 +719,8 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,
         "period_comparison_unavailable_reason": comparison_unavailable_reason,
+        "ttm": ttm,
+        "ttm_unavailable_reason": ttm_unavailable_reason,
         "related_codal_disclosures": related_disclosures,
         "ratios": ratios,
         "health": health,

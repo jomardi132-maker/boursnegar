@@ -1,5 +1,5 @@
 [Unit]
-Description=Boursnegar resumable Codal metadata backfill
+Description=Retired direct Codal backfill (local-fetch/remote-import replaces this unit)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -10,6 +10,6 @@ WorkingDirectory=/var/www/boursnegar-data-current
 EnvironmentFile=/var/www/boursnegar-data-current/.env
 Environment=PYTHONPATH=.
 Environment=CODAL_RATE_LIMIT_SECONDS=2.5
-ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/backfill_codal_1404.py --global-pages
+ExecStart=/usr/bin/true
 TimeoutStartSec=12h
 Nice=10
