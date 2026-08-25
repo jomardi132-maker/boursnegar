@@ -31,6 +31,11 @@ def main() -> None:
             continue
         if metadata.get("schema") != "boursnegar-codalpy-jsonl-v1":
             continue
+        if not metadata.get("files"):
+            completed.add(key)
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            checkpoint_path.write_text(json.dumps({"completed": sorted(completed)}, ensure_ascii=False, indent=2))
+            continue
         result = subprocess.run(
             [sys.executable, str(importer), "--manifest", key, "--symbol", "*", "--batch-size", "500"],
             text=True, capture_output=True, cwd=importer.parent.parent,
