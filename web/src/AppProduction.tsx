@@ -10,7 +10,7 @@ import { CodalScanReportCard } from './components/CodalScanReportCard';
 import { FundamentalDashboard } from './components/FundamentalDashboard';
 import './dashboard.css';
 
-export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin'; credits: number };
+export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin' | 'comment_moderator'; credits: number };
 type SymbolSuggestion = { symbol: string; legal_name: string; industry: string | null; isin: string };
 type MarketOverview = { catalog: { instruments: number }; prices: { rows: number; instruments: number; from_date: string; to_date: string }; disclosures: { rows: number; issuers: number; updated_at: string | null }; analysis: { analyzed: number } };
 const csrfStorage = 'boursnegar_csrf';

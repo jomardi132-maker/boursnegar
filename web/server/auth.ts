@@ -9,7 +9,7 @@ export type AuthUser = {
   id: string;
   email: string | null;
   mobile: string | null;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'comment_moderator';
   credits: number;
 };
 declare global { namespace Express { interface Request { authUser?: AuthUser; sessionId?: string } } }
@@ -74,7 +74,7 @@ export async function verifyPassword(password: string, encoded: string): Promise
 
 async function createSession(
   client: any,
-  user: { id: string; email?: string | null; mobile_e164?: string | null; role: 'user' | 'admin' },
+  user: { id: string; email?: string | null; mobile_e164?: string | null; role: 'user' | 'admin' | 'comment_moderator' },
   ip: string,
   userAgent: string,
 ) {
@@ -311,6 +311,10 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 
 export const requireUser = (req: Request, res: Response, next: NextFunction) => req.authUser ? next() : res.status(401).json({ success: false, error: 'ابتدا وارد حساب کاربری شوید.' });
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => req.authUser?.role === 'admin' ? next() : res.status(403).json({ success: false, error: 'دسترسی مجاز نیست.' });
+export const requireCommentModerator = (req: Request, res: Response, next: NextFunction) =>
+  req.authUser?.role === 'admin' || req.authUser?.role === 'comment_moderator'
+    ? next()
+    : res.status(403).json({ success: false, error: 'دسترسی مدیریت نظرات مجاز نیست.' });
 export function requireCsrf(req: Request, res: Response, next: NextFunction) {
   if (!req.sessionId) return res.status(401).json({ success: false, error: 'نشست معتبر نیست.' });
   const token = req.header('x-csrf-token') || '';

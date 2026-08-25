@@ -83,7 +83,7 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
           <div>
             <small>حساب کاربری</small>
             <h2 id="dashboard-title">
-              {user.role === "admin"
+              {user.role === "admin" || user.role === "comment_moderator"
                 ? "پنل مدیریت بورس‌نگار"
                 : "پنل کاربری بورس‌نگار"}
             </h2>
@@ -102,7 +102,7 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
                 ["referrals", Users, "معرفی دوستان"],
                 ["alerts", Bell, "هشدارها"],
                 ["notifications", MessageSquare, "اعلان‌های گفت‌وگو"],
-                ...(user.role === "admin" ? [["admin", Shield, "مدیریت"]] : []),
+                ...(user.role === "admin" || user.role === "comment_moderator" ? [["admin", Shield, "مدیریت"]] : []),
               ] as [Tab, any, string][]
             ).map(([id, Icon, label]) => (
               <button
@@ -127,6 +127,7 @@ export function AccountDashboard({ user, onClose, onCredits }: Props) {
               <TabContent
                 tab={tab}
                 data={data}
+                user={user}
                 reload={() => load()}
                 onCredits={onCredits}
               />
@@ -150,11 +151,13 @@ function DashboardSkeleton() {
 function TabContent({
   tab,
   data,
+  user,
   reload,
   onCredits,
 }: {
   tab: Tab;
   data: any;
+  user: User;
   reload: () => void;
   onCredits: (n: number) => void;
 }) {
@@ -230,7 +233,7 @@ function TabContent({
   if (tab === "notifications") return <List items={data.notifications} empty="هنوز اعلان گفت‌وگویی ندارید." render={(x:any)=><><b>{x.title}</b><span>{x.body}<br/>{new Date(x.created_at).toLocaleString("fa-IR")}</span>{x.target_url&&<a href={x.target_url}>مشاهده گفت‌وگو</a>}</>} />;
   if (tab === "payments")
     return <Plans plans={data.plans || []} campaigns={data.campaigns || []} />;
-  return <AdminPanel />;
+  return <AdminPanel commentsOnly={user.role === "comment_moderator"} />;
 }
 function List({
   items = [],
@@ -520,8 +523,8 @@ function AlertForm({ done, initial }: { done: () => void; initial?: any }) {
     </form>
   );
 }
-function AdminPanel() {
-  const [section, setSection] = useState("stats");
+function AdminPanel({ commentsOnly = false }: { commentsOnly?: boolean }) {
+  const [section, setSection] = useState(commentsOnly ? "comments" : "stats");
   const [commentStatus, setCommentStatus] = useState("all");
   const [commentRewarded, setCommentRewarded] = useState("all");
   const [commentDay, setCommentDay] = useState("");
@@ -558,7 +561,7 @@ function AdminPanel() {
   return (
     <section className="dashboard-section">
       <div className="admin-tabs">
-        {[
+        {(commentsOnly ? [["comments", MessageSquare, "نظرات"]] : [
           ["stats", Gauge, "آمار"],
           ["users", Users, "کاربران"],
           ["payments", CreditCard, "پرداخت‌ها"],
@@ -570,7 +573,7 @@ function AdminPanel() {
           ["data", Database, "وضعیت داده"],
           ["sms", Bell, "پیامک"],
           ["audit", Shield, "ممیزی"],
-        ].map(([id, Icon, label]: any) => (
+        ]) .map(([id, Icon, label]: any) => (
           <button
             className={section === id ? "active" : ""}
             onClick={() => setSection(id)}
