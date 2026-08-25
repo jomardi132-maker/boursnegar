@@ -13,6 +13,13 @@ function fa(value: number | null | undefined) {
   return value == null ? '—' : value.toLocaleString('fa-IR');
 }
 
+function displayDate(value: string | null | undefined) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('fa-IR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
 export function FundamentalDashboard({ overview }: { overview: FundamentalDashboardOverview | null }) {
   const root = useRef<HTMLElement>(null);
 
@@ -52,7 +59,7 @@ export function FundamentalDashboard({ overview }: { overview: FundamentalDashbo
         ))}
       </div>
       <footer className="fundamental-dashboard__footer fundamental-dashboard__item">
-        <div><Gauge aria-hidden="true" /><span>پوشش قیمت: {overview?.prices.from_date || '—'} تا {overview?.prices.to_date || '—'}</span></div>
+        <div><Gauge aria-hidden="true" /><span>پوشش قیمت: {displayDate(overview?.prices.from_date)} تا {displayDate(overview?.prices.to_date)}</span></div>
         <span>عدد ساختگی یا fallback در این نما استفاده نمی‌شود.</span>
       </footer>
     </section>
