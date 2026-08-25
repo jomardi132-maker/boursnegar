@@ -140,6 +140,9 @@ def main():
                             safe=str(letter.get('TracingNo') or hashlib.sha1(str(url).encode()).hexdigest()[:16])
                             target=out/f'{symbol}-{safe}-{kind}{suffix}'
                             try:
+                                if target.exists() and target.is_file() and target.stat().st_size > 0:
+                                    row.setdefault('documents',[]).append({'kind':kind,'path':target.name,'sha256':sha(target),'status':200,'reused':True,'symbol':symbol,'tracing_no':str(letter.get('TracingNo') or ''),'title':title,'letter_code':letter.get('LetterCode'),'source':'browser/codal.ir'})
+                                    continue
                                 if kind == 'html':
                                     chrome.navigate(url, wait=0.5)
                                     html=chrome.eval("document.documentElement.outerHTML")
