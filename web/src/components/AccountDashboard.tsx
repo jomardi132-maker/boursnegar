@@ -883,6 +883,7 @@ function AdminUsers({
                 onChange={(e) => updateUser(u.id, { role: e.target.value })}
               >
                 <option value="user">کاربر</option>
+                <option value="comment_moderator">مدیر نظرات</option>
                 <option value="admin">مدیر</option>
               </select>
               <button onClick={() => adjustCredits(u.id)}>تغییر اعتبار</button>
