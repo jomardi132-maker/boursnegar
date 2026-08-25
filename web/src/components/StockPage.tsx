@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { ArrowRight, BarChart3, CalendarDays, Database, ExternalLink, FileText, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, BarChart3, Bell, BellRing, CalendarDays, Database, ExternalLink, FileText, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { api } from "../AppProduction";
 import { DecisionReport, type AnalysisPayload } from "./DecisionReport";
 import { Comments } from "./Comments";
@@ -9,6 +9,7 @@ type Payload = {
   stock: { symbol: string; legal_name: string; isin: string; industry: string | null; model_family: string | null };
   latest: Price | null; returns: { oneMonth: number | null; sixMonths: number | null; oneYear: number | null }; prices: Price[];
   disclosures: Array<{ source_disclosure_id: string; title: string; published_date_jalali: string | null; is_audited: boolean | null; detail_url: string | null }>;
+  rahavardReports: Array<{report_id:string;title:string;subtitle:string|null;report_date:string|null;fiscal_year:string|null;pdf_url:string;text_status:string;source_status:string}>;
   snapshot: null | { decision: string; score: string | null; coverage: string; confidence: string; fair_value_low: string | null; fair_value_base: string | null; fair_value_high: string | null; calculated_at: string; top_reasons: string[]; top_risks: string[] };
 };
 
@@ -18,10 +19,13 @@ const decisionFa: Record<string, string> = { BUY: "خرید", HOLD: "نگهدا�
 export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysisLoading, analysisError }: { symbol: string; user: import("../AppProduction").User | null; onLogin:()=>void; onAnalyze: (symbol: string) => void; analysis: AnalysisPayload | null; analysisLoading: boolean; analysisError: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState("");
+  const [following,setFollowing]=useState(false);
   useEffect(() => {
     setData(null); setError("");
     api<Payload>(`/api/stocks/${encodeURIComponent(symbol)}`).then(setData).catch((e) => setError(e instanceof Error ? e.message : "خطا در دریافت اطلاعات"));
   }, [symbol]);
+  useEffect(()=>{if(user)api<{following:boolean}>(`/api/stocks/${encodeURIComponent(symbol)}/follow`).then(r=>setFollowing(r.following)).catch(()=>setFollowing(false));else setFollowing(false)},[symbol,user]);
+  async function toggleFollow(){if(!user){onLogin();return}const r=await api<{following:boolean}>(`/api/stocks/${encodeURIComponent(symbol)}/follow`,{method:"POST"});setFollowing(r.following)}
   useEffect(() => {
     if (!data) return;
     document.title = `${data.stock.symbol} | ${data.stock.legal_name} — بورس‌نگار`;
@@ -42,7 +46,7 @@ export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysis
   return <div className="stock-shell" dir="rtl">
     <header className="stock-topbar"><a href="/" className="brand"><span className="brand-mark"><BarChart3/></span><span><b>بورس‌نگار</b><small>مرجع تحلیلی بازار ایران</small></span></a><a href="/" className="back-home"><ArrowRight/> جست‌وجوی سهم دیگر</a></header>
     <main className="stock-page">
-      <section className="stock-identity"><div><span className="stock-symbol">{data.stock.symbol}</span><div><h1>{data.stock.legal_name}</h1><p>{data.stock.industry || "بازار سرمایه"} · {data.stock.isin}</p></div></div><button disabled={analysisLoading} onClick={() => onAnalyze(data.stock.symbol)}>{analysisLoading ? "در حال تحلیل…" : "تحلیل بنیادی کامل"}</button></section>
+      <section className="stock-identity"><div><span className="stock-symbol">{data.stock.symbol}</span><div><h1>{data.stock.legal_name}</h1><p>{data.stock.industry || "بازار سرمایه"} · {data.stock.isin}</p></div></div><div className="stock-primary-actions"><button className="follow-stock" aria-pressed={following} onClick={()=>void toggleFollow()}>{following?<BellRing/>:<Bell/>}{following?"دنبال می‌کنید":"دنبال‌کردن سهم"}</button><button disabled={analysisLoading} onClick={() => onAnalyze(data.stock.symbol)}>{analysisLoading ? "در حال تحلیل…" : "تحلیل بنیادی کامل"}</button></div></section>
       <section className="market-strip">
         <Metric label="آخرین قیمت" value={`${fa(data.latest?.adjusted_close)} ریال`} detail={data.latest?.trading_date_jalali || "—"}/>
         <ReturnMetric label="بازده یک‌ماهه" value={data.returns.oneMonth}/>
@@ -59,6 +63,7 @@ export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysis
       {analysisLoading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
       {analysis && <DecisionReport report={analysis}/>}
       <section className="disclosure-section"><header><div><span>اسناد رسمی</span><h2>آخرین اطلاعیه‌های کدال</h2></div><FileText/></header>{data.disclosures.length ? <div className="disclosure-list">{data.disclosures.map((item) => <a key={item.source_disclosure_id} href={item.detail_url || `https://codal.ir/ReportList.aspx?search&Symbol=${encodeURIComponent(data.stock.symbol)}`} target="_blank" rel="noreferrer"><span className="doc-icon"><FileText/></span><span><b>{item.title}</b><small><CalendarDays/> {item.published_date_jalali || "تاریخ نامشخص"} {item.is_audited ? "· حسابرسی‌شده" : ""}</small></span><ExternalLink/></a>)}</div> : <div className="empty-docs">هنوز اطلاعیه‌ای برای این نماد وارد نشده است.</div>}</section>
+      <section className="rahavard-section"><header><div><span>منبع مکمل</span><h2>گزارش‌های گردآوری‌شده از رهاورد</h2></div><Database/></header><p className="source-caveat">این گزارش‌ها با checksum و منبع نگهداری می‌شوند، اما تا پیش از تطبیق دوره، واحد و دامنه وارد محاسبات بنیادی نمی‌شوند.</p>{data.rahavardReports?.length?<div className="rahavard-list">{data.rahavardReports.map(r=><a key={r.report_id} href={r.pdf_url} target="_blank" rel="noreferrer"><FileText/><span><b>{r.title}</b><small>{r.report_date||"تاریخ نامشخص"} · {r.text_status==="EXTRACTED"?"متن استخراج‌شده":"در انتظار استخراج متن"}</small></span><em>مکمل</em><ExternalLink/></a>)}</div>:<div className="empty-docs">برای این نماد هنوز گزارش رهاوردی در staging موجود نیست.</div>}</section>
       <section className="stock-content-with-comments"><div><Comments kind="symbol_comment" symbol={data.stock.symbol} user={user} onLogin={onLogin}/></div><aside className="comment-rail"><strong>گفت‌وگوی نماد</strong><span>نظرها و پاسخ‌های کاربران درباره {data.stock.symbol}</span><a href="#symbol-comments">مشاهده گفت‌وگو</a></aside></section>
       <section className="stock-disclaimer"><ShieldCheck/><p><b>داده را از نتیجه جدا می‌کنیم.</b><br/>قیمت و اطلاعیه‌ها مستقیماً از منابع بازار گردآوری شده‌اند. برچسب تحلیلی توصیهٔ خرید یا فروش نیست و در نبود دادهٔ کافی نمایش داده نمی‌شود.</p></section>
     </main>

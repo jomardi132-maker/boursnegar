@@ -201,7 +201,7 @@ export function installPlatformRoutes(app: express.Express) {
       );
       if (!profile.rowCount) return res.status(404).json({ success: false, error: "نماد پیدا نشد." });
       const stock = profile.rows[0];
-      const [history, disclosureRows, legacyDisclosureRows, snapshot] = await Promise.all([
+      const [history, disclosureRows, legacyDisclosureRows, snapshot, rahavard] = await Promise.all([
         pool.query(
           `SELECT trading_date,trading_date_jalali,open,high,low,close,last,adjusted_close,volume,value,trade_count,quality_status
            FROM daily_prices WHERE instrument_id=$1 ORDER BY trading_date DESC LIMIT 420`,
@@ -234,6 +234,7 @@ export function installPlatformRoutes(app: express.Express) {
            WHERE s.instrument_id=$1 ORDER BY s.calculated_at DESC LIMIT 1`,
           [stock.instrument_id],
         ),
+        pool.query(`SELECT report_id,title,subtitle,report_date,fiscal_year,pdf_url,text_status,source_status,collected_at FROM rahavard_public_reports WHERE symbol=$1 ORDER BY report_date DESC NULLS LAST,collected_at DESC LIMIT 8`,[stock.symbol]),
       ]);
       const prices = history.rows.reverse();
       const latest = prices.at(-1) ?? null;
@@ -246,9 +247,11 @@ export function installPlatformRoutes(app: express.Express) {
         .filter((row, index, all) => all.findIndex((item) => String(item.source_disclosure_id) === String(row.source_disclosure_id)) === index)
         .slice(0, 16);
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, snapshot: snapshot.rows[0] ?? null });
+      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, rahavardReports:rahavard.rows, snapshot: snapshot.rows[0] ?? null });
     }),
   );
+  app.get("/api/stocks/:symbol/follow",requireUser,asyncRoute(async(req,res)=>{const row=await pool.query(`SELECT 1 FROM stock_follows WHERE user_id=$1 AND symbol=$2`,[req.authUser!.id,req.params.symbol]);res.json({success:true,following:Boolean(row.rowCount)});}));
+  app.post("/api/stocks/:symbol/follow",requireUser,requireCsrf,asyncRoute(async(req,res)=>{const removed=await pool.query(`DELETE FROM stock_follows WHERE user_id=$1 AND symbol=$2 RETURNING symbol`,[req.authUser!.id,req.params.symbol]);if(!removed.rowCount)await pool.query(`INSERT INTO stock_follows(user_id,symbol) VALUES($1,$2) ON CONFLICT DO NOTHING`,[req.authUser!.id,req.params.symbol]);res.json({success:true,following:!removed.rowCount});}));
   app.get(
     "/api/symbols/search",
     asyncRoute(async (req, res) => {
