@@ -47,7 +47,9 @@ def model_family(industry: str | None) -> str:
         return "petrochemical"
     if any(token in normalized for token in ("فلز", "کانه", "معدن", "زغال", "سیمان", "کانی", "سرامیک", "کاشی")):
         return "metals"
-    return "general"
+    # Do not manufacture a valuation model for an industry that has not been
+    # explicitly mapped. Callers must surface INSUFFICIENT_DATA instead.
+    return "unclassified"
 
 
 def is_pilot_industry(industry: str | None) -> bool:

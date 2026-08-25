@@ -74,7 +74,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         (operating_margin is not None and operating_margin < 5)
         or (net_margin is not None and net_margin < 5)
     )
-    operating_company = family not in {"bank", "real_estate", "unclassified"}
+    operating_company = family not in {"bank", "financial", "real_estate", "unclassified"}
     turnaround_candidate = bool(
         (current_profit is not None and current_profit > 0 and previous_profit is not None and previous_profit <= 0)
         or (operating_company and revenue_growth is not None and inflation is not None and revenue_growth > inflation
