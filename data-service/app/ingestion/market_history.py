@@ -15,6 +15,7 @@ PILOT_INDUSTRIES = {
     "سیمان، آهک و گچ": "cement",
     "مواد و محصولات دارویی": "pharmaceutical",
     "انبوه سازی، املاک و مستغلات": "real_estate",
+    "کاشی و سرامیک": "ceramics",
 }
 
 

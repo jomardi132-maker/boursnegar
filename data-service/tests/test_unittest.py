@@ -96,7 +96,8 @@ class DataServiceContractTests(unittest.TestCase):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
         self.assertIn("def _parse_first_usable_report", source)
         self.assertIn("metrics.get(\"revenue\") is not None", source)
-        self.assertIn("_financial_candidates(letters, report_mode)", source)
+        self.assertIn("Production is artifact-only", source)
+        self.assertNotIn("codal_service.fetch_all_letters", source)
 
     def test_historical_codal_backfill_never_uses_brsapi_fallback(self):
         service = self.root.joinpath("app", "services", "codal_service.py").read_text(encoding="utf-8")
@@ -117,6 +118,18 @@ class DataServiceContractTests(unittest.TestCase):
         from scripts.ingest_codal_financials import period_months
         self.assertEqual(period_months("صورت‌های مالی سال مالی منتهی به ۱۴۰۳/۱۲/۳۰"), 12)
 
+    def test_codalpy_ranges_and_lossless_numeric_mapping(self):
+        from app.ingestion.codalpy_pipeline import ranges, _number
+        self.assertEqual(ranges("1405/06/01"), (("1404/01/01", "1404/12/29"), ("1405/01/01", "1405/06/01")))
+        self.assertEqual(_number("۱٬۲۳۴"), 1234)
+        self.assertIsNone(_number("نامشخص"))
+
+    def test_remote_importer_has_no_codal_client(self):
+        source = self.root.joinpath("scripts", "codalpy_remote_import.py").read_text(encoding="utf-8")
+        self.assertNotIn("from codalpy", source)
+        self.assertIn("pg_try_advisory_xact_lock", source)
+        self.assertIn("ON CONFLICT(source,source_action_id) DO NOTHING", source)
+
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")
         spec = importlib.util.spec_from_file_location("update_market_daily", path)
@@ -131,6 +144,14 @@ class DataServiceContractTests(unittest.TestCase):
 
     def test_metal_ore_miners_use_the_metals_valuation_family(self):
         self.assertEqual(model_family("استخراج کانه‌های فلزی"), "metals")
+
+    def test_ceramics_use_a_supported_industry_family(self):
+        self.assertEqual(model_family("کاشی و سرامیک"), "ceramics")
+
+    def test_codalpy_maps_real_balance_sheet_totals(self):
+        from app.ingestion.codalpy_pipeline import FACT_LABELS, _label_key
+        self.assertEqual(FACT_LABELS[next(k for k in FACT_LABELS if _label_key(k) == _label_key("جمع دارايي‌ها"))], "total_assets")
+        self.assertEqual(FACT_LABELS[next(k for k in FACT_LABELS if _label_key(k) == _label_key("جمع حقوق مالکانه"))], "total_equity")
 
 
 if __name__ == "__main__":

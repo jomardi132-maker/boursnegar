@@ -24,6 +24,7 @@ MODEL_SPECS = {
     # the payload must make that limitation explicit until sourced NAV data is
     # available.
     "real_estate": ModelSpec("price_to_book", 1.0, 0.25, 0.25),
+    "ceramics": ModelSpec("normalized_pe", 7.0),
 }
 
 
