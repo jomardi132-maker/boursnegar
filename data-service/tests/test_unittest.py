@@ -153,6 +153,10 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertEqual(FACT_LABELS[next(k for k in FACT_LABELS if _label_key(k) == _label_key("جمع دارايي‌ها"))], "total_assets")
         self.assertEqual(FACT_LABELS[next(k for k in FACT_LABELS if _label_key(k) == _label_key("جمع حقوق مالکانه"))], "total_equity")
 
+    def test_codalpy_maps_reported_eps(self):
+        from app.ingestion.codalpy_pipeline import FACT_LABELS, _label_key
+        self.assertEqual(FACT_LABELS[next(k for k in FACT_LABELS if _label_key(k) == _label_key("سود (زیان) خالص هر سهم – ریال"))], "eps_basic")
+
 
 if __name__ == "__main__":
     unittest.main()

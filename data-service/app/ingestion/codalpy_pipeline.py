@@ -36,6 +36,9 @@ FACT_LABELS = {
     "جمع دارايي ها": "total_assets",
     "جمع حقوق مالکانه": "total_equity",
     "جمع حقوق مالكانه": "total_equity",
+    "سود (زیان) خالص هر سهم – ریال": "eps_basic",
+    "سود (زیان) خالص هر سهم - ریال": "eps_basic",
+    "سود(زیان) خالص هر سهم – ریال": "eps_basic",
 }
 def _label_key(value: str) -> str:
     return value.replace("ي", "ی").replace("ى", "ی").replace("ك", "ک").replace("\u200f", "").replace("\u200c", "").replace(" ", "").replace("‌", "")
