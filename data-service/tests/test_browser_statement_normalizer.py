@@ -26,6 +26,8 @@ class BrowserStatementNormalizerTests(unittest.TestCase):
     def test_remote_importer_does_not_reference_removed_source_constant(self):
         importer = (SCRIPT.parent / "codalpy_remote_import.py").read_text(encoding="utf-8")
         self.assertNotIn("'source':SOURCE", importer)
+        self.assertIn("source,symbol,output_type", importer)
+        self.assertIn("args.symbol=='*' or", importer)
 
 
 if __name__ == "__main__":

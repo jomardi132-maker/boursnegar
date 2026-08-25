@@ -100,9 +100,12 @@ def standardize(result: Any, output_type: str) -> list[dict]:
                     if candidate.get("row_code") is not None and isinstance(raw_label, str) and _number(raw_label) is None:
                         label_text = raw_label.strip()
                         if label_text and candidate.get("cell_group_name") != "Header":
-                            row_labels.setdefault(candidate.get("row_code"), label_text)
+                            # Codal tables frequently reuse row_code for many
+                            # visual rows; row_sequence is the stable join key
+                            # between a label cell and its numeric siblings.
+                            row_labels.setdefault(candidate.get("row_sequence"), label_text)
                 for cell in table.get("cells", []):
-                    label = str(cell.get("financial_concept") or row_labels.get(cell.get("row_code")) or cell.get("cell_group_name") or "").strip()
+                    label = str(cell.get("financial_concept") or row_labels.get(cell.get("row_sequence")) or cell.get("cell_group_name") or "").strip()
                     number = _number(cell.get("value"))
                     if number is None:
                         continue

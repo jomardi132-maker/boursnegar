@@ -22,7 +22,7 @@ def main():
  manifest_source=manifest.get('source')
  if manifest.get('schema') not in (SCHEMA,NOTICE_SCHEMA) or manifest_source not in SOURCES: raise SystemExit('manifest schema/source validation failed')
  if manifest.get('schema') == NOTICE_SCHEMA:
-  files=[x for x in manifest.get('files',[]) if x.get('symbol') in (None,'*',args.symbol)]; inserted=0; invalid=[]
+  files=[x for x in manifest.get('files',[]) if args.symbol=='*' or x.get('symbol') in (None,'*',args.symbol)]; inserted=0; invalid=[]
   with engine.begin() as db:
    if not db.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended('boursnegar:codalpy-import',0))")).scalar(): raise SystemExit('advisory lock is held')
    for item in files:
@@ -33,7 +33,7 @@ def main():
      if any(k not in record for k in required) or record['source']!=manifest_source: invalid.append({'file':str(path),'error':'record schema'}); continue
      inserted += db.execute(text("""INSERT INTO codal_notice_events(source,symbol,tracing_no,title,notice_type,published_at_jalali,period_end_jalali,raw_payload,content_checksum) VALUES(:source,:symbol,:tracing_no,:title,:notice_type,:published_at_jalali,:period_end_jalali,CAST(:raw_payload AS jsonb),:content_checksum) ON CONFLICT(source,symbol,tracing_no) DO NOTHING"""),{**record,'raw_payload':json.dumps(record['raw_payload'],ensure_ascii=False)}).rowcount
   print(json.dumps({'symbol':args.symbol,'files':len(files),'inserted':inserted,'standard_facts':0,'validation_errors':invalid},ensure_ascii=False)); return
- files=[x for x in manifest.get('files',[]) if x.get('symbol') in (None, '*', args.symbol)]
+ files=[x for x in manifest.get('files',[]) if args.symbol=='*' or x.get('symbol') in (None, '*', args.symbol)]
  inserted=0; standard=0; invalid=[]
  with engine.begin() as db:
   if not db.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended('boursnegar:codalpy-import',0))")).scalar(): raise SystemExit('advisory lock is held')
@@ -46,7 +46,7 @@ def main():
     for line in f:
      record=json.loads(line); required=('source','symbol','from_jalali','to_jalali','output_type','source_action_id','source_label','value','payload')
      if any(k not in record for k in required) or record['source'] != manifest_source: invalid.append({'file':str(path),'error':'record schema'}); continue
-     inserted += db.execute(text("""INSERT INTO codalpy_records(source,output_type,source_action_id,tracing_no,period_end_jalali,fact_key,source_label,value,raw_value,unit,payload) VALUES(:source,:output_type,:source_action_id,:tracing_no,:period_end_jalali,:fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb)) ON CONFLICT(source,source_action_id) DO NOTHING"""), {**record,'payload':json.dumps(record['payload'],ensure_ascii=False)}).rowcount
+     inserted += db.execute(text("""INSERT INTO codalpy_records(source,symbol,output_type,source_action_id,tracing_no,period_end_jalali,fact_key,source_label,value,raw_value,unit,payload) VALUES(:source,:symbol,:output_type,:source_action_id,:tracing_no,:period_end_jalali,:fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb)) ON CONFLICT(source,source_action_id) DO UPDATE SET symbol=COALESCE(codalpy_records.symbol,excluded.symbol)"""), {**record,'payload':json.dumps(record['payload'],ensure_ascii=False)}).rowcount
      if record.get('fact_key') and record.get('period_end_jalali') and record.get('from_jalali'):
       issuer = db.execute(text("SELECT i.id AS instrument_id,i.issuer_id FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id WHERE sa.symbol=:symbol AND sa.valid_to IS NULL"), {'symbol':record['symbol']}).mappings().first()
       if not issuer: continue

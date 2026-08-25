@@ -39,6 +39,36 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     references = raw.get("references") or {}
     bank_rate = references.get("bankDepositRate")
     inflation = references.get("inflationRate")
+    context = raw.get("analysis_context") or {}
+    comparison = raw.get("period_comparison") or {}
+    periods_available = int(context.get("financial_periods") or 0)
+    return_90d = context.get("price_return_90d_percent")
+    return_365d = context.get("price_return_365d_percent")
+    # In a high-inflation market, a 50% annual nominal move is not exceptional.
+    # Reserve the guard for genuinely abrupt moves: 50% in 90 days or 100%
+    # over a year. Thresholds are explicit policy, never inferred per symbol.
+    strong_price_momentum = bool(
+        (return_90d is not None and return_90d >= 50)
+        or (return_365d is not None and return_365d >= 100)
+    )
+    incomplete_trend_data = bool(context) and periods_available < 2
+    unmodeled_monthly_activity = bool(
+        context.get("monthly_disclosures") and not context.get("monthly_signals_available")
+    )
+    market_fundamental_divergence = strong_price_momentum and (
+        incomplete_trend_data or unmodeled_monthly_activity
+    )
+    current_profit = comparison.get("current_net_profit")
+    previous_profit = comparison.get("previous_net_profit")
+    revenue_growth = comparison.get("revenue_growth_percent")
+    profit_growth = comparison.get("net_profit_growth_percent")
+    turnaround_candidate = bool(
+        (current_profit is not None and current_profit > 0 and previous_profit is not None and previous_profit <= 0)
+        or (revenue_growth is not None and inflation is not None and revenue_growth > inflation
+            and profit_growth is not None and profit_growth > 0)
+    )
+    if market_fundamental_divergence:
+        confidence = min(confidence, 60.0)
     valuation = value_company(raw)
     family = valuation.get("family") if valuation else "unclassified"
     score, dimensions = health_score(
@@ -86,6 +116,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         report_mode=report_mode,
         policy=policy,
     )
+    if (market_fundamental_divergence or turnaround_candidate) and not critical_warning:
+        decision = "INSUFFICIENT_DATA"
     now = datetime.now(timezone.utc)
     payload = {
         "symbol": raw.get("symbol"),
@@ -99,6 +131,12 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "missingMetrics": missing_metrics,
         "confidence": confidence,
         "valuation": valuation,
+        "analysisState": (
+            "MARKET_FUNDAMENTAL_DIVERGENCE"
+            if market_fundamental_divergence else "STANDARD"
+            if not turnaround_candidate else "TURNAROUND_CANDIDATE"
+        ),
+        "analysisContext": context,
         "references": {
             "bankDepositRate": bank_rate,
             "inflationRate": inflation,
@@ -139,13 +177,19 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             "جریان نقد عملیاتی این دوره موجود نیست؛ پوشش نقدی سود قابل محاسبه نیست."
             if metrics.get("operating_cash_flow") is None else
             "پوشش نقدی سود از تقسیم جریان نقد عملیاتی بر سود خالص محاسبه شده است.",
-        ] + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
+        ] + ([
+            "قیمت بیش از ۵۰ درصد رشد کرده، اما کمتر از دو دوره بنیادی معتبر برای سنجش چرخش سودآوری موجود است؛ نتیجه قطعی خرید یا فروش صادر نمی‌شود."
+        ] if market_fundamental_divergence else []) + ([
+            "رشد واقعی درآمد یا عبور سود خالص از زیان به سود، احتمال چرخش سودآوری را نشان می‌دهد؛ برای تأیید به تداوم در دوره بعد نیاز است."
+        ] if turnaround_candidate else []) + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
         "risks": [
             "ارزش‌گذاری سناریویی است و به کیفیت آخرین صورت مالی وابسته است.",
             "تغییر نرخ ارز، قیمت جهانی کالا و مقررات می‌تواند نتیجه را تغییر دهد.",
         ] + (["برای این گزارش اطلاعیه توضیحی یا اصلاحیه مرتبط وجود دارد؛ متن آن باید پیش از تصمیم نهایی بررسی شود."] if raw.get("related_codal_disclosures") else []),
         "criticalWarning": (
-            "در آخرین صورت مالی، زیان عملیاتی مشاهده شد."
+            "رشد شدید قیمت با تاریخچه بنیادی ناکامل هم‌زمان شده است؛ این وضعیت می‌تواند نشانه چرخش سودآوری یا رفتار هیجانی باشد و نتیجه قطعی صادر نمی‌شود."
+            if market_fundamental_divergence and not critical_warning
+            else "در آخرین صورت مالی، زیان عملیاتی مشاهده شد."
             if has_operating_loss and not has_net_loss
             else "زیان خالص یا حقوق صاحبان سهام نامثبت مشاهده شد."
             if critical_warning

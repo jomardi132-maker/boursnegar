@@ -470,6 +470,50 @@ def _stored_period_comparison(db: Session, symbol: str, candidate: dict, parsed:
     }, None
 
 
+def _stored_analysis_context(db: Session, symbol: str) -> dict:
+    """Return sourced context that can qualify a categorical decision."""
+    row = db.execute(text("""
+      WITH target AS (
+        SELECT i.id AS instrument_id,i.issuer_id
+        FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id
+        WHERE sa.symbol=:symbol AND sa.valid_to IS NULL LIMIT 1
+      ), prices AS (
+        SELECT DISTINCT ON (dp.trading_date)
+          dp.trading_date,COALESCE(dp.adjusted_close,dp.close) AS price
+        FROM daily_prices dp,target t
+        WHERE dp.instrument_id=t.instrument_id AND dp.quality_status='VALID'
+        ORDER BY dp.trading_date,dp.retrieved_at DESC
+      ), latest AS (SELECT trading_date,price FROM prices ORDER BY trading_date DESC LIMIT 1)
+      SELECT
+        (SELECT count(DISTINCT (fp.end_date,fp.length_months,fp.scope))
+         FROM financial_periods fp,target t WHERE fp.issuer_id=t.issuer_id
+           AND EXISTS(SELECT 1 FROM financial_facts ff WHERE ff.period_id=fp.id AND ff.quality_status='VALID')) AS financial_periods,
+        (SELECT count(*) FROM disclosures d,target t WHERE d.issuer_id=t.issuer_id
+           AND (d.letter_code IN ('ن-۳۰','ن-30') OR d.title LIKE '%گزارش فعالیت ماهانه%')) AS monthly_disclosures,
+        (SELECT count(*) FROM corporate_actions ca,target t WHERE ca.instrument_id=t.instrument_id) AS corporate_actions,
+        (SELECT count(*) FROM prices) AS price_observations,
+        (SELECT trading_date FROM latest) AS latest_price_date,
+        (SELECT price FROM latest) AS latest_price,
+        (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '90 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_90d,
+        (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '365 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_365d
+    """), {"symbol": symbol}).mappings().first()
+    if not row:
+        return {}
+    result = dict(row)
+    latest = float(result["latest_price"]) if result.get("latest_price") is not None else None
+    for days in (90, 365):
+        previous = result.pop(f"price_{days}d", None)
+        result[f"price_return_{days}d_percent"] = (
+            round((latest / float(previous) - 1) * 100, 2)
+            if latest is not None and previous not in (None, 0) else None
+        )
+    if result.get("latest_price") is not None:
+        result["latest_price"] = latest
+    if result.get("latest_price_date") is not None:
+        result["latest_price_date"] = result["latest_price_date"].isoformat()
+    return result
+
+
 def _stored_ttm(db: Session, symbol: str, candidate: dict, parsed: dict):
     """Build TTM flows without mixing scope, units, or incompatible periods."""
     length = candidate.get("_length_months")
@@ -722,6 +766,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,
         "period_comparison_unavailable_reason": comparison_unavailable_reason,
+        "analysis_context": _stored_analysis_context(db, symbol),
         "ttm": ttm,
         "ttm_unavailable_reason": ttm_unavailable_reason,
         "related_codal_disclosures": related_disclosures,

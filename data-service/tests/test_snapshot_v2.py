@@ -113,6 +113,45 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertFalse(payload["report"]["audited"])
         self.assertLess(payload["confidence"], 65)
 
+    def test_strong_price_rise_with_one_financial_period_blocks_categorical_sell(self):
+        raw = {
+            "symbol": "چرخش", "company_name": "نمونه چرخش سودآوری",
+            "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 4500, "market_category": "محصولات غذایی و آشامیدنی به جز قند و شکر", "eps": 2},
+            "financial_metrics": {"revenue": 1000, "operating_profit": 10, "net_profit": 2,
+                "operating_cash_flow": None, "total_assets": 3000, "total_liabilities": 1000,
+                "total_equity": 2000, "eps_basic": 2},
+            "financial_metrics_missing": ["operating_cash_flow"],
+            "ratios": {"roe_percent": 0.1, "net_margin_percent": 0.2, "debt_ratio_percent": 33, "pe_ratio": 2250},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 61.4},
+            "analysis_context": {"financial_periods": 1, "monthly_disclosures": 4,
+                "price_observations": 300, "price_return_90d_percent": 203.0},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+        self.assertEqual(payload["analysisState"], "MARKET_FUNDAMENTAL_DIVERGENCE")
+        self.assertTrue(any("نتیجه قطعی" in reason for reason in payload["reasons"]))
+
+    def test_real_growth_and_profit_improvement_marks_turnaround_candidate(self):
+        raw = {
+            "symbol": "بهبود", "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 1000, "market_category": "فلزات اساسی", "eps": 100},
+            "financial_metrics": {"revenue": 2000, "operating_profit": 300, "net_profit": 200,
+                "operating_cash_flow": 220, "total_assets": 3000, "total_liabilities": 1000,
+                "total_equity": 2000, "eps_basic": 100},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": 10, "operating_margin_percent": 15, "debt_ratio_percent": 33,
+                "cash_to_profit_ratio_percent": 110, "pe_ratio": 10},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+            "period_comparison": {"current_net_profit": 200, "previous_net_profit": 100,
+                "revenue_growth_percent": 70, "net_profit_growth_percent": 100},
+            "analysis_context": {"financial_periods": 2, "price_observations": 300,
+                "price_return_90d_percent": 10},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["analysisState"], "TURNAROUND_CANDIDATE")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+
 
 if __name__ == "__main__":
     unittest.main()
