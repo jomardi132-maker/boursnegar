@@ -286,12 +286,13 @@ app.get("/api/comments", asyncRoute(async (req, res) => {
   const kind = String(req.query.kind || "site_feedback");
   const symbol = req.query.symbol ? String(req.query.symbol) : null;
   if (!['site_feedback','symbol_comment'].includes(kind)) return res.status(400).json({ success:false });
-  const rows = await pool.query(`SELECT c.id,c.body,c.created_at,coalesce(split_part(e.email,'@',1),'کاربر') AS user_label,0::int AS likes FROM comments c JOIN users u ON u.id=c.user_id LEFT JOIN email_identities e ON e.user_id=u.id WHERE c.kind=$1 AND ($2::text IS NULL OR c.symbol=$2) AND c.status='published' ORDER BY c.created_at DESC LIMIT 100`, [kind, symbol]);
+  const rows = await pool.query(`SELECT c.id,c.parent_id,c.body,c.created_at,coalesce(split_part(e.email,'@',1),'کاربر') AS user_label,0::int AS likes FROM comments c JOIN users u ON u.id=c.user_id LEFT JOIN email_identities e ON e.user_id=u.id WHERE c.kind=$1 AND ($2::text IS NULL OR c.symbol=$2) AND c.status='published' ORDER BY c.created_at ASC LIMIT 500`, [kind, symbol]);
   res.json({ success:true, comments:rows.rows });
 }));
 app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*60_000), asyncRoute(async (req,res)=>{
-  const p=commentSchema.safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
-  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,body,status) VALUES($1,$2,$3,$4,'published') RETURNING id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.body]);
+  const p=z.object({ ...commentSchema.shape, parentId:z.string().uuid().nullable().optional() }).safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
+  if (p.data.parentId) { const parent=await pool.query(`SELECT id,kind,symbol,status FROM comments WHERE id=$1`,[p.data.parentId]); const row=parent.rows[0]; if(!row || row.status!=='published' || row.kind!==p.data.kind || (row.symbol||null)!==(p.data.symbol||null)) return res.status(400).json({success:false,error:"پیام مرجع معتبر نیست."}); }
+  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id,parent_id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
   res.status(201).json({success:true,comment:row.rows[0]});
 }));
 app.post(

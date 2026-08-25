@@ -59,7 +59,7 @@ export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysis
       {analysisLoading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
       {analysis && <DecisionReport report={analysis}/>}
       <section className="disclosure-section"><header><div><span>اسناد رسمی</span><h2>آخرین اطلاعیه‌های کدال</h2></div><FileText/></header>{data.disclosures.length ? <div className="disclosure-list">{data.disclosures.map((item) => <a key={item.source_disclosure_id} href={item.detail_url || `https://codal.ir/ReportList.aspx?search&Symbol=${encodeURIComponent(data.stock.symbol)}`} target="_blank" rel="noreferrer"><span className="doc-icon"><FileText/></span><span><b>{item.title}</b><small><CalendarDays/> {item.published_date_jalali || "تاریخ نامشخص"} {item.is_audited ? "· حسابرسی‌شده" : ""}</small></span><ExternalLink/></a>)}</div> : <div className="empty-docs">هنوز اطلاعیه‌ای برای این نماد وارد نشده است.</div>}</section>
-      <Comments kind="symbol_comment" symbol={data.stock.symbol} user={user} onLogin={onLogin}/>
+      <section className="stock-content-with-comments"><div><Comments kind="symbol_comment" symbol={data.stock.symbol} user={user} onLogin={onLogin}/></div><aside className="comment-rail"><strong>گفت‌وگوی نماد</strong><span>نظرها و پاسخ‌های کاربران درباره {data.stock.symbol}</span><a href="#symbol-comments">مشاهده گفت‌وگو</a></aside></section>
       <section className="stock-disclaimer"><ShieldCheck/><p><b>داده را از نتیجه جدا می‌کنیم.</b><br/>قیمت و اطلاعیه‌ها مستقیماً از منابع بازار گردآوری شده‌اند. برچسب تحلیلی توصیهٔ خرید یا فروش نیست و در نبود دادهٔ کافی نمایش داده نمی‌شود.</p></section>
     </main>
   </div>;
