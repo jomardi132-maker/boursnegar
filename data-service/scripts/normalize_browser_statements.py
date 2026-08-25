@@ -21,6 +21,11 @@ def output_type(title: str) -> str:
         return 'balance_sheet'
     return 'income_statement'
 
+def fact_output_type(fact_key: str, title: str) -> str:
+    if fact_key in {'total_assets', 'total_liabilities', 'total_equity'}:
+        return 'balance_sheet'
+    return output_type(title)
+
 def main() -> None:
     p = argparse.ArgumentParser(); p.add_argument('--capture', required=True); p.add_argument('--out', required=True); args = p.parse_args()
     root, out = Path(args.capture), Path(args.out); out.mkdir(parents=True, exist_ok=True)
@@ -53,7 +58,7 @@ def main() -> None:
                     value = parsed['metrics'].get(fact_key)
                     if value is None or not period: continue
                     rows.append({'source': SOURCE, 'symbol': symbol, 'from_jalali': record.get('from_jalali'), 'to_jalali': record.get('to_jalali'),
-                                 'retrieved_at': record.get('retrieved_at'), 'output_type': kind, 'source_action_id': f'{tracing}:{fact_key}:{period}',
+                                 'retrieved_at': record.get('retrieved_at'), 'output_type': fact_output_type(fact_key, title), 'source_action_id': f'{tracing}:{fact_key}:{period}',
                                  'tracing_no': tracing, 'period_end_jalali': period, 'fact_key': fact_key, 'source_label': fact_key,
                                  'value': value, 'raw_value': value, 'unit': 'UNKNOWN',
                                  'payload': {'title': title, 'document': doc['path'], 'document_sha256': checksum,

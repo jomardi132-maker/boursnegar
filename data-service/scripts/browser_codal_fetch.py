@@ -128,12 +128,12 @@ def main():
                         financial_notice=any(token in title for token in ('صورت', 'مالی', 'فعالیت ماهانه', 'عملکرد ماهانه','ترازنامه','سود','زیان'))
                         if args.professional_documents:
                             document_kinds=(('html', letter.get('Url'), '.html'),)
-                            if financial_notice and not args.html_only: document_kinds += (('excel', letter.get('ExcelUrl'), '.xlsx'),)
+                            if financial_notice and not args.html_only: document_kinds += (('excel', letter.get('ExcelUrl'), '.xls'),)
                             if letter.get('PdfUrl') and not args.html_only and not args.defer_pdf: document_kinds += (('pdf', letter.get('PdfUrl'), '.pdf'),)
                         elif not args.download_all_documents and not any(token in title for token in ('صورت', 'مالی', 'فعالیت ماهانه', 'عملکرد ماهانه')):
                             f.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n')
                             continue
-                        if not args.professional_documents: document_kinds=(('html', letter.get('Url'), '.html'),) if args.html_only else (('html', letter.get('Url'), '.html'), ('excel', letter.get('ExcelUrl'), '.xlsx'))
+                        if not args.professional_documents: document_kinds=(('html', letter.get('Url'), '.html'),) if args.html_only else (('html', letter.get('Url'), '.html'), ('excel', letter.get('ExcelUrl'), '.xls'))
                         for kind, url, suffix in document_kinds:
                             if not url: continue
                             if str(url).startswith('/'): url='https://codal.ir'+url
@@ -158,9 +158,10 @@ def main():
                                             break
                                         time.sleep(0.25)
                                     if not downloaded: raise RuntimeError('download timeout')
-                                    if suffix == '.xlsx' and downloaded.read_bytes()[:2] != b'PK':
-                                        raise RuntimeError('downloaded content is not a valid XLSX file')
-                                    target.write_bytes(downloaded.read_bytes())
+                                    content = downloaded.read_bytes()
+                                    if suffix == '.xls' and b'<table' not in content.lower() and b'<html' not in content.lower():
+                                        raise RuntimeError('downloaded content is not a Codal HTML-Excel document')
+                                    target.write_bytes(content)
                                     downloaded.unlink()
                                     row.setdefault('documents',[]).append({'kind':kind,'path':target.name,'sha256':sha(target),'status':200,'symbol':symbol,'tracing_no':str(letter.get('TracingNo') or ''),'title':title,'letter_code':letter.get('LetterCode'),'source':'browser/codal.ir'})
                             except Exception as exc:
