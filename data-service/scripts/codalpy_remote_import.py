@@ -47,7 +47,7 @@ def main():
      record=json.loads(line); required=('source','symbol','from_jalali','to_jalali','output_type','source_action_id','source_label','value','payload')
      if any(k not in record for k in required) or record['source'] != manifest_source: invalid.append({'file':str(path),'error':'record schema'}); continue
      inserted += db.execute(text("""INSERT INTO codalpy_records(source,symbol,output_type,source_action_id,tracing_no,period_end_jalali,fact_key,source_label,value,raw_value,unit,payload) VALUES(:source,:symbol,:output_type,:source_action_id,:tracing_no,:period_end_jalali,:fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb)) ON CONFLICT(source,source_action_id) DO UPDATE SET symbol=COALESCE(codalpy_records.symbol,excluded.symbol)"""), {**record,'payload':json.dumps(record['payload'],ensure_ascii=False)}).rowcount
-     if record.get('fact_key') and record.get('period_end_jalali') and record.get('from_jalali'):
+     if record.get('output_type') != 'monthly_activity' and record.get('fact_key') and record.get('period_end_jalali') and record.get('from_jalali'):
       issuer = db.execute(text("SELECT i.id AS instrument_id,i.issuer_id FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id WHERE sa.symbol=:symbol AND sa.valid_to IS NULL"), {'symbol':record['symbol']}).mappings().first()
       if not issuer: continue
       source_id=f"{record['tracing_no']}:{record['output_type']}"

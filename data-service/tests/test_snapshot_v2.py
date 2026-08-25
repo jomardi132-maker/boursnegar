@@ -171,6 +171,45 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["analysisState"], "CAPITAL_ACTION_DATA_GAP")
         self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
 
+    def test_explicit_monthly_sales_growth_can_flag_operating_turnaround(self):
+        raw = {
+            "symbol": "ماهانه", "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 1000, "market_category": "محصولات غذایی و آشامیدنی به جز قند و شکر", "eps": 20},
+            "financial_metrics": {"revenue": 2000, "operating_profit": 60, "net_profit": 40,
+                "operating_cash_flow": 45, "total_assets": 3000, "total_liabilities": 1000,
+                "total_equity": 2000, "eps_basic": 20},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": 2, "operating_margin_percent": 3, "net_margin_percent": 2,
+                "debt_ratio_percent": 33, "cash_to_profit_ratio_percent": 112, "pe_ratio": 50},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+            "analysis_context": {"financial_periods": 2, "monthly_disclosures": 12,
+                "monthly_signals_available": True, "price_return_90d_percent": 5},
+            "monthly_activity": {"available": True, "monthlySales": {
+                "currentPeriod": "1405/05/31", "previousPeriod": "1404/05/31", "growthPercent": 65}},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["analysisState"], "TURNAROUND_CANDIDATE")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+        self.assertTrue(any("فروش ماهانه" in reason for reason in payload["reasons"]))
+
+    def test_monthly_sales_rule_is_not_applied_to_bank_family(self):
+        raw = {
+            "symbol": "وبانک", "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 1000, "market_category": "بانکها و موسسات اعتباری", "eps": 20},
+            "financial_metrics": {"revenue": 2000, "operating_profit": 60, "net_profit": 40,
+                "operating_cash_flow": 45, "total_assets": 3000, "total_liabilities": 1000,
+                "total_equity": 2000, "eps_basic": 20},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": 2, "operating_margin_percent": 3, "net_margin_percent": 2,
+                "debt_ratio_percent": 33, "cash_to_profit_ratio_percent": 112, "pe_ratio": 50},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+            "analysis_context": {"financial_periods": 2, "monthly_disclosures": 12,
+                "monthly_signals_available": True, "price_return_90d_percent": 5},
+            "monthly_activity": {"available": True, "monthlySales": {"growthPercent": 65}},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["analysisState"], "STANDARD")
+
 
 if __name__ == "__main__":
     unittest.main()

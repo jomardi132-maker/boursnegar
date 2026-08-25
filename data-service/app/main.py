@@ -549,6 +549,49 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
     return result
 
 
+def _stored_monthly_signals(db: Session, symbol: str) -> dict:
+    """Compare only explicitly labelled Codal monthly sales cells."""
+    rows = db.execute(text("""
+      SELECT period_end_jalali,fact_key,max(value) AS value
+      FROM codalpy_records
+      WHERE symbol=:symbol AND output_type='monthly_activity'
+        AND fact_key IN ('monthly_sales_current','monthly_sales_ytd')
+        AND period_end_jalali IS NOT NULL
+      GROUP BY period_end_jalali,fact_key
+      ORDER BY period_end_jalali DESC
+    """), {"symbol": symbol}).mappings().all()
+    by_key = {}
+    for row in rows:
+        try:
+            date_text = str(row["period_end_jalali"]).translate(_DATE_DIGITS).replace("-", "/")
+            year, month, _ = [int(part) for part in date_text.split("/")[:3]]
+            by_key.setdefault(row["fact_key"], []).append((year, month, float(row["value"]), date_text))
+        except (TypeError, ValueError):
+            continue
+
+    def comparison(key: str) -> dict:
+        values = by_key.get(key) or []
+        if not values:
+            return {}
+        current = values[0]
+        previous = next((value for value in values[1:] if value[0] == current[0] - 1 and value[1] == current[1]), None)
+        return {
+            "current": current[2], "currentPeriod": current[3],
+            "previous": previous[2] if previous else None,
+            "previousPeriod": previous[3] if previous else None,
+            "growthPercent": round((current[2] / previous[2] - 1) * 100, 2)
+            if previous and previous[2] != 0 else None,
+        }
+
+    monthly = comparison("monthly_sales_current")
+    ytd = comparison("monthly_sales_ytd")
+    return {
+        "available": bool(monthly.get("growthPercent") is not None or ytd.get("growthPercent") is not None),
+        "monthlySales": monthly, "ytdSales": ytd,
+        "source": "سلول‌های صریح جمع مبلغ فروش در گزارش فعالیت ماهانه کدال",
+    }
+
+
 def _stored_ttm(db: Session, symbol: str, candidate: dict, parsed: dict):
     """Build TTM flows without mixing scope, units, or incompatible periods."""
     length = candidate.get("_length_months")
@@ -782,6 +825,11 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     db.add(ratio_row)
     db.commit()
 
+    analysis_context = _stored_analysis_context(db, symbol)
+    monthly_signals = _stored_monthly_signals(db, symbol)
+    analysis_context["monthly_signals_available"] = monthly_signals["available"]
+    analysis_context["monthlySignals"] = monthly_signals
+
     return {
         "success": True,
         "symbol": symbol,
@@ -801,7 +849,8 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,
         "period_comparison_unavailable_reason": comparison_unavailable_reason,
-        "analysis_context": _stored_analysis_context(db, symbol),
+        "analysis_context": analysis_context,
+        "monthly_activity": monthly_signals,
         "ttm": ttm,
         "ttm_unavailable_reason": ttm_unavailable_reason,
         "related_codal_disclosures": related_disclosures,

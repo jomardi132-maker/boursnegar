@@ -40,6 +40,19 @@ FACT_LABELS = {
     "سود (زیان) خالص هر سهم - ریال": "eps_basic",
     "سود(زیان) خالص هر سهم – ریال": "eps_basic",
 }
+
+
+def monthly_fact_key(row_label: str, column_label: str, table_title: str) -> str | None:
+    row = _label_key(row_label)
+    column = _label_key(column_label)
+    table = _label_key(table_title)
+    if "تولیدوفروش" not in table or row not in {"جمع", "جمعکل"} or "مبلغفروش" not in column:
+        return None
+    if any(token in column for token in ("ماهجار", "یکماههجار", "دورهیکماهه")):
+        return "monthly_sales_current"
+    if any(token in column for token in ("ازابتدایسالمالی", "تجمعی", "سالمالیتاتاریخ")):
+        return "monthly_sales_ytd"
+    return None
 def _label_key(value: str) -> str:
     return value.replace("ي", "ی").replace("ى", "ی").replace("ك", "ک").replace("\u200f", "").replace("\u200c", "").replace(" ", "").replace("‌", "")
 
@@ -95,21 +108,29 @@ def standardize(result: Any, output_type: str) -> list[dict]:
         for sheet in d.get("sheets", []):
             for table in sheet.get("tables", []):
                 row_labels = {}
+                column_labels = {}
                 for candidate in table.get("cells", []):
                     raw_label = candidate.get("value")
-                    if candidate.get("row_code") is not None and isinstance(raw_label, str) and _number(raw_label) is None:
+                    if isinstance(raw_label, str) and _number(raw_label) is None:
                         label_text = raw_label.strip()
-                        if label_text and candidate.get("cell_group_name") != "Header":
+                        if label_text and candidate.get("row_sequence") is not None and candidate.get("cell_group_name") != "Header":
                             # Codal tables frequently reuse row_code for many
                             # visual rows; row_sequence is the stable join key
                             # between a label cell and its numeric siblings.
                             row_labels.setdefault(candidate.get("row_sequence"), label_text)
+                        if label_text and candidate.get("cell_group_name") == "Header":
+                            column_labels.setdefault(candidate.get("column_sequence"), label_text)
                 for cell in table.get("cells", []):
                     label = str(cell.get("financial_concept") or row_labels.get(cell.get("row_sequence")) or cell.get("cell_group_name") or "").strip()
+                    column_label = str(column_labels.get(cell.get("column_sequence")) or "").strip()
                     number = _number(cell.get("value"))
                     if number is None:
                         continue
-                    key = next((mapped for known, mapped in FACT_LABELS.items() if _label_key(known) == _label_key(label)), None) if output_type != "monthly_activity" else None
+                    key = (
+                        next((mapped for known, mapped in FACT_LABELS.items() if _label_key(known) == _label_key(label)), None)
+                        if output_type != "monthly_activity" else
+                        monthly_fact_key(label, column_label, str(table.get("title_fa") or ""))
+                    )
                     rows.append({
                         "source": SOURCE, "output_type": output_type,
                         "source_action_id": f"{getattr(data, 'tracing_no', d.get('tracing_no'))}:{cell.get('address')}",
@@ -120,7 +141,7 @@ def standardize(result: Any, output_type: str) -> list[dict]:
                         "unit": None, "payload": {
                             "sheet": {k: sheet.get(k) for k in ("code", "title_fa", "title_en", "sequence")},
                             "table": {k: table.get(k) for k in ("meta_table_id", "code", "title_fa", "title_en", "sequence", "sheet_code")},
-                            "cell": cell,
+                            "cell": cell, "column_label": column_label,
                         },
                     })
     return rows

@@ -64,11 +64,23 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     previous_profit = comparison.get("previous_net_profit")
     revenue_growth = comparison.get("revenue_growth_percent")
     profit_growth = comparison.get("net_profit_growth_percent")
+    monthly_activity = raw.get("monthly_activity") or {}
+    monthly_growth = (monthly_activity.get("monthlySales") or {}).get("growthPercent")
+    if monthly_growth is None:
+        monthly_growth = (monthly_activity.get("ytdSales") or {}).get("growthPercent")
+    operating_margin = ratios.get("operating_margin_percent")
+    net_margin = ratios.get("net_margin_percent")
+    weak_profitability = bool(
+        (operating_margin is not None and operating_margin < 5)
+        or (net_margin is not None and net_margin < 5)
+    )
     operating_company = family not in {"bank", "real_estate", "unclassified"}
     turnaround_candidate = bool(
         (current_profit is not None and current_profit > 0 and previous_profit is not None and previous_profit <= 0)
         or (operating_company and revenue_growth is not None and inflation is not None and revenue_growth > inflation
             and profit_growth is not None and profit_growth > 0)
+        or (operating_company and weak_profitability and monthly_growth is not None
+            and inflation is not None and monthly_growth > inflation)
     )
     capital_action_data_gap = bool(context.get("capital_action_data_gap"))
     if market_fundamental_divergence:
@@ -122,6 +134,12 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     )
     if (market_fundamental_divergence or turnaround_candidate or capital_action_data_gap) and not critical_warning:
         decision = "INSUFFICIENT_DATA"
+    analysis_state = (
+        "CAPITAL_ACTION_DATA_GAP" if capital_action_data_gap else
+        "MARKET_FUNDAMENTAL_DIVERGENCE" if market_fundamental_divergence else
+        "TURNAROUND_CANDIDATE" if turnaround_candidate else
+        "STANDARD"
+    )
     now = datetime.now(timezone.utc)
     payload = {
         "symbol": raw.get("symbol"),
@@ -135,14 +153,9 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "missingMetrics": missing_metrics,
         "confidence": confidence,
         "valuation": valuation,
-        "analysisState": (
-            "CAPITAL_ACTION_DATA_GAP"
-            if capital_action_data_gap else
-            "MARKET_FUNDAMENTAL_DIVERGENCE"
-            if market_fundamental_divergence else "STANDARD"
-            if not turnaround_candidate else "TURNAROUND_CANDIDATE"
-        ),
+        "analysisState": analysis_state,
         "analysisContext": context,
+        "monthlyActivity": monthly_activity,
         "references": {
             "bankDepositRate": bank_rate,
             "inflationRate": inflation,
@@ -188,6 +201,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         ] if market_fundamental_divergence else []) + ([
             "رشد واقعی درآمد یا عبور سود خالص از زیان به سود، احتمال چرخش سودآوری را نشان می‌دهد؛ برای تأیید به تداوم در دوره بعد نیاز است."
         ] if turnaround_candidate else []) + ([
+            f"رشد مبلغ فروش ماهانه هم‌دوره {monthly_growth:.1f} درصد است و از تورم مرجع عبور کرده، اما برای تأیید چرخش به تداوم نیاز دارد."
+        ] if turnaround_candidate and monthly_growth is not None and inflation is not None and monthly_growth > inflation else []) + ([
             "تغییر تعداد سهام در تاریخچه بازار دیده شده، اما اطلاعیه اقدام شرکتی متناظر هنوز به داده ساختاریافته متصل نشده است."
         ] if capital_action_data_gap else []) + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
         "risks": [
