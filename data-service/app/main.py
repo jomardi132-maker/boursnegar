@@ -44,6 +44,25 @@ def _safe_tracing_no(letter: dict) -> str:
 def _persist_v2_snapshot(db: Session, raw: dict, payload: dict) -> str:
     live = raw.get("live_price") or {}
     symbol = str(raw.get("symbol") or "").strip()
+    existing_instrument = db.execute(
+        text(
+            """
+            SELECT i.isin,i.market_instrument_id
+            FROM symbol_aliases sa
+            JOIN instruments i ON i.id=sa.instrument_id
+            WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
+            ORDER BY sa.valid_from DESC NULLS LAST
+            LIMIT 1
+            """
+        ),
+        {"symbol": symbol},
+    ).mappings().first()
+    if existing_instrument and not live.get("isin"):
+        live = {
+            **live,
+            "isin": existing_instrument["isin"],
+            "market_id": existing_instrument["market_instrument_id"],
+        }
     stable_code = str(live.get("isin") or f"symbol:{symbol}")
     industry_title = str(live.get("market_category") or "نامشخص")
     row = db.execute(
