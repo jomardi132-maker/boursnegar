@@ -33,7 +33,21 @@ def normalize_persian(value: str | None) -> str:
 
 
 def model_family(industry: str | None) -> str:
-    return PILOT_INDUSTRIES.get(normalize_persian(industry), "unclassified")
+    normalized = normalize_persian(industry)
+    mapped = PILOT_INDUSTRIES.get(normalized)
+    if mapped:
+        return mapped
+    if not normalized or "صندوق سرمایه گذاری قابل معامله" in normalized:
+        return "unclassified"
+    if any(token in normalized for token in ("بانک", "اعتباری", "بیمه", "سرمایه گذاری", "واسطه گری مالی")):
+        return "financial"
+    if any(token in normalized for token in ("املاک", "انبوه سازی", "ساختمان")):
+        return "real_estate"
+    if any(token in normalized for token in ("نفت", "گاز", "پتروشیمی", "شیمیایی", "کک", "پلاستیک", "لاستیک")):
+        return "petrochemical"
+    if any(token in normalized for token in ("فلز", "کانه", "معدن", "زغال", "سیمان", "کانی", "سرامیک", "کاشی")):
+        return "metals"
+    return "general"
 
 
 def is_pilot_industry(industry: str | None) -> bool:

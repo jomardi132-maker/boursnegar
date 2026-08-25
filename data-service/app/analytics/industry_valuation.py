@@ -29,6 +29,11 @@ MODEL_SPECS = {
     # multiple is deliberately aligned with the existing defensive consumer
     # pilot (pharmaceuticals) and is exposed in the response assumptions.
     "food": ModelSpec("normalized_pe", 7.0),
+    # Conservative fallback for operating industries without a dedicated
+    # sector model. This is an explicit internal scenario, never a claim of
+    # market consensus, and still requires real financial inputs.
+    "general": ModelSpec("normalized_pe", 5.0, 0.25, 0.25),
+    "financial": ModelSpec("price_to_book", 0.9, 0.25, 0.20),
 }
 
 
