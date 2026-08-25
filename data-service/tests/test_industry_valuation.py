@@ -26,6 +26,15 @@ class IndustryValuationTests(unittest.TestCase):
         self.assertEqual(value["method"], "normalized_pe")
         self.assertEqual(value["fairValueBase"], 1200)
 
+    def test_values_food_company_with_disclosed_policy_scenario(self):
+        value = value_company({
+            "live_price": {"market_category": "محصولات غذایی و آشامیدنی به جز قند و شکر"},
+            "financial_metrics": {"eps_basic": 200},
+        })
+        self.assertEqual(value["family"], "food")
+        self.assertEqual(value["fairValueBase"], 1400)
+        self.assertEqual(value["assumptions"]["multipleType"], "internal_policy_scenario")
+
     def test_values_bank_with_price_to_book(self):
         value = value_company({
             "live_price": {"market_category": "بانک‌ها و موسسات اعتباری", "total_shares": 1_000_000},

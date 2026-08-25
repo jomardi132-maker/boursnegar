@@ -99,6 +99,10 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "missingMetrics": missing_metrics,
         "confidence": confidence,
         "valuation": valuation,
+        "references": {
+            "bankDepositRate": bank_rate,
+            "inflationRate": inflation,
+        },
         "keyMetrics": {
             "eps": metrics.get("eps_basic"),
             "pe": ratios.get("pe_ratio"),
@@ -115,18 +119,26 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "report": {
             "title": report.get("title"),
             "publishedAt": report.get("publish_datetime"),
+            "periodEnd": report.get("period_end"),
+            "periodLengthMonths": report.get("period_length_months"),
             "audited": audited,
             "basisNote": (
-                "این تحلیل بر اساس آخرین گزارش دارای فایل اکسل کدال تهیه شده است؛ گزارش حسابرسی‌نشده است و با انتشار گزارش بعدی باید بازبینی شود."
+                "این تحلیل بر اساس آخرین صورت مالی موجود و قابل‌استخراج تهیه شده است؛ اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند. گزارش حسابرسی‌نشده است و با انتشار صورت مالی بعدی باید بازبینی شود."
                 if not audited else
-                "این تحلیل بر اساس آخرین گزارش حسابرسی‌شده انتخاب‌شده تهیه شده است؛ اطلاعیه‌های جدیدتر ممکن است روند کوتاه‌مدت را تغییر دهند."
+                "این تحلیل بر اساس آخرین صورت مالی حسابرسی‌شده موجود و قابل‌استخراج تهیه شده است؛ اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند."
             ),
             "relatedDisclosures": raw.get("related_codal_disclosures") or [],
         },
         "coreQuestions": questions,
         "reasons": [
             f"امتیاز سلامت بنیادی {score} از ۱۰۰ است." if score is not None else "امتیاز سلامت به‌دلیل کمبود داده محاسبه نشد.",
-            f"ارزش منصفانه پایه با مدل {valuation['method']} محاسبه شد." if valuation else "مدل تخصصی معتبر برای این صنعت یا داده موجود نیست.",
+            f"ارزش منصفانه پایه با مدل سناریویی {valuation['method']} و فرض‌های نمایش‌داده‌شده محاسبه شد." if valuation else "برای این صنعت هنوز مدل سناریویی پشتیبانی‌شده یا داده لازم موجود نیست.",
+            "رشد هم‌دوره برای محاسبه رشد واقعی در دسترس نیست؛ نرخ تورم مرجع مستقل نمایش داده می‌شود."
+            if (raw.get("period_comparison") or {}).get("revenue_growth_percent") is None else
+            f"رشد واقعی با نرخ تورم مرجع {inflation} درصد محاسبه شده است.",
+            "جریان نقد عملیاتی این دوره موجود نیست؛ پوشش نقدی سود قابل محاسبه نیست."
+            if metrics.get("operating_cash_flow") is None else
+            "پوشش نقدی سود از تقسیم جریان نقد عملیاتی بر سود خالص محاسبه شده است.",
         ] + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
         "risks": [
             "ارزش‌گذاری سناریویی است و به کیفیت آخرین صورت مالی وابسته است.",

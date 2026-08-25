@@ -25,6 +25,10 @@ MODEL_SPECS = {
     # available.
     "real_estate": ModelSpec("price_to_book", 1.0, 0.25, 0.25),
     "ceramics": ModelSpec("normalized_pe", 7.0),
+    # A transparent policy scenario, not an asserted market consensus. The
+    # multiple is deliberately aligned with the existing defensive consumer
+    # pilot (pharmaceuticals) and is exposed in the response assumptions.
+    "food": ModelSpec("normalized_pe", 7.0),
 }
 
 
@@ -106,6 +110,7 @@ def value_company(raw: dict) -> dict | None:
             "scenarioDownside": spec.downside,
             "scenarioUpside": spec.upside,
             "currency": "IRR_PER_SHARE",
+            "multipleType": "internal_policy_scenario",
             "basisSource": (
                 "book_value_proxy"
                 if spec.method == "price_to_book"

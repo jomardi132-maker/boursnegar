@@ -75,6 +75,8 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["keyMetrics"]["roe"], 25)
         self.assertEqual(payload["keyMetrics"]["revenueGrowth"], 80)
         self.assertTrue(payload["report"]["audited"])
+        self.assertEqual(payload["references"]["inflationRate"], 61.4)
+        self.assertEqual(payload["references"]["bankDepositRate"], 20.5)
 
     def test_pharmaceutical_operating_loss_produces_sourced_sell_warning(self):
         payload = build_snapshot_payload({

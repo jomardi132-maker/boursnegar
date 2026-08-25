@@ -10,6 +10,8 @@ const marketSource = fs.readFileSync(path.resolve('src/components/MarketExplorer
 describe('analysis UI contract', () => {
   it('always presents the three fundamental questions', () => {
     expect(reportSource).toContain('earnings_vs_bank');
+    expect(reportSource).toContain('این شاخص سود تقسیمی نیست');
+    expect(reportSource).toContain('نرخ تورم مرجع');
     expect(reportSource).toContain('cash_quality');
     expect(reportSource).toContain('real_growth');
   });

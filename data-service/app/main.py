@@ -420,6 +420,7 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
         "PublishDateTime": first["published_date_jalali"], "ExcelUrl": first["excel_url"],
         "HasExcel": bool(first["excel_url"]), "scope": first["scope"],
         "_period_id": str(first["period_id"]), "_end_date": first["end_date"],
+        "_end_date_jalali": first["end_date_jalali"],
         "_length_months": first["length_months"],
     }
     return candidate, str(first["excel_url"] or ""), {
@@ -710,6 +711,8 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
             "title": candidate.get("Title"),
             "tracing_no": candidate.get("TracingNo"),
             "publish_datetime": candidate.get("PublishDateTime"),
+            "period_end": candidate.get("_end_date_jalali") or candidate.get("_end_date"),
+            "period_length_months": candidate.get("_length_months"),
             "excel_url": excel_url,
         },
         "live_price": live_data,
