@@ -885,6 +885,9 @@ def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
     }
     payload = build_snapshot_payload(raw, request.report_mode)
     payload["analysisId"] = _persist_v2_snapshot(db, raw, payload)
+    # Persist the snapshot before returning so the public symbol endpoint can
+    # immediately observe successful analysis requests.
+    db.commit()
     return {"success": True, "data": payload}
 
 
