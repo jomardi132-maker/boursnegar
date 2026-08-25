@@ -5,6 +5,7 @@ import argparse, json, os, shutil, signal, subprocess, sys, time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 PY=ROOT/'data-service/venv/bin/python'
+sys.path.insert(0, str(ROOT/'data-service'))
 def symbols(target):
     from scripts.ingestion_console import discover_remote
     rows=discover_remote(target,lambda _:None); seen=[]

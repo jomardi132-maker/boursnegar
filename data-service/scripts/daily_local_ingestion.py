@@ -5,6 +5,7 @@ import argparse, json, subprocess, sys
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]; PYTHON=sys.executable
+sys.path.insert(0, str(ROOT/'data-service'))
 
 def run(cmd,dry=False,timeout=None):
     print(json.dumps({'step':' '.join(map(str,cmd))},ensure_ascii=False),flush=True)
