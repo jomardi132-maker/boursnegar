@@ -142,6 +142,8 @@ def _extract_keys_from_table(df, keys) -> dict:
     """
     local = {}
     for _, row in df.iterrows():
+        if len(row) < 2:
+            continue
         label_norm = _normalize_label(row.iloc[0])
         if not label_norm:
             continue
@@ -216,7 +218,7 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
     """
     try:
         tables = pd.read_html(html_bytes)
-    except (ValueError, ImportError) as e:
+    except (ValueError, ImportError, IndexError) as e:
         raise CodalExcelParseError(f"هیچ جدولی در فایل پیدا نشد: {e}") from e
 
     result = {key: None for key in TARGET_ITEMS}
