@@ -76,7 +76,7 @@ def main():
     p=argparse.ArgumentParser(); p.add_argument('--symbol',action='append',required=True)
     p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True)
     p.add_argument('--out',default='artifacts/browser-codal'); p.add_argument('--port',type=int,default=9222)
-    p.add_argument('--profile',default='.chrome-codal-profile'); p.add_argument('--pause-for-login',action='store_true'); p.add_argument('--download-documents',action='store_true'); p.add_argument('--download-all-documents',action='store_true'); p.add_argument('--professional-documents',action='store_true'); p.add_argument('--html-only',action='store_true'); p.add_argument('--defer-pdf',action='store_true'); p.add_argument('--download-timeout',type=float,default=8.0)
+    p.add_argument('--profile',default='.chrome-codal-profile'); p.add_argument('--pause-for-login',action='store_true'); p.add_argument('--download-documents',action='store_true'); p.add_argument('--download-all-documents',action='store_true'); p.add_argument('--professional-documents',action='store_true'); p.add_argument('--excel-only',action='store_true'); p.add_argument('--html-only',action='store_true'); p.add_argument('--defer-pdf',action='store_true'); p.add_argument('--download-timeout',type=float,default=8.0)
     args=p.parse_args(); out=Path(args.out); out.mkdir(parents=True,exist_ok=True)
     cp=out/'checkpoint.json'; checkpoint=json.loads(cp.read_text()) if cp.exists() else {'done':{},'errors':[]}
     chrome=ChromeCDP(args.port,Path(args.profile)); chrome.start()
@@ -127,7 +127,7 @@ def main():
                         title=str(letter.get('Title') or '')
                         financial_notice=any(token in title for token in ('صورت', 'مالی', 'فعالیت ماهانه', 'عملکرد ماهانه','ترازنامه','سود','زیان'))
                         if args.professional_documents:
-                            document_kinds=(('html', letter.get('Url'), '.html'),)
+                            document_kinds=() if args.excel_only else (('html', letter.get('Url'), '.html'),)
                             if financial_notice and not args.html_only: document_kinds += (('excel', letter.get('ExcelUrl'), '.xls'),)
                             if letter.get('PdfUrl') and not args.html_only and not args.defer_pdf: document_kinds += (('pdf', letter.get('PdfUrl'), '.pdf'),)
                         elif not args.download_all_documents and not any(token in title for token in ('صورت', 'مالی', 'فعالیت ماهانه', 'عملکرد ماهانه')):
