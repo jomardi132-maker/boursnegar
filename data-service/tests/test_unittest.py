@@ -153,6 +153,12 @@ class DataServiceContractTests(unittest.TestCase):
                  {"id": "1", "l18": "الف", "pc": 10, "py": 9, "pl": 10, "tvol": 1, "tval": 10, "tno": 1}]
         self.assertEqual(module.market_fingerprint(first), module.market_fingerprint(list(reversed(first))))
 
+    def test_corporate_action_sync_only_promotes_registered_notices(self):
+        source = self.root.joinpath("scripts", "sync_corporate_action_notices.py").read_text(encoding="utf-8")
+        self.assertIn("آگهی ثبت افزایش سرمایه%", source)
+        self.assertNotIn("پیشنهاد هیئت مدیره", source)
+        self.assertIn("registered_notice_without_inferred_ratio", source)
+
     def test_metal_ore_miners_use_the_metals_valuation_family(self):
         self.assertEqual(model_family("استخراج کانه‌های فلزی"), "metals")
 

@@ -13,6 +13,7 @@ describe('analysis UI contract', () => {
     expect(reportSource).toContain('این شاخص سود تقسیمی نیست');
     expect(reportSource).toContain('نرخ تورم مرجع');
     expect(reportSource).toContain('MARKET_FUNDAMENTAL_DIVERGENCE');
+    expect(reportSource).toContain('CAPITAL_ACTION_DATA_GAP');
     expect(reportSource).toContain('cash_quality');
     expect(reportSource).toContain('real_growth');
   });

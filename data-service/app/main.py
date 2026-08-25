@@ -479,11 +479,21 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
         WHERE sa.symbol=:symbol AND sa.valid_to IS NULL LIMIT 1
       ), prices AS (
         SELECT DISTINCT ON (dp.trading_date)
-          dp.trading_date,COALESCE(dp.adjusted_close,dp.close) AS price
+          dp.trading_date,COALESCE(dp.adjusted_close,dp.close) AS price,
+          dp.close AS raw_close,dp.shares_outstanding
         FROM daily_prices dp,target t
         WHERE dp.instrument_id=t.instrument_id AND dp.quality_status='VALID'
         ORDER BY dp.trading_date,dp.retrieved_at DESC
-      ), latest AS (SELECT trading_date,price FROM prices ORDER BY trading_date DESC LIMIT 1)
+      ), latest AS (SELECT * FROM prices ORDER BY trading_date DESC LIMIT 1),
+      share_series AS (
+        SELECT trading_date,shares_outstanding,
+          lag(shares_outstanding) OVER(ORDER BY trading_date) previous_shares
+        FROM prices WHERE shares_outstanding>0
+      ), latest_share_change AS (
+        SELECT trading_date FROM share_series
+        WHERE previous_shares>0 AND abs(shares_outstanding/previous_shares-1)>=0.01
+        ORDER BY trading_date DESC LIMIT 1
+      )
       SELECT
         (SELECT count(DISTINCT (fp.end_date,fp.length_months,fp.scope))
          FROM financial_periods fp,target t WHERE fp.issuer_id=t.issuer_id
@@ -491,9 +501,16 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
         (SELECT count(*) FROM disclosures d,target t WHERE d.issuer_id=t.issuer_id
            AND (d.letter_code IN ('ن-۳۰','ن-30') OR d.title LIKE '%گزارش فعالیت ماهانه%')) AS monthly_disclosures,
         (SELECT count(*) FROM corporate_actions ca,target t WHERE ca.instrument_id=t.instrument_id) AS corporate_actions,
+        (SELECT count(*) FROM corporate_actions ca,target t,latest_share_change sc
+          WHERE ca.instrument_id=t.instrument_id
+            AND ca.effective_date BETWEEN sc.trading_date-INTERVAL '120 days' AND sc.trading_date+INTERVAL '120 days') AS matched_corporate_actions,
         (SELECT count(*) FROM prices) AS price_observations,
         (SELECT trading_date FROM latest) AS latest_price_date,
         (SELECT price FROM latest) AS latest_price,
+        (SELECT raw_close FROM latest) AS latest_raw_close,
+        (SELECT shares_outstanding FROM prices WHERE shares_outstanding>0 ORDER BY trading_date LIMIT 1) AS earliest_shares,
+        (SELECT shares_outstanding FROM prices WHERE shares_outstanding>0 ORDER BY trading_date DESC LIMIT 1) AS latest_shares,
+        (SELECT trading_date FROM latest_share_change) AS shares_change_date,
         (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '90 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_90d,
         (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '365 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_365d
     """), {"symbol": symbol}).mappings().first()
@@ -509,6 +526,24 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
         )
     if result.get("latest_price") is not None:
         result["latest_price"] = latest
+    raw_close = result.pop("latest_raw_close", None)
+    result["price_adjustment_gap_percent"] = (
+        round((float(raw_close) / latest - 1) * 100, 2)
+        if latest not in (None, 0) and raw_close is not None else None
+    )
+    earliest_shares = result.pop("earliest_shares", None)
+    latest_shares = result.pop("latest_shares", None)
+    result["shares_change_percent"] = (
+        round((float(latest_shares) / float(earliest_shares) - 1) * 100, 2)
+        if earliest_shares not in (None, 0) and latest_shares is not None else None
+    )
+    result["capital_action_data_gap"] = bool(
+        result["shares_change_percent"] not in (None, 0)
+        and abs(result["shares_change_percent"]) >= 1
+        and not result.get("matched_corporate_actions")
+    )
+    if result.get("shares_change_date") is not None:
+        result["shares_change_date"] = result["shares_change_date"].isoformat()
     if result.get("latest_price_date") is not None:
         result["latest_price_date"] = result["latest_price_date"].isoformat()
     return result

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.analytics.engine import Policy, core_questions, decide
 from app.analytics.industry_valuation import health_score, value_company
+from app.ingestion.market_history import model_family
 
 
 REQUIRED_METRICS = (
@@ -41,6 +42,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     inflation = references.get("inflationRate")
     context = raw.get("analysis_context") or {}
     comparison = raw.get("period_comparison") or {}
+    family = model_family(live.get("market_category"))
     periods_available = int(context.get("financial_periods") or 0)
     return_90d = context.get("price_return_90d_percent")
     return_365d = context.get("price_return_365d_percent")
@@ -62,19 +64,21 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     previous_profit = comparison.get("previous_net_profit")
     revenue_growth = comparison.get("revenue_growth_percent")
     profit_growth = comparison.get("net_profit_growth_percent")
+    operating_company = family not in {"bank", "real_estate", "unclassified"}
     turnaround_candidate = bool(
         (current_profit is not None and current_profit > 0 and previous_profit is not None and previous_profit <= 0)
-        or (revenue_growth is not None and inflation is not None and revenue_growth > inflation
+        or (operating_company and revenue_growth is not None and inflation is not None and revenue_growth > inflation
             and profit_growth is not None and profit_growth > 0)
     )
+    capital_action_data_gap = bool(context.get("capital_action_data_gap"))
     if market_fundamental_divergence:
         confidence = min(confidence, 60.0)
     valuation = value_company(raw)
-    family = valuation.get("family") if valuation else "unclassified"
+    valuation_family = valuation.get("family") if valuation else family
     score, dimensions = health_score(
         metrics,
         ratios,
-        family,
+        valuation_family,
         inflation,
         (raw.get("period_comparison") or {}).get("revenue_growth_percent"),
     )
@@ -116,7 +120,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         report_mode=report_mode,
         policy=policy,
     )
-    if (market_fundamental_divergence or turnaround_candidate) and not critical_warning:
+    if (market_fundamental_divergence or turnaround_candidate or capital_action_data_gap) and not critical_warning:
         decision = "INSUFFICIENT_DATA"
     now = datetime.now(timezone.utc)
     payload = {
@@ -132,6 +136,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "confidence": confidence,
         "valuation": valuation,
         "analysisState": (
+            "CAPITAL_ACTION_DATA_GAP"
+            if capital_action_data_gap else
             "MARKET_FUNDAMENTAL_DIVERGENCE"
             if market_fundamental_divergence else "STANDARD"
             if not turnaround_candidate else "TURNAROUND_CANDIDATE"
@@ -181,13 +187,17 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             "قیمت بیش از ۵۰ درصد رشد کرده، اما کمتر از دو دوره بنیادی معتبر برای سنجش چرخش سودآوری موجود است؛ نتیجه قطعی خرید یا فروش صادر نمی‌شود."
         ] if market_fundamental_divergence else []) + ([
             "رشد واقعی درآمد یا عبور سود خالص از زیان به سود، احتمال چرخش سودآوری را نشان می‌دهد؛ برای تأیید به تداوم در دوره بعد نیاز است."
-        ] if turnaround_candidate else []) + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
+        ] if turnaround_candidate else []) + ([
+            "تغییر تعداد سهام در تاریخچه بازار دیده شده، اما اطلاعیه اقدام شرکتی متناظر هنوز به داده ساختاریافته متصل نشده است."
+        ] if capital_action_data_gap else []) + (["سود عملیاتی آخرین صورت مالی نامثبت است."] if has_operating_loss else []),
         "risks": [
             "ارزش‌گذاری سناریویی است و به کیفیت آخرین صورت مالی وابسته است.",
             "تغییر نرخ ارز، قیمت جهانی کالا و مقررات می‌تواند نتیجه را تغییر دهد.",
         ] + (["برای این گزارش اطلاعیه توضیحی یا اصلاحیه مرتبط وجود دارد؛ متن آن باید پیش از تصمیم نهایی بررسی شود."] if raw.get("related_codal_disclosures") else []),
         "criticalWarning": (
-            "رشد شدید قیمت با تاریخچه بنیادی ناکامل هم‌زمان شده است؛ این وضعیت می‌تواند نشانه چرخش سودآوری یا رفتار هیجانی باشد و نتیجه قطعی صادر نمی‌شود."
+            "تعداد سهام در تاریخچه قیمت تغییر کرده، اما اقدام شرکتی متناظر ثبت نشده است؛ تا تطبیق افزایش سرمایه، قیمت و EPS قابل مقایسه قطعی نیستند."
+            if capital_action_data_gap and not critical_warning
+            else "رشد شدید قیمت با تاریخچه بنیادی ناکامل هم‌زمان شده است؛ این وضعیت می‌تواند نشانه چرخش سودآوری یا رفتار هیجانی باشد و نتیجه قطعی صادر نمی‌شود."
             if market_fundamental_divergence and not critical_warning
             else "در آخرین صورت مالی، زیان عملیاتی مشاهده شد."
             if has_operating_loss and not has_net_loss

@@ -152,6 +152,25 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["analysisState"], "TURNAROUND_CANDIDATE")
         self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
 
+    def test_unmatched_share_count_change_blocks_categorical_decision(self):
+        raw = {
+            "symbol": "سرمایه", "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 800, "market_category": "فلزات اساسی", "eps": 200},
+            "financial_metrics": {"revenue": 2000, "operating_profit": 400, "net_profit": 300,
+                "operating_cash_flow": 320, "total_assets": 3000, "total_liabilities": 800,
+                "total_equity": 2200, "eps_basic": 200},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": 20, "operating_margin_percent": 20, "debt_ratio_percent": 27,
+                "cash_to_profit_ratio_percent": 106, "pe_ratio": 4},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+            "analysis_context": {"financial_periods": 3, "price_observations": 300,
+                "price_return_90d_percent": 5, "shares_change_percent": 100,
+                "corporate_actions": 0, "capital_action_data_gap": True},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["analysisState"], "CAPITAL_ACTION_DATA_GAP")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+
 
 if __name__ == "__main__":
     unittest.main()

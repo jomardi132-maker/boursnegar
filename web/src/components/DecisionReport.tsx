@@ -15,8 +15,8 @@ export type AnalysisPayload = {
     fairValueHigh: number;
     assumptions: Record<string, unknown>;
   };
-  analysisState?: "STANDARD" | "MARKET_FUNDAMENTAL_DIVERGENCE" | "TURNAROUND_CANDIDATE";
-  analysisContext?: { financial_periods?: number; monthly_disclosures?: number; price_observations?: number; price_return_90d_percent?: number | null; price_return_365d_percent?: number | null };
+  analysisState?: "STANDARD" | "MARKET_FUNDAMENTAL_DIVERGENCE" | "TURNAROUND_CANDIDATE" | "CAPITAL_ACTION_DATA_GAP";
+  analysisContext?: { financial_periods?: number; monthly_disclosures?: number; price_observations?: number; price_return_90d_percent?: number | null; price_return_365d_percent?: number | null; shares_change_percent?: number | null; corporate_actions?: number };
   references?: { bankDepositRate: number | null; inflationRate: number | null };
   keyMetrics?: Record<string, number | null>;
   report?: { title: string | null; publishedAt: string | null; periodEnd?: string | null; periodLengthMonths?: number | null; audited: boolean; basisNote?: string | null; relatedDisclosures?: Array<{ title: string; publishedAt: string | null; detailUrl?: string | null }> };
@@ -79,6 +79,7 @@ export function DecisionReport({ report }: { report: AnalysisPayload }) {
     {report.criticalWarning&&<div className="critical-warning"><AlertTriangle/><span>{report.criticalWarning}</span></div>}
     {report.analysisState==="MARKET_FUNDAMENTAL_DIVERGENCE"&&<div className="report-basis-note"><TrendingUp/><span><b>واگرایی قیمت و بنیاد:</b> بازده ۹۰روزه {precisePercent(report.analysisContext?.price_return_90d_percent??null)} است؛ {(report.analysisContext?.financial_periods??0).toLocaleString("fa-IR")} دوره بنیادی و {(report.analysisContext?.monthly_disclosures??0).toLocaleString("fa-IR")} گزارش ماهانه شناسایی شده، اما داده ماهانه هنوز کامل وارد محاسبه نشده است. نتیجه قطعی صادر نمی‌شود.</span></div>}
     {report.analysisState==="TURNAROUND_CANDIDATE"&&<div className="report-basis-note"><TrendingUp/><span><b>نامزد چرخش سودآوری:</b> بهبود دوره‌ای مشاهده شده، اما برای صدور نتیجه قطعی باید در گزارش بعدی نیز تکرار شود.</span></div>}
+    {report.analysisState==="CAPITAL_ACTION_DATA_GAP"&&<div className="report-basis-note"><AlertTriangle/><span><b>نیاز به تطبیق افزایش سرمایه:</b> تعداد سهام حدود {precisePercent(report.analysisContext?.shares_change_percent??null)} تغییر کرده، اما اقدام شرکتی متناظر در داده ساختاریافته موجود نیست؛ قیمت و EPS تا تکمیل تطبیق مبنای نتیجه قطعی نیستند.</span></div>}
     <div className="evidence-strip">
       <article><ShieldCheck/><span><small>امتیاز سلامت</small><b>{number(report.healthScore, " از ۱۰۰")}</b></span></article>
       <article><Database/><span><small>پوشش داده</small><b>{number(report.dataCoverage, "٪")}</b></span></article>
