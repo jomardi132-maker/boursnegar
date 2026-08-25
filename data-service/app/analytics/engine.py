@@ -44,11 +44,20 @@ def decide(*, health_score, coverage, confidence, current_price=None,
     # result behind a generic insufficient-data state.
     if report_mode == "latest_codal":
         confidence_floor = min(confidence_floor, 50.0)
-    if coverage < policy.minimum_coverage or confidence < confidence_floor or not industry_model_ready:
+    if coverage < policy.minimum_coverage or confidence < confidence_floor:
         return "INSUFFICIENT_DATA"
-    if None in (health_score, current_price, fair_value_low, fair_value_base, fair_value_high):
+    # Strong sourced downside evidence does not require a fair-value model.
+    # Positive/neutral recommendations remain gated on a complete industry
+    # valuation so missing model assumptions can never create a BUY/HOLD.
+    if health_score is None:
+        return "INSUFFICIENT_DATA"
+    if critical_warning or health_score < 40:
+        return "SELL"
+    if not industry_model_ready:
+        return "INSUFFICIENT_DATA"
+    if None in (current_price, fair_value_low, fair_value_base, fair_value_high):
         return "INSUFFICIENT_DATA"
     if not (fair_value_low <= fair_value_base <= fair_value_high) or current_price <= 0: return "INSUFFICIENT_DATA"
-    if critical_warning or health_score < 40 or current_price > fair_value_high * (1 + policy.sell_overvaluation): return "SELL"
+    if current_price > fair_value_high * (1 + policy.sell_overvaluation): return "SELL"
     if health_score >= 70 and current_price <= fair_value_base * (1 - policy.buy_margin_of_safety): return "BUY"
     return "HOLD"

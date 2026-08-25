@@ -19,6 +19,8 @@ class EngineV1Tests(unittest.TestCase):
         self.assertEqual(decide(**{**base,"current_price":150}),"SELL")
         self.assertEqual(decide(**{**base,"coverage":69}),"INSUFFICIENT_DATA")
         self.assertEqual(decide(**{**base,"industry_model_ready":False}),"INSUFFICIENT_DATA")
+        self.assertEqual(decide(**{**base,"health_score":23.81,"industry_model_ready":False,
+                                   "fair_value_low":None,"fair_value_base":None,"fair_value_high":None}),"SELL")
     def test_pagination_dedup_checkpoint_revision_checksum(self):
         pages={1:{"Page":2,"Letters":[{"TracingNo":1,"Title":"اصل"}]},2:{"Page":2,"Letters":[{"TracingNo":1,"Title":"اصل"},{"TracingNo":2,"Title":"اصلاحیه"}]}}
         checkpoints=[]; rows=list(discover_pages(lambda p:pages[p],checkpoint=checkpoints.append))
