@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -40,14 +41,40 @@ def main() -> None:
     db = sqlite3.connect(args.db)
     for table in ('artifact_parse_results', 'orphan_fact_candidates'):
         columns = {row[1] for row in db.execute(f'PRAGMA table_info({table})')}
-        for column in ('linked_tracing_no', 'linkage_evidence') if table == 'artifact_parse_results' else ('tracing_no', 'linkage_evidence'):
+        needed = ('linked_tracing_no', 'linkage_evidence') if table == 'artifact_parse_results' else ('tracing_no', 'linkage_evidence')
+        for column in needed:
             if column not in columns:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN {column} TEXT')
-    rows = db.execute("""SELECT path,inferred_symbol,selected_period FROM artifact_parse_results
+    filename_links = 0
+    for raw_path, in db.execute("""SELECT path FROM artifact_parse_results
+        WHERE (inferred_symbol IS NULL OR linked_tracing_no IS NULL) AND path LIKE '%-excel.xls'"""):
+        match = re.search(r'/([^/]+)-(\d+)-excel\.xls$', raw_path)
+        if not match:
+            continue
+        symbol, tracing = match.group(1), match.group(2)
+        db.execute('UPDATE artifact_parse_results SET inferred_symbol=?,linked_tracing_no=?,linkage_evidence=? WHERE path=?',
+                   (symbol, tracing, json.dumps({'rule': 'symbol_and_tracing_in_filename'}, ensure_ascii=False), raw_path))
+        row = db.execute('SELECT selected_period,metrics_json FROM artifact_parse_results WHERE path=?', (raw_path,)).fetchone()
+        if row and row[0] and row[1]:
+            metrics = json.loads(row[1])
+            for fact_key, value in metrics.items():
+                if value is not None:
+                    db.execute('''INSERT OR REPLACE INTO orphan_fact_candidates
+                        (path,fact_key,checksum,inferred_symbol,period_end_jalali,value,status,evidence,tracing_no,linkage_evidence)
+                        VALUES(?,?,?,?,?,?,?,?,?,?)''',
+                        (raw_path, fact_key, db.execute('SELECT checksum FROM artifact_parse_results WHERE path=?',(raw_path,)).fetchone()[0],
+                         symbol, row[0], value, 'READY_FOR_LINKAGE',
+                         json.dumps({'rule': 'symbol_and_tracing_in_filename'}, ensure_ascii=False), tracing,
+                         json.dumps({'rule': 'symbol_and_tracing_in_filename'}, ensure_ascii=False)))
+        filename_links += 1
+    rows = db.execute("""SELECT path,inferred_symbol,selected_period,linked_tracing_no FROM artifact_parse_results
         WHERE status='PARSED_WITH_FACTS' AND inferred_symbol IS NOT NULL AND selected_period IS NOT NULL""").fetchall()
     cache: dict[Path, dict[tuple[str, str], set[str]]] = {}
     linked = ambiguous = missing = 0
-    for raw_path, symbol, period in rows:
+    for raw_path, symbol, period, existing_tracing in rows:
+        if existing_tracing:
+            linked += 1
+            continue
         path = Path(raw_path)
         if not path.is_absolute():
             path = ROOT / path
@@ -70,7 +97,7 @@ def main() -> None:
     db.execute("""UPDATE orphan_fact_candidates SET status='READY_FOR_NORMALIZATION'
         WHERE status='READY_FOR_IMPORT' AND tracing_no IS NOT NULL""")
     db.commit()
-    print(json.dumps({'files': len(rows), 'linked': linked, 'ambiguous': ambiguous, 'missing': missing}, ensure_ascii=False))
+    print(json.dumps({'files': len(rows), 'linked': linked, 'filename_links': filename_links, 'ambiguous': ambiguous, 'missing': missing}, ensure_ascii=False))
 
 
 if __name__ == '__main__':
