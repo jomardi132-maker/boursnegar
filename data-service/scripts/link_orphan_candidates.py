@@ -83,8 +83,9 @@ def main() -> None:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN {column} TEXT')
     filename_links = 0
     for raw_path, in db.execute("""SELECT path FROM artifact_parse_results
-        WHERE (inferred_symbol IS NULL OR linked_tracing_no IS NULL) AND path LIKE '%-excel.xls'"""):
-        match = re.search(r'/([^/]+)-(\d+)-excel\.xls$', raw_path)
+        WHERE (inferred_symbol IS NULL OR linked_tracing_no IS NULL)
+          AND (path LIKE '%-excel.xls' OR path LIKE '%-html.html')"""):
+        match = re.search(r'/([^/]+)-(\d+)-(?:excel\.xls|html\.html)$', raw_path)
         if not match:
             continue
         symbol, tracing = match.group(1), match.group(2)

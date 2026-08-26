@@ -79,6 +79,7 @@ def main() -> None:
     parser.add_argument('--only-with-facts', action='store_true')
     parser.add_argument('--only-ready-period', action='store_true')
     parser.add_argument('--filename-links', action='store_true')
+    parser.add_argument('--only-html', action='store_true')
     args = parser.parse_args()
     db = sqlite3.connect(args.db)
     db.executescript(SCHEMA)
@@ -105,6 +106,9 @@ def main() -> None:
     if args.filename_links:
         query = """SELECT f.path,f.actual_sha256 FROM artifact_files f
             WHERE f.status='DISCOVERED' AND lower(f.path) LIKE '%-excel.xls' ORDER BY f.path"""
+    if args.only_html:
+        query = """SELECT f.path,f.actual_sha256 FROM artifact_files f
+            WHERE f.status='DISCOVERED' AND lower(f.path) LIKE '%.html' ORDER BY f.path"""
     rows = db.execute(query).fetchall()
     if args.limit is not None:
         rows = rows[:args.limit]
