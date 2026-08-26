@@ -84,6 +84,7 @@
 - secret scan روی کل محتوای tracked همان commit با `gitleaks detect --no-git` انجام شد و `no leaks found` گزارش کرد.
 - در `2026-08-26` گزارش به commit `dede3a92` رسید و هر دو شاخهٔ GitHub (`main` و `agent/data-engine-v1`) با آن همگام شدند؛ کنترل معادل `REMOTE_FINAL_GATE` روی release فعال دوباره `PASS` شد.
 - smoke test عمومی در همان روز برای `/healthz`، `/readyz`، `/api/market/overview`، `/api/market/dashboard`، `/api/stocks/فولاد` و `/login` با HTTP 200 و همچنین سرویس‌های داخلی با `INTERNAL_SMOKE=PASS` انجام شد.
+- در ۱۴۰۵/۰۶/۰۴، artifact نهایی Local با manifest و checksum به staging سرور منتقل و import شد: ۱۴۹۶ رکورد Codalpy و ۱۱۹۸ fact استاندارد جدید اضافه شد؛ اجرای تکراری با importer اصلاح‌شده `inserted=0` و `validation_errors=[]` داد. شمارش نهایی سرور ۱٬۱۲۳٬۸۶۰ رکورد Codalpy و ۴۳٬۸۰۰ fact مالی است. backup قبل از import در `/var/backups/boursnegar/20260826T115510Z-before-promoted-local.dump` نگهداری شد. health داخلی `/health` و endpointهای `/healthz` و `/readyz` همگی سالم هستند.
 
 ## ۵) اصلاحات انجام‌شده
 
