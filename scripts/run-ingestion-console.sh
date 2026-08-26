@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+local_python_packages="$project_root/.runtime/python-packages/root/usr/lib/python3/dist-packages"
+export PYTHONPATH="${local_python_packages}${PYTHONPATH:+:$PYTHONPATH}"
 "$project_root/data-service/venv/bin/python" \
   "$project_root/data-service/scripts/recalculate_local_coverage.py" \
   --db "$project_root/artifacts/local-ingestion.sqlite3" \
