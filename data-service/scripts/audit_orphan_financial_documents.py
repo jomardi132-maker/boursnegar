@@ -22,12 +22,14 @@ CREATE TABLE IF NOT EXISTS artifact_parse_results(
   path TEXT PRIMARY KEY, checksum TEXT NOT NULL, inferred_symbol TEXT,
   symbol_evidence TEXT, period_candidates TEXT NOT NULL, found_items TEXT NOT NULL,
   tables_scanned INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error TEXT,
-  parsed_at TEXT NOT NULL, selected_period TEXT, period_evidence TEXT, metrics_json TEXT
+  parsed_at TEXT NOT NULL, selected_period TEXT, period_evidence TEXT, metrics_json TEXT,
+  linked_tracing_no TEXT, linkage_evidence TEXT
 );
 CREATE TABLE IF NOT EXISTS orphan_fact_candidates(
   path TEXT NOT NULL, fact_key TEXT NOT NULL, checksum TEXT NOT NULL,
   inferred_symbol TEXT NOT NULL, period_end_jalali TEXT NOT NULL, value REAL NOT NULL,
   status TEXT NOT NULL DEFAULT 'READY_FOR_LINKAGE', evidence TEXT NOT NULL,
+  tracing_no TEXT, linkage_evidence TEXT,
   PRIMARY KEY(path,fact_key)
 );
 """
@@ -80,9 +82,13 @@ def main() -> None:
     db = sqlite3.connect(args.db)
     db.executescript(SCHEMA)
     columns = {row[1] for row in db.execute('PRAGMA table_info(artifact_parse_results)')}
-    for column in ('selected_period', 'period_evidence', 'metrics_json'):
+    for column in ('selected_period', 'period_evidence', 'metrics_json', 'linked_tracing_no', 'linkage_evidence'):
         if column not in columns:
             db.execute(f'ALTER TABLE artifact_parse_results ADD COLUMN {column} TEXT')
+    candidate_columns = {row[1] for row in db.execute('PRAGMA table_info(orphan_fact_candidates)')}
+    for column in ('tracing_no', 'linkage_evidence'):
+        if column not in candidate_columns:
+            db.execute(f'ALTER TABLE orphan_fact_candidates ADD COLUMN {column} TEXT')
     query = "SELECT path,actual_sha256 FROM artifact_files WHERE status='DISCOVERED' AND lower(path) LIKE '%.xls' ORDER BY path"
     if args.only_with_facts:
         query = """SELECT f.path,f.actual_sha256 FROM artifact_files f
@@ -140,7 +146,9 @@ def main() -> None:
                 value = parsed['metrics'].get(fact_key)
                 if value is not None:
                     db.execute(
-                        'INSERT INTO orphan_fact_candidates VALUES(?,?,?,?,?,?,?,?)',
+                        '''INSERT INTO orphan_fact_candidates
+                           (path,fact_key,checksum,inferred_symbol,period_end_jalali,value,status,evidence)
+                           VALUES(?,?,?,?,?,?,?,?)''',
                         (raw_path, fact_key, checksum, symbol, selected_period, value,
                          'READY_FOR_LINKAGE', evidence_payload),
                     )

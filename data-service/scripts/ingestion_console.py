@@ -133,7 +133,7 @@ class App:
             if selected_status!='همه وضعیت‌ها' and row[2]!=selected_status: continue
             visible.append(row)
         for row in visible[:5000]: self.file_tree.insert('', 'end', values=row)
-        counts=self.state.artifact_summary(); parsed=self.state.parse_summary(); candidates=self.state.candidate_summary(); self.file_summary_var.set(f'کل فایل: {len(rows)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | Excel دارای fact: {parsed.get("PARSED_WITH_FACTS",0)} | آماده اتصال: {candidates.get("READY_FOR_LINKAGE",0)} | تکراری: {candidates.get("DUPLICATE_EXISTING",0)} | تعارض: {candidates.get("NEEDS_DISAMBIGUATION",0)} | خطای parse: {parsed.get("PARSE_FAILED",0)} | نمایش: {min(len(visible),5000)}')
+        counts=self.state.artifact_summary(); parsed=self.state.parse_summary(); candidates=self.state.candidate_summary(); self.file_summary_var.set(f'کل فایل: {len(rows)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | Excel دارای fact: {parsed.get("PARSED_WITH_FACTS",0)} | آماده نرمال‌سازی: {candidates.get("READY_FOR_NORMALIZATION",0)} | منتظر اتصال: {candidates.get("READY_FOR_LINKAGE",0)} | تکراری: {candidates.get("DUPLICATE_EXISTING",0)} | تعارض: {candidates.get("NEEDS_DISAMBIGUATION",0)} | نمایش: {min(len(visible),5000)}')
     def scan_artifacts(self):
         def work():
             cmd=['python3',str(ROOT/'data-service/scripts/reconcile_local_artifacts.py'),'--db',str(self.state.path)]
