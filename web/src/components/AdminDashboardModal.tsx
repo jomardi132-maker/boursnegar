@@ -14,10 +14,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   onOpenServerGuide,
 }) => {
   const [stats, setStats] = useState<AdminStats>({
-    totalUsers: 1420,
-    vipUsers: 385,
-    totalAnalysesCount: 18450,
-    totalRevenueToman: 173250000, // 173 Million Tomans
+    totalUsers: 0,
+    vipUsers: 0,
+    totalAnalysesCount: 0,
+    totalRevenueToman: 0,
     smsGateway: {
       provider: 'kavenegar',
       apiKey: '',
@@ -98,7 +98,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <span>کل کاربران ثبت‌نام‌شده:</span>
             </div>
             <div className="text-base font-extrabold text-white font-mono">
-              {stats.totalUsers.toLocaleString('fa-IR')} کاربر
+              {stats.totalUsers ? `${stats.totalUsers.toLocaleString('fa-IR')} کاربر` : '—'}
             </div>
             <div className="text-[10px] text-slate-500">شماره موبایل‌های تایید شده</div>
           </div>
@@ -110,10 +110,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <span>مشترکین فعال VIP:</span>
             </div>
             <div className="text-base font-extrabold text-amber-400 font-mono">
-              {stats.vipUsers.toLocaleString('fa-IR')} کاربر
+              {stats.vipUsers ? `${stats.vipUsers.toLocaleString('fa-IR')} کاربر` : '—'}
             </div>
             <div className="text-[10px] text-emerald-400 font-mono">
-              ۲۷٪ نرخ تبدیل از کاربر رایگان
+              دادهٔ نرخ تبدیل در دسترس نیست
             </div>
           </div>
 
@@ -124,7 +124,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <span>کل درآمد ناخالص:</span>
             </div>
             <div className="text-base font-extrabold text-emerald-400 font-mono">
-              {(stats.totalRevenueToman / 1000000).toLocaleString('fa-IR')} میلیون
+              {stats.totalRevenueToman ? `${(stats.totalRevenueToman / 1000000).toLocaleString('fa-IR')} میلیون` : '—'}
             </div>
             <div className="text-[10px] text-slate-500">تومان درگاه زرین‌پال</div>
           </div>
@@ -136,7 +136,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <span>تعداد کل تحلیل‌ها:</span>
             </div>
             <div className="text-base font-extrabold text-purple-300 font-mono">
-              {stats.totalAnalysesCount.toLocaleString('fa-IR')} بار
+              {stats.totalAnalysesCount ? `${stats.totalAnalysesCount.toLocaleString('fa-IR')} بار` : '—'}
             </div>
             <div className="text-[10px] text-slate-500">پردازش خودکار داده کدال</div>
           </div>
