@@ -38,8 +38,10 @@ class LocalCoverageToolsTest(unittest.TestCase):
             self.assertEqual(db.execute("SELECT status FROM symbols WHERE symbol='A'").fetchone()[0], 'complete')
             self.assertIn('ترازنامه', db.execute("SELECT gap_summary FROM symbols WHERE symbol='A'").fetchone()[0])
             self.assertEqual(db.execute("SELECT status FROM symbols WHERE symbol='B'").fetchone()[0], 'incomplete')
-            self.assertEqual(len(list(csv.reader(export_path.open(encoding='utf-8-sig')))), 3)
-            self.assertEqual(len(list(csv.reader(plan_path.open(encoding='utf-8-sig')))), 3)
+            with export_path.open(encoding='utf-8-sig') as handle:
+                self.assertEqual(len(list(csv.reader(handle))), 3)
+            with plan_path.open(encoding='utf-8-sig') as handle:
+                self.assertEqual(len(list(csv.reader(handle))), 3)
 
 
 if __name__ == '__main__':
