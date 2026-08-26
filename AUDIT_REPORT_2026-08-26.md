@@ -111,4 +111,6 @@
 
 در ممیزی کدهای legacy فرانت‌اند، fallbackهای ثابت سود فصلی برای فولاد، وبملت و سایر نمادها پیدا و حذف شد؛ تابع مربوطه اکنون در نبود پاسخ معتبر تحلیل، آرایهٔ خالی برمی‌گرداند. تست‌ها و build موفق‌اند. این اصلاح در release مستقل `20260826T061900Z-no-fake-quarterly` منتشر شد؛ backup و مسیر rollback در `/var/backups/boursnegar/20260826T061900Z-no-fake-quarterly` نگه‌داری می‌شود. پس از انتشار، PM2 online، `/healthz` و `/readyz` و endpointهای اصلی بازار HTTP 200 بودند.
 
+در ادامه، آمار ثابت کاربران، VIP، درآمد و تعداد تحلیل‌ها در پنل legacy مدیریت نیز حذف شد؛ در نبود اتصال به API واقعی، مقدار «داده در دسترس نیست» نمایش داده می‌شود. این اصلاح در release `20260826T062158Z-no-fake-admin-stats` با backup و rollback در `/var/backups/boursnegar/20260826T062158Z-no-fake-admin-stats` منتشر و با PM2، health/ready و endpointهای اصلی بازار راستی‌آزمایی شد.
+
 ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.
