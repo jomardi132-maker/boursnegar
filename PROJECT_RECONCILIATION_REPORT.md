@@ -49,6 +49,7 @@
 - درخت GitHub و checkout محلی همسان و بدون secret واقعی شناخته‌شده‌اند.
 - فایل‌های `.env` در ignore هستند؛ موارد secret-like باقی‌مانده false positive یا سابقهٔ تاریخی‌اند.
 - branch protection و release manifest رسمی هنوز برای فرایند سازمانی پیشنهاد می‌شوند.
+- secret scan روی کل محتوای tracked همان commit با `gitleaks detect --no-git` انجام شد و `no leaks found` گزارش کرد.
 
 ## ۵) اصلاحات انجام‌شده
 
