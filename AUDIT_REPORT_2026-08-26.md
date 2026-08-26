@@ -78,6 +78,8 @@
 - `all-symbols-v17`: ۱۴۲ checkpoint browser، ۱۴۱ فایل manifest browser و ۳۰۸۰ رکورد normalized با ۲۴ خطای normalization.
 - `all-symbols-v18`: ۴۵ batch، ۶۰۲ checkpoint browser، ۱۴۱ checkpoint موفق Codalpy، ۳۴۶۵ failure Codalpy و ۱۹۵۱ رکورد normalized با ۱۶۶ خطای normalization.
 
+بازبینی مستقیم دیتابیس تولید نشان داد جدول `codalpy_records` خالی نیست: حدود ۱٫۱۲ میلیون رکورد دارد که تقریباً ۷۶۰٬۶۶۵ رکورد آن `monthly_activity`، حدود ۲۲۵٬۲۶۶ رکورد `balance_sheet` و حدود ۱۳۵٬۸۹۲ رکورد `income_statement` است. بنابراین صفر بودن جدول legacy به نام `monthly_sales` به‌تنهایی نشانهٔ نبود دادهٔ فعالیت ماهانه نیست؛ مسیر فعلی تحلیل، رکوردهای ماهانهٔ Codalpy را مستقیماً از `codalpy_records` می‌خواند. با این حال، تبدیل‌شدن این داده‌ها به `financial_facts` ماهانه انجام نشده و باید جداگانه با کنترل کیفیت و بدون ادعای پوشش کامل ارزیابی شود.
+
 این artifactها برای بازپخش و reconciliation ارزشمندند، اما تا زمانی که checksum، schema، دوره، واحد و نتیجه‌ی validation بررسی نشود نباید مستقیماً به facts منتقل شوند.
 
 ## تصمیم انتشار
