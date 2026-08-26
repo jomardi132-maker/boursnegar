@@ -30,7 +30,7 @@ def current_jalali():
 def now(): return datetime.now(timezone.utc).isoformat()
 class State:
     def __init__(self,path):
-        self.db=sqlite3.connect(path,check_same_thread=False); self.db.executescript(SCHEMA)
+        self.path=Path(path).resolve(); self.db=sqlite3.connect(self.path,check_same_thread=False); self.db.executescript(SCHEMA)
         for column in ('standard_count','period_count'):
             try: self.db.execute(f'ALTER TABLE symbols ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0')
             except sqlite3.OperationalError: pass
@@ -40,6 +40,16 @@ class State:
     def upsert_symbols(self, rows):
         self.db.executemany('INSERT INTO symbols(symbol,industry,status,last_remote_count,standard_count,period_count,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET industry=excluded.industry,status=excluded.status,last_remote_count=excluded.last_remote_count,standard_count=excluded.standard_count,period_count=excluded.period_count,updated_at=excluded.updated_at',[(r['symbol'],r.get('industry'),r.get('status','incomplete'),r.get('raw_count',0),r.get('standard_count',0),r.get('period_count',0),now()) for r in rows]); self.db.commit()
     def rows(self): return self.db.execute('SELECT symbol,industry,status,last_local_count,last_remote_count,gap_summary,last_error FROM symbols ORDER BY symbol').fetchall()
+    def artifact_rows(self):
+        try:
+            return self.db.execute('SELECT path,role,status,size_bytes,json_records,json_errors,imported_rows FROM artifact_files ORDER BY path').fetchall()
+        except sqlite3.OperationalError:
+            return []
+    def artifact_summary(self):
+        try:
+            return dict(self.db.execute('SELECT status,COUNT(*) FROM artifact_files GROUP BY status'))
+        except sqlite3.OperationalError:
+            return {}
     def run(self,stage,fn):
         cur=self.db.execute('INSERT INTO runs(started_at,status,stage) VALUES(?,?,?)',(now(),'RUNNING',stage)); rid=cur.lastrowid; self.db.commit()
         try: result=fn(); self.db.execute('UPDATE runs SET finished_at=?,status=?,summary=? WHERE id=?',(now(),'PASSED',json.dumps(result,ensure_ascii=False),rid)); self.db.commit(); return result
@@ -71,11 +81,16 @@ def discover_remote(target, log):
 class App:
     def __init__(self,root,state,target):
         self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold)
-        self.search_var=tk.StringVar(); self.industry_var=tk.StringVar(value='همه صنایع'); self.status_var=tk.StringVar(value='همه وضعیت‌ها'); self.gap_var=tk.StringVar(value='همه کمبودها'); self.summary_var=tk.StringVar()
-        filters=ttk.Frame(root); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=18); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(8,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=20); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='وضعیت:').pack(side='right',padx=(8,2)); self.status_box=ttk.Combobox(filters,textvariable=self.status_var,state='readonly',values=('همه وضعیت‌ها','کامل','قابل‌مقایسه','ناقص'),width=13); self.status_box.pack(side='right'); self.status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='کمبود:').pack(side='right',padx=(8,2)); self.gap_box=ttk.Combobox(filters,textvariable=self.gap_var,state='readonly',width=18); self.gap_box.pack(side='right'); self.gap_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(root,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
-        self.tree=ttk.Treeview(root,columns=('symbol','industry','status','local','remote','gaps','error'),show='headings',style='Persian.Treeview');
+        self.search_var=tk.StringVar(); self.industry_var=tk.StringVar(value='همه صنایع'); self.status_var=tk.StringVar(value='همه وضعیت‌ها'); self.gap_var=tk.StringVar(value='همه کمبودها'); self.summary_var=tk.StringVar(); self.file_search_var=tk.StringVar(); self.file_role_var=tk.StringVar(value='همه انواع'); self.file_status_var=tk.StringVar(value='همه وضعیت‌ها'); self.file_summary_var=tk.StringVar()
+        notebook=ttk.Notebook(root); notebook.pack(fill='both',expand=True,padx=8,pady=8); symbols_tab=ttk.Frame(notebook); files_tab=ttk.Frame(notebook); notebook.add(symbols_tab,text='وضعیت نمادها'); notebook.add(files_tab,text='دفترکل فایل‌های محلی')
+        filters=ttk.Frame(symbols_tab); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=18); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(8,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=20); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='وضعیت:').pack(side='right',padx=(8,2)); self.status_box=ttk.Combobox(filters,textvariable=self.status_var,state='readonly',values=('همه وضعیت‌ها','کامل','قابل‌مقایسه','ناقص'),width=13); self.status_box.pack(side='right'); self.status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='کمبود:').pack(side='right',padx=(8,2)); self.gap_box=ttk.Combobox(filters,textvariable=self.gap_var,state='readonly',width=18); self.gap_box.pack(side='right'); self.gap_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(symbols_tab,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
+        self.tree=ttk.Treeview(symbols_tab,columns=('symbol','industry','status','local','remote','gaps','error'),show='headings',style='Persian.Treeview');
         for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','محلی','سرور','کمبودها','خطا'),(120,200,120,90,90,280,300)): self.tree.heading(c,text=t,anchor='e'); self.tree.column(c,anchor='e',width=w)
-        self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(root); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='خروجی CSV',command=self.export_rows).pack(side='right',padx=4); ttk.Button(bar,text='آزمایشی انتخاب‌شده',command=lambda:self.run(False,True)).pack(side='right',padx=4); ttk.Button(bar,text='ارسال انتخاب‌شده',command=lambda:self.run(True,True)).pack(side='right',padx=4); ttk.Button(bar,text='آزمایشی همه ناقص',command=lambda:self.run(False)).pack(side='right',padx=4); ttk.Button(bar,text='دریافت و import ناقص‌ها',command=lambda:self.run(True)).pack(side='right'); self.logbox=tk.Text(root,height=10,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='both',expand=False,padx=8,pady=8); self.refresh(); root.after(250,self.drain)
+        self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(symbols_tab); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='خروجی CSV',command=self.export_rows).pack(side='right'); ttk.Label(bar,text='دریافت و ارسال به سرور تا پایان پالایش محلی متوقف است.').pack(side='right',padx=12)
+        file_filters=ttk.Frame(files_tab); file_filters.pack(fill='x',padx=8,pady=8); ttk.Label(file_filters,text='جست‌وجوی مسیر:').pack(side='right'); file_search=ttk.Entry(file_filters,textvariable=self.file_search_var,width=36); file_search.pack(side='right',padx=5); file_search.bind('<KeyRelease>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='نوع:').pack(side='right'); self.file_role_box=ttk.Combobox(file_filters,textvariable=self.file_role_var,state='readonly',width=14); self.file_role_box.pack(side='right',padx=5); self.file_role_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='وضعیت:').pack(side='right'); self.file_status_box=ttk.Combobox(file_filters,textvariable=self.file_status_var,state='readonly',width=14); self.file_status_box.pack(side='right',padx=5); self.file_status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Button(file_filters,text='بازخوانی دفترکل',command=self.scan_artifacts).pack(side='left')
+        ttk.Label(files_tab,textvariable=self.file_summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3); self.file_tree=ttk.Treeview(files_tab,columns=('path','role','status','size','records','errors','imported'),show='headings',style='Persian.Treeview');
+        for c,t,w in zip(self.file_tree['columns'],('مسیر','نوع','وضعیت','حجم','رکورد','خطای JSON','واردشده'),(520,110,110,100,90,90,90)): self.file_tree.heading(c,text=t,anchor='e'); self.file_tree.column(c,anchor='e',width=w)
+        self.file_tree.pack(fill='both',expand=True,padx=8,pady=8); self.logbox=tk.Text(root,height=8,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='x',expand=False,padx=8,pady=8); self.refresh(); self.refresh_artifacts(); root.after(250,self.drain)
     def log(self,s): self.events.put(('log',s))
     def refresh(self):
         for x in self.tree.get_children(): self.tree.delete(x)
@@ -93,6 +108,24 @@ class App:
             values=list(row); values[2]=labels.get(values[2],values[2]); self.tree.insert('', 'end', values=values)
         counts={key:sum(1 for r in rows if r[2]==key) for key in ('complete','comparable','incomplete')}; total=len(rows); pct=(counts['complete']*100/total) if total else 0
         self.summary_var.set(f'کل: {total} | کامل: {counts["complete"]} | قابل‌مقایسه: {counts["comparable"]} | ناقص: {counts["incomplete"]} | تکمیل کامل: {pct:.1f}% | نمایش: {len(visible)}')
+    def refresh_artifacts(self):
+        for item in self.file_tree.get_children(): self.file_tree.delete(item)
+        rows=self.state.artifact_rows(); roles=sorted({r[1] for r in rows}); statuses=sorted({r[2] for r in rows}); self.file_role_box['values']=['همه انواع']+roles; self.file_status_box['values']=['همه وضعیت‌ها']+statuses
+        query=self.file_search_var.get().strip().casefold(); selected_role=self.file_role_var.get(); selected_status=self.file_status_var.get(); visible=[]
+        for row in rows:
+            if query and query not in row[0].casefold(): continue
+            if selected_role!='همه انواع' and row[1]!=selected_role: continue
+            if selected_status!='همه وضعیت‌ها' and row[2]!=selected_status: continue
+            visible.append(row)
+        for row in visible[:5000]: self.file_tree.insert('', 'end', values=row)
+        counts=self.state.artifact_summary(); self.file_summary_var.set(f'کل: {len(rows)} | تأییدشده: {counts.get("VERIFIED",0)} | واردشده: {counts.get("IMPORTED",0)} | فهرست‌شده: {counts.get("INVENTORIED",0)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | قرنطینه: {counts.get("QUARANTINED",0)} | خراب/مفقود: {counts.get("FAILED",0)} | نمایش: {min(len(visible),5000)}')
+    def scan_artifacts(self):
+        def work():
+            cmd=['python3',str(ROOT/'data-service/scripts/reconcile_local_artifacts.py'),'--db',str(self.state.path)]
+            for folder in ('all-symbols-v16','all-symbols-v17','all-symbols-v18'): cmd += ['--root',str(ROOT/'artifacts'/folder)]
+            try: command(cmd,self.log); self.events.put(('artifacts',None))
+            except Exception as exc: self.log('LEDGER ERROR '+str(exc))
+        threading.Thread(target=work,daemon=True).start()
     def discover(self):
         def work():
             try: rows=discover_remote(self.target,self.log); self.state.upsert_symbols(rows); self.events.put(('refresh',None)); self.log(f'{len(rows)} symbols discovered')
@@ -129,6 +162,7 @@ class App:
             kind,value=self.events.get();
             if kind=='log': self.logbox.insert('end',value+'\n','rtl'); self.logbox.see('end')
             elif kind=='refresh': self.refresh()
+            elif kind=='artifacts': self.refresh_artifacts()
         self.root.after(250,self.drain)
 def main():
     p=argparse.ArgumentParser(); p.add_argument('--db',default=str(DEFAULT_DB)); p.add_argument('--ssh-target',default='boursnegar'); p.add_argument('--no-gui',action='store_true'); a=p.parse_args()
