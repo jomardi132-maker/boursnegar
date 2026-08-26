@@ -108,3 +108,5 @@
 | GitHub | `main` و `agent/data-engine-v1` روی `bad08db5` همسان‌اند | حفاظت branch و فرایند release رسمی کامل نیست | فعال‌سازی branch protection و ثبت release manifest |
 
 اولویت اصلاحات بعدی: ۱) حفظ provenance و تعیین تکلیف رکوردهای بدون نماد، ۲) گزارش coverage تفکیک‌شدهٔ دوره/نوع داده، ۳) آزمون UI در viewport موبایل واقعی، ۴) پاک‌سازی مستند symlink قدیمی پس از بررسی وابستگی، ۵) سپس اعلام production نهایی.
+
+ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.
