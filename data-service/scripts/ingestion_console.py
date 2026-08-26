@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 ROOT=Path(__file__).resolve().parents[2]
 DEFAULT_DB=ROOT/'artifacts'/'local-ingestion.sqlite3'
 SCHEMA='''
-CREATE TABLE IF NOT EXISTS symbols(symbol TEXT PRIMARY KEY, industry TEXT, status TEXT NOT NULL DEFAULT 'unknown', last_remote_count INTEGER, last_local_count INTEGER, standard_count INTEGER NOT NULL DEFAULT 0, period_count INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS symbols(symbol TEXT PRIMARY KEY, industry TEXT, status TEXT NOT NULL DEFAULT 'unknown', last_remote_count INTEGER, last_local_count INTEGER, standard_count INTEGER NOT NULL DEFAULT 0, period_count INTEGER NOT NULL DEFAULT 0, gap_summary TEXT NOT NULL DEFAULT '', last_error TEXT, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notices(symbol TEXT NOT NULL, tracing_no TEXT NOT NULL, title TEXT, published_at TEXT, local_path TEXT, checksum TEXT, remote_present INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(symbol,tracing_no));
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL, stage TEXT NOT NULL, summary TEXT);
 '''
@@ -34,10 +34,12 @@ class State:
         for column in ('standard_count','period_count'):
             try: self.db.execute(f'ALTER TABLE symbols ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0')
             except sqlite3.OperationalError: pass
+        try: self.db.execute("ALTER TABLE symbols ADD COLUMN gap_summary TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError: pass
         self.db.commit()
     def upsert_symbols(self, rows):
         self.db.executemany('INSERT INTO symbols(symbol,industry,status,last_remote_count,standard_count,period_count,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET industry=excluded.industry,status=excluded.status,last_remote_count=excluded.last_remote_count,standard_count=excluded.standard_count,period_count=excluded.period_count,updated_at=excluded.updated_at',[(r['symbol'],r.get('industry'),r.get('status','incomplete'),r.get('raw_count',0),r.get('standard_count',0),r.get('period_count',0),now()) for r in rows]); self.db.commit()
-    def rows(self): return self.db.execute('SELECT symbol,industry,status,last_local_count,last_remote_count,last_error FROM symbols ORDER BY symbol').fetchall()
+    def rows(self): return self.db.execute('SELECT symbol,industry,status,last_local_count,last_remote_count,gap_summary,last_error FROM symbols ORDER BY symbol').fetchall()
     def run(self,stage,fn):
         cur=self.db.execute('INSERT INTO runs(started_at,status,stage) VALUES(?,?,?)',(now(),'RUNNING',stage)); rid=cur.lastrowid; self.db.commit()
         try: result=fn(); self.db.execute('UPDATE runs SET finished_at=?,status=?,summary=? WHERE id=?',(now(),'PASSED',json.dumps(result,ensure_ascii=False),rid)); self.db.commit(); return result
@@ -71,8 +73,8 @@ class App:
         self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold)
         self.search_var=tk.StringVar(); self.industry_var=tk.StringVar(value='همه صنایع'); self.summary_var=tk.StringVar()
         filters=ttk.Frame(root); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=22); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(12,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=24); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(root,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
-        self.tree=ttk.Treeview(root,columns=('symbol','industry','status','local','remote','error'),show='headings',style='Persian.Treeview');
-        for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','محلی','سرور','خطا'),(120,220,120,100,100,360)): self.tree.heading(c,text=t,anchor='e'); self.tree.column(c,anchor='e',width=w)
+        self.tree=ttk.Treeview(root,columns=('symbol','industry','status','local','remote','gaps','error'),show='headings',style='Persian.Treeview');
+        for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','محلی','سرور','کمبودها','خطا'),(120,200,120,90,90,280,300)): self.tree.heading(c,text=t,anchor='e'); self.tree.column(c,anchor='e',width=w)
         self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(root); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='آزمایشی انتخاب‌شده',command=lambda:self.run(False,True)).pack(side='right',padx=4); ttk.Button(bar,text='ارسال انتخاب‌شده',command=lambda:self.run(True,True)).pack(side='right',padx=4); ttk.Button(bar,text='آزمایشی همه ناقص',command=lambda:self.run(False)).pack(side='right',padx=4); ttk.Button(bar,text='دریافت و import ناقص‌ها',command=lambda:self.run(True)).pack(side='right'); self.logbox=tk.Text(root,height=10,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='both',expand=False,padx=8,pady=8); self.refresh(); root.after(250,self.drain)
     def log(self,s): self.events.put(('log',s))
     def refresh(self):
