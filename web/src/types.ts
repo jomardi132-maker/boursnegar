@@ -223,7 +223,7 @@ export interface SubscriptionPlan {
 }
 
 export interface SmsGatewayConfig {
-  provider: 'unconfigured' | 'kavenegar' | 'ippanel' | 'ghasedak' | 'farapayamak';
+  serviceProvider?: 'unconfigured' | 'kavenegar' | 'ippanel' | 'ghasedak' | 'farapayamak';
   serviceValue?: string;
   lineNumber?: string;
   otpPatternCode?: string;
@@ -234,7 +234,7 @@ export interface AdminStats {
   vipUsers: number;
   totalAnalysesCount: number;
   totalRevenueToman: number;
-  smsGateway: SmsGatewayConfig;
+  serviceConfig: SmsGatewayConfig;
 }
 
 export interface StockHealthCardData {

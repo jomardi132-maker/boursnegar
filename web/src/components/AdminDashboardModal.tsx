@@ -18,13 +18,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     vipUsers: 0,
     totalAnalysesCount: 0,
     totalRevenueToman: 0,
-    smsGateway: {
-      provider: 'unconfigured',
+    serviceConfig: {
     },
   });
 
-  const [smsProvider, setSmsProvider] = useState<SmsGatewayConfig['provider']>('kavenegar');
-  const [apiCredentialInput, setApiCredentialInput] = useState(stats.smsGateway.serviceValue ?? '');
+  const [smsProvider, setSmsProvider] = useState<NonNullable<SmsGatewayConfig['serviceProvider']>>('unconfigured');
+  const [apiCredentialInput, setApiCredentialInput] = useState(stats.serviceConfig.serviceValue ?? '');
   const [patternInput, setPatternInput] = useState(stats.smsGateway.otpPatternCode ?? '');
   const [saveNotice, setSaveNotice] = useState(false);
 
@@ -34,8 +33,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     e.preventDefault();
     setStats({
       ...stats,
-      smsGateway: {
-        provider: smsProvider,
+      serviceConfig: {
+        serviceProvider: smsProvider,
         serviceValue: apiCredentialInput,
         otpPatternCode: patternInput,
       },
@@ -156,7 +155,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <label className="text-slate-400 text-[11px] block mb-1">ارائه‌دهنده سامانه پیامک:</label>
               <select
                 value={smsProvider}
-                onChange={(e) => setSmsProvider(e.target.value as SmsGatewayConfig['provider'])}
+                onChange={(e) => setSmsProvider(e.target.value as NonNullable<SmsGatewayConfig['serviceProvider']>)}
                 className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none"
               >
                 <option value="unconfigured">تنظیم نشده</option>
