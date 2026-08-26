@@ -123,6 +123,8 @@ fallbackهای legacy برای peer، رویدادهای شرکتی و تحلی�
 
 در انتشار تکمیلی `20260826T102500Z-legacy-path-cleanup`، راهنمای سرور از ارجاع به `bourse-analyzer` پاک شد و اسکریپت استقرار منسوخ ایمیل حذف شد؛ release با کپی کامل وابستگی‌های release سالم ساخته شد، PM2 online، `readyz` و گیت نهایی PASS و endpointهای اصلی عمومی HTTP 200 هستند. backup در `/var/backups/boursnegar/20260826T102500Z-legacy-path-cleanup` ثبت شد.
 
+ممیزی فایل‌های سرور در وضعیت فعلی ۱۰۷ فایل غیر build در release وب، ۶۱ فایل غیرمحیطی در release داده، ۱۹ release وب، ۱۶ release داده و ۵۶ backup را نشان داد؛ envهای فعال هر دو `root:root` با mode `600` هستند. دو release ناقص و غیرفعال حاصل از انتشار ناموفق (`20260826T101900Z-legacy-path-cleanup` و `20260826T102100Z-legacy-path-cleanup`) پس از تطبیق با PM2 حذف شدند و release فعال `20260826T103100Z-mobile-screener-fix` باقی ماند.
+
 در بررسی بصری live با viewport دسکتاپ ۱۴۴۰×۹۰۰ و موبایل ۳۹۰×۸۴۴، یک بریدگی RTL در جدول اسکرینر موبایل پیدا شد: جدول ۶۶۹ پیکسلی با x منفی رندر می‌شد. با جداکردن جهت wrapper اسکرول از جهت جدول اصلاح شد و در release `20260826T103100Z-mobile-screener-fix` دوباره آزمون شد؛ جدول از x=۱۵ شروع می‌شود، wrapper عرض ۳۴۷ دارد و صفحه overflow افقی ندارد. typecheck، ۶۱ تست Vitest، ۵۷ تست unittest و health/ready موفق شدند.
 
 ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.
