@@ -286,29 +286,11 @@ export function getKeyEventsForStock(symbol: string, industry: string): CodalKey
 }
 
 export function getQuarterlyProfitsForStock(symbol: string, industry: string): QuarterlyProfitItem[] {
-  const norm = symbol.trim();
-  if (norm === 'فولاد') {
-    return [
-      { quarter: 'بهار', stockProfit: 22400, industryAvgProfit: 14500, marginPercent: 38, growthPercent: 28 },
-      { quarter: 'تابستان', stockProfit: 28500, industryAvgProfit: 16200, marginPercent: 41, growthPercent: 34 },
-      { quarter: 'پاییز', stockProfit: 25100, industryAvgProfit: 15800, marginPercent: 37, growthPercent: 22 },
-      { quarter: 'زمستان', stockProfit: 31200, industryAvgProfit: 18100, marginPercent: 43, growthPercent: 39 },
-    ];
-  }
-  if (norm === 'وبملت') {
-    return [
-      { quarter: 'بهار', stockProfit: 18200, industryAvgProfit: 9800, marginPercent: 31, growthPercent: 35 },
-      { quarter: 'تابستان', stockProfit: 21500, industryAvgProfit: 11200, marginPercent: 34, growthPercent: 41 },
-      { quarter: 'پاییز', stockProfit: 19800, industryAvgProfit: 10500, marginPercent: 32, growthPercent: 29 },
-      { quarter: 'زمستان', stockProfit: 24600, industryAvgProfit: 12800, marginPercent: 36, growthPercent: 45 },
-    ];
-  }
-  return [
-    { quarter: 'بهار', stockProfit: 14200, industryAvgProfit: 11000, marginPercent: 28, growthPercent: 20 },
-    { quarter: 'تابستان', stockProfit: 16800, industryAvgProfit: 12400, marginPercent: 31, growthPercent: 25 },
-    { quarter: 'پاییز', stockProfit: 15500, industryAvgProfit: 11800, marginPercent: 29, growthPercent: 18 },
-    { quarter: 'زمستان', stockProfit: 19100, industryAvgProfit: 13900, marginPercent: 33, growthPercent: 30 },
-  ];
+  // This legacy helper must never invent financial values. Real quarterly
+  // values must come from the authoritative analysis response.
+  void symbol;
+  void industry;
+  return [];
 }
 
 export function enrichStockDataWithNewFeatures(data: StockHealthCardData): StockHealthCardData {
