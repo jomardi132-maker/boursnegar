@@ -90,6 +90,8 @@
 
 یک بررسی read-only روی artifactهای نسخه‌های v16 تا v18 نیز انجام شد؛ برای شناسه‌های دقیق `source_action_id` رکوردهای بدون نماد match پیدا نشد و تطبیق بر مبنای `tracing_no` نیز به نتیجهٔ قطعی نرسید. در نتیجه فعلاً هیچ backfill حدسی یا تغییر Production انجام نشده است.
 
+کنترل عملیاتی نهایی این نوبت: سرویس داده `active` و endpoint داخلی آن با HTTP 200 پاسخ می‌دهد؛ PM2 روی release `20260825T184136Z-comment-automation` و وضعیت `online` است؛ endpointهای عمومی health، market overview، dashboard و صفحهٔ فولاد نیز HTTP 200 هستند. هشدارهای قدیمی در لاگ PM2 باقی است، اما آخرین رخداد start ثبت‌شده بدون خطا بوده و در journal سرویس داده از ابتدای روز جاری warning/error ثبت نشده است.
+
 این artifactها برای بازپخش و reconciliation ارزشمندند، اما تا زمانی که checksum، schema، دوره، واحد و نتیجه‌ی validation بررسی نشود نباید مستقیماً به facts منتقل شوند.
 
 ## تصمیم انتشار
