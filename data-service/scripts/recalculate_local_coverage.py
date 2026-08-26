@@ -7,6 +7,7 @@ financial values; it only counts distinct local fact keys and periods.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sqlite3
 from pathlib import Path
@@ -15,6 +16,7 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default="artifacts/local-ingestion.sqlite3")
+    parser.add_argument("--export", default="")
     args = parser.parse_args()
     path = Path(args.db).resolve()
     db = sqlite3.connect(path)
@@ -51,6 +53,13 @@ def main() -> None:
         )
     db.commit()
     counts = dict(db.execute("SELECT status, COUNT(*) FROM symbols GROUP BY status").fetchall())
+    if args.export:
+        export_path = Path(args.export).resolve()
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        with export_path.open("w", newline="", encoding="utf-8-sig") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(("نماد", "صنعت", "وضعیت", "fact", "دوره", "کمبودها", "خطا"))
+            writer.writerows(db.execute("SELECT symbol,industry,status,standard_count,period_count,gap_summary,last_error FROM symbols ORDER BY symbol"))
     print(json.dumps({"db": str(path), "symbols": len(rows), "tiers": counts}, ensure_ascii=False))
 
 
