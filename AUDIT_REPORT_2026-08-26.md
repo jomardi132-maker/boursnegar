@@ -59,7 +59,7 @@
 - releaseهای وب: ۱۰ مورد
 - releaseهای داده: ۱۶ مورد
 - timerهای alert، market intraday، market daily و Rahavard فعال‌اند.
-- symlink `/var/www/bourse-analyzer` به release قدیمی اشاره می‌کند، اما PM2 از آن استفاده نمی‌کند؛ این مورد باید در پاک‌سازی عملیاتی آینده با احتیاط و پس از بررسی وابستگی اسکریپت‌ها اصلاح شود.
+- symlink قدیمی `/var/www/bourse-analyzer` پس از ثبت مقصد و تطبیق با PM2 حذف شد؛ PM2 از آن استفاده نمی‌کرد. symlink عملیاتی `/var/www/boursnegar-current` نیز به release واقعی فعال `20260826T063347Z-disable-legacy-fallbacks` همگام شد.
 - لاگ PM2 شامل خطاهای تاریخی از مسیر `stable-rollback` است؛ این‌ها به‌تنهایی خطای زنده محسوب نمی‌شوند و باید با timestamp/اجرای فعلی تفکیک شوند.
 
 ## شکاف‌های باقی‌مانده
