@@ -72,6 +72,14 @@
 6. refهای GitHub تأیید شده‌اند، اما branch protection فعال نیست؛ برای حفاظت عملیاتی بهتر است بعداً فعال شود.
 7. symlink عملیاتی قدیمی و لاگ‌های تاریخی باید مستندسازی و سپس با backup/rollback سامان‌دهی شوند؛ حذف مستقیم انجام نشده است.
 
+## وضعیت artifactهای محلی ingestion
+
+- `all-symbols-v16`: ۱۱۳۳ batch browser، ۱۰۷۳ checkpoint موفق Codalpy، ۵۷۸۴ failure Codalpy و ۳۲۳۰ رکورد normalized.
+- `all-symbols-v17`: ۱۴۲ checkpoint browser، ۱۴۱ فایل manifest browser و ۳۰۸۰ رکورد normalized با ۲۴ خطای normalization.
+- `all-symbols-v18`: ۴۵ batch، ۶۰۲ checkpoint browser، ۱۴۱ checkpoint موفق Codalpy، ۳۴۶۵ failure Codalpy و ۱۹۵۱ رکورد normalized با ۱۶۶ خطای normalization.
+
+این artifactها برای بازپخش و reconciliation ارزشمندند، اما تا زمانی که checksum، schema، دوره، واحد و نتیجه‌ی validation بررسی نشود نباید مستقیماً به facts منتقل شوند.
+
 ## تصمیم انتشار
 
 اصلاح فعلی در production منتشر و با health، PM2، asset live و صفحه‌ی فولاد راستی‌آزمایی شده است. تا زمانی که coverage روزآمد، تست موبایل و پاک‌سازی عملیاتی با شواهد تکمیل نشوند، ممیزی نهایی کل هدف «کامل» اعلام نمی‌شود.
