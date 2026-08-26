@@ -224,7 +224,7 @@ export interface SubscriptionPlan {
 
 export interface SmsGatewayConfig {
   provider: 'kavenegar' | 'ippanel' | 'ghasedak' | 'farapayamak';
-  apiKey: string;
+  serviceValue?: string;
   lineNumber: string;
   otpPatternCode: string;
 }

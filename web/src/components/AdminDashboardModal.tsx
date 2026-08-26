@@ -20,14 +20,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     totalRevenueToman: 0,
     smsGateway: {
       provider: 'kavenegar',
-      apiKey: '',
       lineNumber: '10008000',
       otpPatternCode: 'bourse_otp_pattern',
     },
   });
 
   const [smsProvider, setSmsProvider] = useState<SmsGatewayConfig['provider']>('kavenegar');
-  const [apiKeyInput, setApiKeyInput] = useState(stats.smsGateway.apiKey);
+  const [apiCredentialInput, setApiCredentialInput] = useState(stats.smsGateway.serviceValue ?? '');
   const [patternInput, setPatternInput] = useState(stats.smsGateway.otpPatternCode);
   const [saveNotice, setSaveNotice] = useState(false);
 
@@ -39,7 +38,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       ...stats,
       smsGateway: {
         provider: smsProvider,
-        apiKey: apiKeyInput,
+        serviceValue: apiCredentialInput,
         lineNumber: '10008000',
         otpPatternCode: patternInput,
       },
@@ -175,8 +174,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <label className="text-slate-400 text-[11px] block mb-1">کلید API اختصاصی (API Key):</label>
               <input
                 type="text"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
+                value={apiCredentialInput}
+                onChange={(e) => setApiCredentialInput(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 text-cyan-300 font-mono rounded-lg p-2 text-xs focus:outline-none dir-ltr text-left"
                 placeholder="kavenegar_key..."
               />
