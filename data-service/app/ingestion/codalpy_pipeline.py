@@ -156,6 +156,8 @@ def fetch(symbol: str = "دکوثر", today: str | None = None, retries: int = 3
         for output_type in STATEMENTS:
             values = _call_with_retry(getattr(codal, output_type), retries=retries)
             records = standardize(values, output_type)
+            for record in records:
+                record["symbol"] = symbol
             partition["outputs"][output_type] = {"responses": len(values), "records": len(records), "periods": sorted({r["period_end_jalali"] for r in records if r["period_end_jalali"]})}
             result["records"].extend(records)
         result["ranges"].append(partition)
@@ -172,9 +174,9 @@ def persist_records(records: list[dict]) -> int:
             inserted += connection.execute(text("""
                 INSERT INTO codalpy_records
                   (source,output_type,source_action_id,tracing_no,period_end_jalali,
-                   fact_key,source_label,value,raw_value,unit,payload)
+                   fact_key,source_label,value,raw_value,unit,payload,symbol)
                 VALUES (:source,:output_type,:source_action_id,:tracing_no,:period_end_jalali,
-                        :fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb))
+                        :fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb),:symbol)
                 ON CONFLICT (source,source_action_id) DO NOTHING
-            """), {**record, "payload": json.dumps(record["payload"], ensure_ascii=False)}).rowcount
+            """), {**record, "symbol": record.get("symbol"), "payload": json.dumps(record["payload"], ensure_ascii=False)}).rowcount
     return inserted
