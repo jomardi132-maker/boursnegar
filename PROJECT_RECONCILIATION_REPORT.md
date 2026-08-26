@@ -39,6 +39,7 @@
 - کنترل کیفیت mirror محلی روی ۱۹۹۳۱ fact نتیجهٔ پاک دارد: مقدار، دوره و source_label خالی نیستند، output_type خارج از دو نوع مورد انتظار نیست و کلید تکراری `(symbol,tracing_no,output_type,fact_key)` مشاهده نشد.
 - اجرای رابط محلی علاوه بر CSV پوشش، فایل اولویت‌بندی `artifacts/local-recovery-plan.csv` را نیز می‌سازد؛ ۱۵۲۴ نماد بر اساس وضعیت، تعداد دوره و تعداد fact مرتب می‌شوند تا batchهای تکمیل Local از نمادهای نزدیک به تکمیل شروع شوند.
 - pilot واقعی Local برای `ثباغ` در بازهٔ `1404/01/01` تا `1405/06/04` اجرا شد: ۱۹ سند بررسی، ۱۸ رکورد نرمال‌شده و ۲۰ رویداد تولید شد؛ import محلی ۱ اطلاعیهٔ جدید و ۰ fact جدید داشت، چون factهای موجود تکراری بودند. دو HTML غیرجدولی با خطای parser در manifest quarantine شدند و هیچ مقدار ساختگی تولید نشد.
+- resume همان pilot با checkpoint بدون دانلود تکراری انجام شد و `new_notices=0` و `new_facts=0` ثبت کرد؛ نتیجهٔ tier `ثباغ` همچنان `incomplete` با ۹ fact و یک دوره است.
 - رابط نظارتی موجود در `data-service/scripts/ingestion_console.py` به همین SQLite متصل است و وضعیت نماد/صنعت، خطا، dry-run و import کنترل‌شده را نمایش می‌دهد.
 - مسیر واقعی local→Production با pilot `dekosar-normalized` اثبات شد: manifest دارای checksum معتبر، ۸ رکورد به‌صورت کنترل‌شده برای `دکوثر` منتقل و import شد، اجرای تکراری fact جدیدی تولید نکرد و پس از آن `REMOTE_FINAL_GATE=PASS` باقی ماند.
 - batch معتبر v18 شمارهٔ ۰۰۴۰ نیز با checksum کامل منتقل شد: ۶ فایل، ۷۲۵۸ رکورد Codalpy و ۳۰۰ fact استاندارد، بدون validation error؛ پس از import گیت نهایی همچنان `PASS` بود.
