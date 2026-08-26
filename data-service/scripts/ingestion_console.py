@@ -15,6 +15,19 @@ try:
     import tkinter.font as tkfont
 except ModuleNotFoundError:
     tk=ttk=messagebox=None
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+except ModuleNotFoundError:
+    arabic_reshaper = None
+    get_display = None
+
+def fa(value):
+    """Shape Persian text for Tk, which has no Arabic shaping engine."""
+    value = '' if value is None else str(value)
+    if arabic_reshaper and get_display:
+        return get_display(arabic_reshaper.reshape(value))
+    return value
 
 ROOT=Path(__file__).resolve().parents[2]
 DEFAULT_DB=ROOT/'artifacts'/'local-ingestion.sqlite3'
@@ -100,6 +113,7 @@ def discover_remote(target, log):
     return rows
 class App:
     def __init__(self,root,state,target):
+        if not arabic_reshaper: raise RuntimeError('برای نمایش صحیح فارسی، وابستگی‌های arabic-reshaper و python-bidi را نصب کنید')
         self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold)
         self.search_var=tk.StringVar(); self.industry_var=tk.StringVar(value='همه صنایع'); self.status_var=tk.StringVar(value='همه وضعیت‌ها'); self.gap_var=tk.StringVar(value='همه کمبودها'); self.summary_var=tk.StringVar(); self.file_search_var=tk.StringVar(); self.file_role_var=tk.StringVar(value='همه انواع'); self.file_status_var=tk.StringVar(value='همه وضعیت‌ها'); self.file_summary_var=tk.StringVar()
         notebook=ttk.Notebook(root); notebook.pack(fill='both',expand=True,padx=8,pady=8); symbols_tab=ttk.Frame(notebook); files_tab=ttk.Frame(notebook); notebook.add(symbols_tab,text='وضعیت نمادها'); notebook.add(files_tab,text='دفترکل فایل‌های محلی')
