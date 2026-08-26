@@ -30,7 +30,7 @@
 - typecheck و production build موفق.
 - artifactهای اصلی Codal حفظ شدند؛ فقط profileهای موقت Chrome، cacheها، لاگ‌های fallback و خروجی‌های reprocess تکراری حذف شدند.
 - کد ingestion محلی اکنون `symbol` را همراه رکورد Codalpy ذخیره می‌کند.
-- mirror محلی `artifacts/local-ingestion.sqlite3` از artifactهای v16/v17/v18 به‌صورت idempotent بازسازی شد: ۱۵۲۴ نماد، ۱۵۴۷۳ اطلاعیه، ۱۹۹۳۱ fact، ۱۴۴۴۵ رویداد و ۳۸۷۸ run ثبت شده است؛ state فعلی ۲۹۷ نماد complete و ۱۲۲۷ نماد incomplete دارد.
+- mirror محلی `artifacts/local-ingestion.sqlite3` از artifactهای v16/v17/v18 به‌صورت idempotent بازسازی شد: ۱۵۲۴ نماد، ۱۵۴۷۳ اطلاعیه، ۱۹۹۳۱ fact، ۱۴۴۴۵ رویداد و ۳۸۷۸ run ثبت شده است. پس از بازمحاسبهٔ tierها بر اساس fact و دورهٔ محلی، ۲۴۹ نماد `complete`، ۳۷۹ نماد `comparable` و ۸۹۶ نماد `incomplete` هستند؛ این معیار محلی با وضعیت قدیمی remote-derived جایگزین شد.
 - این اعداد مستقیماً با اعداد Production قابل جمع‌زدن نیستند: mirror محلی شمارش artifactهای staging/notice/fact خود را دارد، درحالی‌که Production شمارش جداول نرمال‌شده و رکوردهای متصل‌شده را گزارش می‌کند. بنابراین «۱۵۲۴ نماد محلی» به‌تنهایی به معنی «پوشش کامل ۱۵۳۳ ابزار فعال سرور» نیست و reconciliation باید با manifest و شناسهٔ منبع انجام شود.
 - اجرای رابط پایش با `./scripts/run-ingestion-console.sh` انجام می‌شود. این رابط جست‌وجوی نماد، فیلتر صنعت، شمارش tierها، «بررسی سرور»، اجرای آزمایشی و «دریافت و import» دارد؛ عملیات import فقط نمادهای غیرکامل را هدف می‌گیرد و قبل از آن dry-run قابل اجراست.
 - رابط نظارتی موجود در `data-service/scripts/ingestion_console.py` به همین SQLite متصل است و وضعیت نماد/صنعت، خطا، dry-run و import کنترل‌شده را نمایش می‌دهد.
