@@ -176,11 +176,9 @@ export default function App() {
         throw new Error('تحلیل آنلاین در دسترس نیست. محاسبه دستی انجام شد.');
       }
     } catch (err: any) {
-      console.warn('Fallback to local calculation:', err);
-      // Construct dynamic fallback health card
-      const calculatedCard = constructFallbackCustomCard(customData);
-      setCurrentData(calculatedCard);
-      setActiveSymbol(customData.symbol);
+      console.warn('Custom analysis unavailable:', err);
+      setErrorMessage('تحلیل سفارشی فقط پس از دریافت و اعتبارسنجی دادهٔ واقعی نمایش داده می‌شود.');
+      setCurrentData(null);
     } finally {
       setIsLoading(false);
     }

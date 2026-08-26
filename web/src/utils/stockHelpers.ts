@@ -1,6 +1,12 @@
 import { PeerCompany, PeSimulationData, IndustryType, StockHealthCardData, StatusType, SmartRecommendation, CodalKeyEvent, QuarterlyProfitItem } from '../types';
 
 export function getPeersForStock(symbol: string, industry: IndustryType | string): PeerCompany[] {
+  void symbol;
+  void industry;
+  // Peer data must come from the authoritative analysis response.
+  return [];
+
+  /*
   const normSymbol = symbol.trim();
 
   // Custom Peer lists per symbol / industry
@@ -67,6 +73,7 @@ export function getPeersForStock(symbol: string, industry: IndustryType | string
         { symbol: 'ذوب', name: 'ذوب آهن اصفهان', healthStatus: 'bad' as StatusType, peRatio: 'زیان‌ده' },
       ];
   }
+  */
 }
 
 export function getPeSimulationForStock(
@@ -186,6 +193,12 @@ export function getSmartRecommendationForStock(
 }
 
 export function getKeyEventsForStock(symbol: string, industry: string): CodalKeyEvent[] {
+  void symbol;
+  void industry;
+  // Corporate events must come from Codal disclosures, never a template.
+  return [];
+
+  /*
   const normSymbol = symbol.trim();
 
   // Custom events for specific tickers
@@ -282,7 +295,7 @@ export function getKeyEventsForStock(symbol: string, industry: string): CodalKey
       badgeText: 'ثبت تغییرات مدیران',
       impactStatus: 'neutral',
     },
-  ];
+  ]; */
 }
 
 export function getQuarterlyProfitsForStock(symbol: string, industry: string): QuarterlyProfitItem[] {
