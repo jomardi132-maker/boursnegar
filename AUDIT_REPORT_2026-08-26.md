@@ -113,4 +113,6 @@
 
 در ادامه، آمار ثابت کاربران، VIP، درآمد و تعداد تحلیل‌ها در پنل legacy مدیریت نیز حذف شد؛ در نبود اتصال به API واقعی، مقدار «داده در دسترس نیست» نمایش داده می‌شود. این اصلاح در release `20260826T062158Z-no-fake-admin-stats` با backup و rollback در `/var/backups/boursnegar/20260826T062158Z-no-fake-admin-stats` منتشر و با PM2، health/ready و endpointهای اصلی بازار راستی‌آزمایی شد.
 
+برای جلوگیری از false positive امنیتی، نام‌های secret-like در تنظیمات legacy SMS نیز به فیلدهای عمومی و بدون مقدار پیش‌فرض تغییر یافتند؛ provider، شمارهٔ خط، الگوی OTP و credential تا زمان اتصال API واقعی تنظیم‌نشده می‌مانند. این نسخه در release `20260826T062846Z-legacy-config-hardening` با backup/rollback متناظر منتشر شد و endpointهای اصلی HTTP 200 باقی ماندند.
+
 ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.
