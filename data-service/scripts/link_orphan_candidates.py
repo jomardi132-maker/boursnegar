@@ -14,6 +14,30 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 from app.services.codal_excel_parser import extract_period_end_jalali
 
+def normalize_title(value: str) -> str:
+    return re.sub(r'\s+', ' ', value.replace('\u200c', ' ').replace('\u200e', ' ').replace('\u200f', ' ').translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789'))).strip().casefold()
+
+def report_signature(value: str) -> tuple:
+    title = normalize_title(value)
+    period = extract_period_end_jalali(title)
+    duration = re.search(r'(\d+)\s*ماهه', title)
+    kind = 'monthly' if 'فعالیت ماهانه' in title else ('financial' if 'صورت های مالی' in title or 'صورتهای مالی' in title else 'other')
+    return (period, int(duration.group(1)) if duration else None, 'تلفیقی' in title, 'حسابرسی شده' in title and 'حسابرسی نشده' not in title, kind)
+
+def document_title(path: Path) -> str | None:
+    match = re.search(r'<title[^>]*>(.*?)</title>', path.read_text(encoding='utf-8', errors='ignore'), flags=re.I | re.S)
+    return normalize_title(re.sub(r'<[^>]+>', ' ', match.group(1))) if match else None
+
+def captured_titles(folder: Path) -> dict[str, str]:
+    result = {}
+    for bundle in folder.glob('*.jsonl'):
+        for line in bundle.read_text(encoding='utf-8', errors='replace').splitlines():
+            try: letter = json.loads(line).get('letter') or {}
+            except json.JSONDecodeError: continue
+            tracing = str(letter.get('TracingNo') or '')
+            if tracing and letter.get('Title'): result[tracing] = normalize_title(str(letter['Title']))
+    return result
+
 
 def captured_excel_letters(folder: Path) -> dict[tuple[str, str], set[str]]:
     result: dict[tuple[str, str], set[str]] = {}
@@ -86,6 +110,7 @@ def main() -> None:
     rows = db.execute("""SELECT path,inferred_symbol,selected_period,linked_tracing_no FROM artifact_parse_results
         WHERE status='PARSED_WITH_FACTS' AND inferred_symbol IS NOT NULL AND selected_period IS NOT NULL""").fetchall()
     cache: dict[Path, dict[tuple[str, str], set[str]]] = {}
+    title_cache: dict[Path, dict[str, str]] = {}
     linked = ambiguous = missing = 0
     for raw_path, symbol, period, existing_tracing in rows:
         path = Path(raw_path)
@@ -100,6 +125,14 @@ def main() -> None:
             continue
         letters = cache.setdefault(path.parent, captured_excel_letters(path.parent))
         matches = sorted(letters.get((symbol, period), set()))
+        title = document_title(path)
+        if title and len(matches) > 1:
+            titles = title_cache.setdefault(path.parent, captured_titles(path.parent))
+            exact = [tracing for tracing in matches if titles.get(tracing) == title]
+            if len(exact) != 1:
+                signature = report_signature(title)
+                exact = [tracing for tracing in matches if report_signature(titles.get(tracing, '')) == signature]
+            if len(exact) == 1: matches = exact
         evidence = json.dumps({'rule': 'unique_excel_letter_in_same_batch_symbol_period', 'matches': matches}, ensure_ascii=False)
         tracing = matches[0] if len(matches) == 1 else None
         if tracing:

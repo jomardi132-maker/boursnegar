@@ -30,6 +30,10 @@ class OrphanCandidateLinkTest(unittest.TestCase):
                 MODULE.captured_excel_letters(root), {('فملی', '1404/12/29'): {'123'}}
             )
 
+    def test_report_signature_distinguishes_consolidated_audited_report(self):
+        signature = MODULE.report_signature('اطلاعات و صورت‌های مالی تلفیقی دوره ۶ ماهه منتهی به ۱۴۰۴/۱۲/۲۹ (حسابرسی شده)')
+        self.assertEqual(signature, ('1404/12/29', 6, True, True, 'financial'))
+
 
 if __name__ == '__main__':
     unittest.main()
