@@ -20,14 +20,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     totalRevenueToman: 0,
     smsGateway: {
       provider: 'kavenegar',
-      lineNumber: '10008000',
-      otpPatternCode: 'bourse_otp_pattern',
     },
   });
 
   const [smsProvider, setSmsProvider] = useState<SmsGatewayConfig['provider']>('kavenegar');
   const [apiCredentialInput, setApiCredentialInput] = useState(stats.smsGateway.serviceValue ?? '');
-  const [patternInput, setPatternInput] = useState(stats.smsGateway.otpPatternCode);
+  const [patternInput, setPatternInput] = useState(stats.smsGateway.otpPatternCode ?? '');
   const [saveNotice, setSaveNotice] = useState(false);
 
   if (!isOpen) return null;
@@ -39,7 +37,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       smsGateway: {
         provider: smsProvider,
         serviceValue: apiCredentialInput,
-        lineNumber: '10008000',
         otpPatternCode: patternInput,
       },
     });
