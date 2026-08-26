@@ -117,4 +117,6 @@
 
 آخرین همسان‌سازی همین تنظیمات در release `20260826T063128Z-legacy-empty-config` انجام شد؛ backup و rollback متناظر ساخته شد و PM2، `/healthz`، `/readyz` و تست syntax Nginx موفق بودند.
 
+fallbackهای legacy برای peer، رویدادهای شرکتی و تحلیل سفارشی نیز غیرفعال شدند؛ نبود دادهٔ معتبر اکنون به خروجی خالی/پیام کمبود داده تبدیل می‌شود. release نهایی این اصلاح `20260826T063347Z-disable-legacy-fallbacks` است؛ PM2، health/ready، Nginx و endpointهای اصلی بازار پس از انتشار موفق بودند. backup و rollback در `/var/backups/boursnegar/20260826T063347Z-disable-legacy-fallbacks` قرار دارد.
+
 ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.
