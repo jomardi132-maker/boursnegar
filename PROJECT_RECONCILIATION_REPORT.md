@@ -41,6 +41,7 @@
 - pilot واقعی Local برای `ثباغ` در بازهٔ `1404/01/01` تا `1405/06/04` اجرا شد: ۱۹ سند بررسی، ۱۸ رکورد نرمال‌شده و ۲۰ رویداد تولید شد؛ import محلی ۱ اطلاعیهٔ جدید و ۰ fact جدید داشت، چون factهای موجود تکراری بودند. دو HTML غیرجدولی با خطای parser در manifest quarantine شدند و هیچ مقدار ساختگی تولید نشد.
 - resume همان pilot با checkpoint بدون دانلود تکراری انجام شد و `new_notices=0` و `new_facts=0` ثبت کرد؛ نتیجهٔ tier `ثباغ` همچنان `incomplete` با ۹ fact و یک دوره است.
 - pilot دوم برای `خفولا` با همان بازه و pipeline اجرا شد: ۹ اطلاعیه و ۱۸ fact جدید وارد Local شد و tier این نماد از `incomplete` به `complete` ارتقا یافت (۹ fact و ۲ دوره). یک HTML غیرجدولی quarantine شد؛ شمارش Local پس از این batch برابر ۲۵۰ کامل، ۳۷۹ قابل‌مقایسه و ۸۹۵ ناقص است.
+- pilot سوم برای `وامیر` provenance و parser را با ۱۷ سند بررسی کرد، اما `new_notices=0` و `new_facts=0` داشت؛ tier آن به‌درستی `incomplete` با ۹ fact و یک دوره باقی ماند و کمبود دورهٔ مقایسه‌ای پابرجاست.
 - رابط نظارتی موجود در `data-service/scripts/ingestion_console.py` به همین SQLite متصل است و وضعیت نماد/صنعت، خطا، dry-run و import کنترل‌شده را نمایش می‌دهد.
 - مسیر واقعی local→Production با pilot `dekosar-normalized` اثبات شد: manifest دارای checksum معتبر، ۸ رکورد به‌صورت کنترل‌شده برای `دکوثر` منتقل و import شد، اجرای تکراری fact جدیدی تولید نکرد و پس از آن `REMOTE_FINAL_GATE=PASS` باقی ماند.
 - batch معتبر v18 شمارهٔ ۰۰۴۰ نیز با checksum کامل منتقل شد: ۶ فایل، ۷۲۵۸ رکورد Codalpy و ۳۰۰ fact استاندارد، بدون validation error؛ پس از import گیت نهایی همچنان `PASS` بود.
