@@ -19,7 +19,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     totalAnalysesCount: 0,
     totalRevenueToman: 0,
     smsGateway: {
-      provider: 'kavenegar',
+      provider: 'unconfigured',
     },
   });
 
@@ -159,6 +159,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                 onChange={(e) => setSmsProvider(e.target.value as SmsGatewayConfig['provider'])}
                 className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none"
               >
+                <option value="unconfigured">تنظیم نشده</option>
                 <option value="kavenegar">کاوه‌نگار (Kavenegar.com)</option>
                 <option value="ippanel">آی‌پی‌پنل (IPPanel.com)</option>
                 <option value="ghasedak">قاصدک (Ghasedak.io)</option>
