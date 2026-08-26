@@ -47,14 +47,14 @@ git config --global http.postBuffer 524288000
 
 # ۲) رفتن به پوشه وب و دانلود مستقیم فایل zip پروژه:
 mkdir -p /var/www && cd /var/www
-rm -rf bourse-analyzer app.zip bourse-analyzer-main
-curl -k -L https://github.com/jomardi132-maker/bourse-analyzer/archive/refs/heads/main.zip -o app.zip
+rm -rf boursnegar app.zip boursnegar-main
+curl -k -L https://github.com/jomardi132-maker/boursnegar/archive/refs/heads/main.zip -o app.zip
 
 # ۳) آنزیپ کردن و ورود به پوشه پروژه:
 apt install unzip -y
 unzip app.zip
-mv bourse-analyzer-main bourse-analyzer
-cd bourse-analyzer
+mv boursnegar-main boursnegar
+cd boursnegar
 
 # ۴) نصب پکیج‌ها، بیلد پروژه و اجرای پایدار با PM2:
 npm install
@@ -103,11 +103,11 @@ pm2 startup`,
       ],
       commandCode: `# ۱) دانلود آخرین نسخه آپدیت‌شده کدها و بیلد مجدد:
 cd /var/www
-rm -rf app.zip bourse-analyzer-main
-curl -k -L https://github.com/jomardi132-maker/bourse-analyzer/archive/refs/heads/main.zip -o app.zip
+rm -rf app.zip boursnegar-main
+curl -k -L https://github.com/jomardi132-maker/boursnegar/archive/refs/heads/main.zip -o app.zip
 unzip -o app.zip
-cp -r bourse-analyzer-main/* bourse-analyzer/
-cd /var/www/bourse-analyzer
+cp -r boursnegar-main/* boursnegar/
+cd /var/www/boursnegar
 npm run build
 
 # ۲) اجرای برنامه با PM2 و ریستارت Nginx:

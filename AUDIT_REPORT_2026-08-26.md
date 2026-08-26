@@ -121,4 +121,6 @@
 
 fallbackهای legacy برای peer، رویدادهای شرکتی و تحلیل سفارشی نیز غیرفعال شدند؛ نبود دادهٔ معتبر اکنون به خروجی خالی/پیام کمبود داده تبدیل می‌شود. release نهایی این اصلاح `20260826T063347Z-disable-legacy-fallbacks` است؛ PM2، health/ready، Nginx و endpointهای اصلی بازار پس از انتشار موفق بودند. backup و rollback در `/var/backups/boursnegar/20260826T063347Z-disable-legacy-fallbacks` قرار دارد.
 
+در انتشار تکمیلی `20260826T102500Z-legacy-path-cleanup`، راهنمای سرور از ارجاع به `bourse-analyzer` پاک شد و اسکریپت استقرار منسوخ ایمیل حذف شد؛ release با کپی کامل وابستگی‌های release سالم ساخته شد، PM2 online، `readyz` و گیت نهایی PASS و endpointهای اصلی عمومی HTTP 200 هستند. backup در `/var/backups/boursnegar/20260826T102500Z-legacy-path-cleanup` ثبت شد.
+
 ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.

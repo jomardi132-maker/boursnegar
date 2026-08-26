@@ -18,7 +18,7 @@ while IFS="=" read -r key value; do
       if [ -n "$value" ]; then echo "$key=SET"; else echo "$key=EMPTY"; fi
       ;;
   esac
-done </var/www/bourse-analyzer/.env
-stat -c '%a %n' /var/www/bourse-analyzer/.env /var/www/bourse-analyzer/.env.20260811T081537Z.bak
+done </var/www/boursnegar-shared/web.env
+stat -c '%a %n' /var/www/boursnegar-shared/web.env
 curl -fsS https://boursnegar.ir/healthz
 curl -fsS https://boursnegar.ir/readyz

@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import { createPasswordReset } from '../server/auth';
 import { sendPasswordResetEmail } from '../server/mailer';
 
-dotenv.config({ path: '/var/www/bourse-analyzer/.env', quiet: true });
+dotenv.config({ path: '/var/www/boursnegar-shared/web.env', quiet: true });
 const recipientPath = '/tmp/boursnegar-test-email.input';
 const tokenPath = '/tmp/boursnegar-e2e-reset-token';
 const recipient = fs.readFileSync(recipientPath, 'utf8').trim();

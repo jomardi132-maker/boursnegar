@@ -2,7 +2,7 @@
 set -euo pipefail
 value="${1:-false}"
 case "$value" in true|false) ;; *) exit 2;; esac
-env_file=/var/www/bourse-analyzer/.env
+env_file=/var/www/boursnegar-shared/web.env
 tmp="$(mktemp)"
 awk -F= '$1!="EMAIL_ENABLED"' "$env_file" >"$tmp"
 printf 'EMAIL_ENABLED=%s\n' "$value" >>"$tmp"

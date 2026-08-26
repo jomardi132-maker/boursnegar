@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 
-dotenv.config({ path: '/var/www/bourse-analyzer/.env', quiet: true });
+dotenv.config({ path: '/var/www/boursnegar-shared/web.env', quiet: true });
 const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM'];
 if (required.some((key) => !process.env[key])) throw new Error('SMTP_CONFIG_INCOMPLETE');
 const port = Number(process.env.SMTP_PORT);

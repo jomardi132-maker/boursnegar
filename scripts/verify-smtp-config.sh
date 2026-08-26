@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd /var/www/bourse-analyzer
+cd /var/www/boursnegar-current
 
 for key in SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD SMTP_FROM; do
   value="$(sed -n "s/^${key}=//p" .env | tail -1)"

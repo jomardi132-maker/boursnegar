@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 
-dotenv.config({ path: '/var/www/bourse-analyzer/.env', quiet: true });
+dotenv.config({ path: '/var/www/boursnegar-shared/web.env', quiet: true });
 const recipient = fs.readFileSync('/tmp/boursnegar-test-email.input', 'utf8').trim();
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new Error('INVALID_TEST_RECIPIENT');
 const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM'];

@@ -35,9 +35,9 @@ SQL
 
 test "$(systemctl is-active boursnegar-data-service.service)" = active
 pm2 pid bourse-app | grep -Eq '^[1-9][0-9]*$'
-flag="$(sed -n 's/^EMAIL_ENABLED=//p' /var/www/bourse-analyzer/.env | tail -1)"
+flag="$(sed -n 's/^EMAIL_ENABLED=//p' /var/www/boursnegar-shared/web.env | tail -1)"
 test "$flag" = true
-test "$(stat -c '%a' /var/www/bourse-analyzer/.env)" = 600
+test "$(stat -c '%a' /var/www/boursnegar-shared/web.env)" = 600
 
 echo PM2=PASS
 echo FASTAPI=PASS
