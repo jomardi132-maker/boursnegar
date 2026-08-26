@@ -59,7 +59,7 @@ body{background:#07110e!important;color:#eaf7ef!important;background-image:linea
 .comment-form textarea{background:#07110e;color:#eaf7ef;border-color:#315448}
 .comment-list article{border-color:#29483e}
 .comment-list article p{color:#dbece3}
-@media(max-width:760px){.market-summary,.leader-grid{grid-template-columns:1fr}.screener-table{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:760px){.market-summary,.leader-grid{grid-template-columns:1fr}.screener-table{display:block;overflow-x:auto;white-space:nowrap;direction:ltr}.screener-table table{direction:rtl}}
 
 .fundamental-dashboard{max-width:1280px;margin:0 auto;padding:32px 24px 74px;color:#eaf7ef}
 .fundamental-dashboard__header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:18px}
