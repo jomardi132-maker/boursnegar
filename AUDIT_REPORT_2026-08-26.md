@@ -115,4 +115,6 @@
 
 برای جلوگیری از false positive امنیتی، نام‌های secret-like در تنظیمات legacy SMS نیز به فیلدهای عمومی و بدون مقدار پیش‌فرض تغییر یافتند؛ provider، شمارهٔ خط، الگوی OTP و credential تا زمان اتصال API واقعی تنظیم‌نشده می‌مانند. این نسخه در release `20260826T062846Z-legacy-config-hardening` با backup/rollback متناظر منتشر شد و endpointهای اصلی HTTP 200 باقی ماندند.
 
+آخرین همسان‌سازی همین تنظیمات در release `20260826T063128Z-legacy-empty-config` انجام شد؛ backup و rollback متناظر ساخته شد و PM2، `/healthz`، `/readyz` و تست syntax Nginx موفق بودند.
+
 ممیزی مستقیم درخت GitHub نیز انجام شد: هر دو branch دارای ۲۰۵ فایل tracked، درخت کامل و بدون truncation هستند و این تعداد با checkout لوکال یکسان است. مواردی که صرفاً به‌دلیل نام حساس علامت‌گذاری شدند `web/.env.example`، migration احراز هویت و اسکریپت تست reset password هستند؛ secret واقعی در درخت دیده نشد و `.env` با `.gitignore` پوشش داده شده است.
