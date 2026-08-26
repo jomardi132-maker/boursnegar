@@ -7,6 +7,9 @@ SCHEMA='''CREATE TABLE IF NOT EXISTS notices(symbol TEXT NOT NULL,tracing_no TEX
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
  p=argparse.ArgumentParser(); p.add_argument('--db',required=True); p.add_argument('--artifact',action='append',required=True); a=p.parse_args(); db=sqlite3.connect(a.db); db.executescript(SCHEMA); notices=facts=0
+ for column, definition in (('source_path', 'TEXT'), ('records', 'INTEGER'), ('created_at', 'TEXT')):
+  try: db.execute(f'ALTER TABLE runs ADD COLUMN {column} {definition}')
+  except sqlite3.OperationalError: pass
  for root_name in a.artifact:
   root=Path(root_name); count=0
   for jf in root.rglob('*.jsonl'):
@@ -24,9 +27,17 @@ def main():
      db.execute('INSERT OR IGNORE INTO notice_events VALUES(?,?,?,?,?,?,?,?)',(x.get('symbol',''),str(x.get('tracing_no')),x['notice_type'],x.get('title'),x.get('published_at_jalali'),x.get('period_end_jalali'),json.dumps(x.get('raw_payload'),ensure_ascii=False),checksum))
     count+=1
   cols={row[1] for row in db.execute('PRAGMA table_info(runs)')}
+  source_path = str(root.resolve())
+  summary = json.dumps({'source_path':source_path,'records':count},ensure_ascii=False)
   if {'source_path','records','created_at'} <= cols:
-   db.execute('INSERT OR IGNORE INTO runs(source_path,records,created_at) VALUES(?,?,datetime(\'now\'))',(str(root),count))
+   if not db.execute('SELECT 1 FROM runs WHERE source_path=?', (source_path,)).fetchone():
+    if {'started_at','finished_at','status','stage','summary'} <= cols:
+     db.execute('INSERT INTO runs(source_path,records,created_at,started_at,finished_at,status,stage,summary) VALUES(?,?,datetime(\'now\'),datetime(\'now\'),datetime(\'now\'),\'PASSED\',\'local-artifact-import\',?)',(source_path,count,summary))
+    else:
+     db.execute('INSERT INTO runs(source_path,records,created_at) VALUES(?,?,datetime(\'now\'))',(source_path,count))
   else:
-   db.execute('INSERT OR IGNORE INTO runs(started_at,finished_at,status,stage,summary) VALUES(datetime(\'now\'),datetime(\'now\'),\'PASSED\',\'local-artifact-import\',?)',(json.dumps({'source_path':str(root),'records':count},ensure_ascii=False),))
+   existing = db.execute("SELECT 1 FROM runs WHERE stage='local-artifact-import' AND summary=?", (summary,)).fetchone() if 'summary' in cols and 'stage' in cols else None
+   if not existing:
+    db.execute('INSERT OR IGNORE INTO runs(started_at,finished_at,status,stage,summary) VALUES(datetime(\'now\'),datetime(\'now\'),\'PASSED\',\'local-artifact-import\',?)',(summary,))
  db.commit(); print(json.dumps({'db':a.db,'new_notices':notices,'new_facts':facts},ensure_ascii=False))
 if __name__=='__main__': main()
