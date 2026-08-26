@@ -70,7 +70,10 @@ class State:
                 return []
     def artifact_summary(self):
         try:
-            return dict(self.db.execute('SELECT status,COUNT(*) FROM artifact_files GROUP BY status'))
+            summary = dict(self.db.execute('SELECT status,COUNT(*) FROM artifact_files GROUP BY status'))
+            for suffix in ('pdf', 'html', 'htm'):
+                summary[suffix] = self.db.execute("SELECT COUNT(*) FROM artifact_files WHERE role='DOCUMENT' AND lower(path) LIKE ?", (f'%.{suffix}',)).fetchone()[0]
+            return summary
         except sqlite3.OperationalError:
             return {}
     def parse_summary(self):
@@ -112,19 +115,31 @@ def discover_remote(target, log):
             rows.append({'industry':parts[0],'symbol':parts[1],'raw_count':raw,'standard_count':standard,'period_count':period,'status':status})
     return rows
 class App:
+    @staticmethod
+    def shape_static_text(widget):
+        """Apply Arabic shaping to Tk widgets while keeping model values logical."""
+        try:
+            text = widget.cget('text')
+            if text and any('\u0600' <= ch <= '\u06ff' for ch in str(text)):
+                widget.configure(text=fa(text))
+        except tk.TclError:
+            pass
+        for child in widget.winfo_children():
+            App.shape_static_text(child)
+
     def __init__(self,root,state,target):
         if not arabic_reshaper: raise RuntimeError('برای نمایش صحیح فارسی، وابستگی‌های arabic-reshaper و python-bidi را نصب کنید')
-        self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold)
+        self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold); root.option_add('*Font', self.font); root.tk.call('tk', 'scaling', 1.15)
         self.search_var=tk.StringVar(); self.industry_var=tk.StringVar(value='همه صنایع'); self.status_var=tk.StringVar(value='همه وضعیت‌ها'); self.gap_var=tk.StringVar(value='همه کمبودها'); self.summary_var=tk.StringVar(); self.file_search_var=tk.StringVar(); self.file_role_var=tk.StringVar(value='همه انواع'); self.file_status_var=tk.StringVar(value='همه وضعیت‌ها'); self.file_summary_var=tk.StringVar()
         notebook=ttk.Notebook(root); notebook.pack(fill='both',expand=True,padx=8,pady=8); symbols_tab=ttk.Frame(notebook); files_tab=ttk.Frame(notebook); notebook.add(symbols_tab,text='وضعیت نمادها'); notebook.add(files_tab,text='دفترکل فایل‌های محلی')
         filters=ttk.Frame(symbols_tab); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=18); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(8,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=20); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='وضعیت:').pack(side='right',padx=(8,2)); self.status_box=ttk.Combobox(filters,textvariable=self.status_var,state='readonly',values=('همه وضعیت‌ها','کامل','قابل‌مقایسه','ناقص'),width=13); self.status_box.pack(side='right'); self.status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='کمبود:').pack(side='right',padx=(8,2)); self.gap_box=ttk.Combobox(filters,textvariable=self.gap_var,state='readonly',width=18); self.gap_box.pack(side='right'); self.gap_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(symbols_tab,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
         self.tree=ttk.Treeview(symbols_tab,columns=('symbol','industry','status','percent','local','remote','gaps','error','ready','conflicts','unlinked'),show='headings',style='Persian.Treeview');
-        for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','تکمیل','محلی','سرور','کمبودها','خطا','آماده','تعارض','بی‌اتصال'),(110,180,110,75,80,80,240,260,80,80,80)): self.tree.heading(c,text=t,anchor='e'); self.tree.column(c,anchor='e',width=w)
+        for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','تکمیل','محلی','سرور','کمبودها','خطا','آماده','تعارض','بی‌اتصال'),(110,180,110,75,80,80,240,260,80,80,80)): self.tree.heading(c,text=fa(t),anchor='e'); self.tree.column(c,anchor='e',width=w)
         self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(symbols_tab); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='تکمیل محلی از کدال',command=lambda:self.run_auto(False)).pack(side='right',padx=5); ttk.Button(bar,text='تکمیل و ارسال به سرور',command=lambda:self.run_auto(True)).pack(side='right',padx=5); ttk.Button(bar,text='خروجی CSV',command=self.export_rows).pack(side='left'); ttk.Label(bar,text='اطلاعات فقط پس از کنترل کیفیت ارسال می‌شود.').pack(side='left',padx=12)
         file_filters=ttk.Frame(files_tab); file_filters.pack(fill='x',padx=8,pady=8); ttk.Label(file_filters,text='جست‌وجوی مسیر:').pack(side='right'); file_search=ttk.Entry(file_filters,textvariable=self.file_search_var,width=36); file_search.pack(side='right',padx=5); file_search.bind('<KeyRelease>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='نوع:').pack(side='right'); self.file_role_box=ttk.Combobox(file_filters,textvariable=self.file_role_var,state='readonly',width=14); self.file_role_box.pack(side='right',padx=5); self.file_role_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='وضعیت:').pack(side='right'); self.file_status_box=ttk.Combobox(file_filters,textvariable=self.file_status_var,state='readonly',width=14); self.file_status_box.pack(side='right',padx=5); self.file_status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Button(file_filters,text='بازخوانی دفترکل',command=self.scan_artifacts).pack(side='left'); ttk.Button(file_filters,text='ممیزی Excelهای بی‌مرجع',command=self.audit_orphans).pack(side='left',padx=5); ttk.Button(file_filters,text='خروجی صف بررسی',command=self.export_candidate_review).pack(side='left',padx=5)
         ttk.Label(files_tab,textvariable=self.file_summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3); self.file_tree=ttk.Treeview(files_tab,columns=('path','role','status','size','records','errors','imported','parse','symbol'),show='headings',style='Persian.Treeview');
-        for c,t,w in zip(self.file_tree['columns'],('مسیر','نوع','وضعیت','حجم','رکورد','خطای JSON','واردشده','نتیجه پردازش','نماد مستند'),(440,90,100,90,80,80,80,150,100)): self.file_tree.heading(c,text=t,anchor='e'); self.file_tree.column(c,anchor='e',width=w)
-        self.file_tree.pack(fill='both',expand=True,padx=8,pady=8); self.logbox=tk.Text(root,height=8,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='x',expand=False,padx=8,pady=8); self.refresh(); self.refresh_artifacts(); root.after(250,self.drain)
+        for c,t,w in zip(self.file_tree['columns'],('مسیر','نوع','وضعیت','حجم','رکورد','خطای JSON','واردشده','نتیجه پردازش','نماد مستند'),(440,90,100,90,80,80,80,150,100)): self.file_tree.heading(c,text=fa(t),anchor='e'); self.file_tree.column(c,anchor='e',width=w)
+        self.file_tree.pack(fill='both',expand=True,padx=8,pady=8); self.logbox=tk.Text(root,height=8,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='x',expand=False,padx=8,pady=8); root.title(fa('کنسول ورود داده بورس‌نگار')); self.shape_static_text(root); self.refresh(); self.refresh_artifacts(); root.after(250,self.drain)
     def log(self,s): self.events.put(('log',s))
     def refresh(self):
         for x in self.tree.get_children(): self.tree.delete(x)
@@ -139,7 +154,7 @@ class App:
             visible.append(row)
         labels={'complete':'کامل','comparable':'قابل‌مقایسه','incomplete':'ناقص','unknown':'نامشخص'}
         for row in visible:
-            values=list(row); values[2]=labels.get(values[2],values[2]); standard=max(0,int(row[3] or 0)); periods=max(0,int(row[4] or 0)); values.insert(3,f'{min(100,round(standard*70/7+periods*30/2))}%'); self.tree.insert('', 'end', values=values)
+            values=list(row); values[2]=labels.get(values[2],values[2]); standard=max(0,int(row[3] or 0)); periods=max(0,int(row[4] or 0)); values.insert(3,f'{min(100,round(standard*70/7+periods*30/2))}%'); self.tree.insert('', 'end', values=tuple(fa(value) for value in values))
         counts={key:sum(1 for r in rows if r[2]==key) for key in ('complete','comparable','incomplete')}; total=len(rows); pct=(counts['complete']*100/total) if total else 0
         self.summary_var.set(f'کل: {total} | کامل: {counts["complete"]} | قابل‌مقایسه: {counts["comparable"]} | ناقص: {counts["incomplete"]} | تکمیل کامل: {pct:.1f}% | نمایش: {len(visible)}')
     def refresh_artifacts(self):
@@ -151,8 +166,8 @@ class App:
             if selected_role!='همه انواع' and row[1]!=selected_role: continue
             if selected_status!='همه وضعیت‌ها' and row[2]!=selected_status: continue
             visible.append(row)
-        for row in visible[:5000]: self.file_tree.insert('', 'end', values=row)
-        counts=self.state.artifact_summary(); parsed=self.state.parse_summary(); candidates=self.state.candidate_summary(); self.file_summary_var.set(f'کل فایل: {len(rows)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | Excel دارای fact: {parsed.get("PARSED_WITH_FACTS",0)} | آماده نرمال‌سازی: {candidates.get("READY_FOR_NORMALIZATION",0)} | منتظر اتصال: {candidates.get("READY_FOR_LINKAGE",0)} | تکراری: {candidates.get("DUPLICATE_EXISTING",0)} | تعارض: {candidates.get("NEEDS_DISAMBIGUATION",0)} | نمایش: {min(len(visible),5000)}')
+        for row in visible[:5000]: self.file_tree.insert('', 'end', values=tuple(fa(value) for value in row))
+        counts=self.state.artifact_summary(); parsed=self.state.parse_summary(); candidates=self.state.candidate_summary(); self.file_summary_var.set(f'کل فایل: {len(rows)} | PDF: {counts.get("pdf",0)} | HTML: {counts.get("html",0)+counts.get("htm",0)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | Excel دارای fact: {parsed.get("PARSED_WITH_FACTS",0)} | آماده نرمال‌سازی: {candidates.get("READY_FOR_NORMALIZATION",0)} | منتظر اتصال: {candidates.get("READY_FOR_LINKAGE",0)} | تکراری: {candidates.get("DUPLICATE_EXISTING",0)} | تعارض: {candidates.get("NEEDS_DISAMBIGUATION",0)} | نمایش: {min(len(visible),5000)}')
     def scan_artifacts(self):
         def work():
             cmd=['python3',str(ROOT/'data-service/scripts/reconcile_local_artifacts.py'),'--db',str(self.state.path)]
@@ -203,6 +218,11 @@ class App:
             except Exception as e:self.log('RUN ERROR '+str(e))
         threading.Thread(target=work,daemon=True).start()
     def run_auto(self, send):
+        if send and not messagebox.askyesno(
+            fa('ارسال کنترل‌شده'),
+            fa('فقط artifactهای تأییدشده و قابل‌نرمال‌سازی به سرور ارسال می‌شوند. ادامه می‌دهید؟'),
+        ):
+            return
         def work():
             cmd=[str(ROOT/'data-service/venv/bin/python'),str(ROOT/'data-service/scripts/auto_local_to_production.py'),'--to-jalali',current_jalali(),'--limit','1524','--apply','--allow-download']
             if not send: cmd.append('--skip-production')
