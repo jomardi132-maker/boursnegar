@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local Codalpy-first ingestion with browser fallback and artifact import."""
 from __future__ import annotations
-import argparse, json, subprocess, sys
+import argparse, json, os, subprocess, sys
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]; PYTHON=sys.executable
@@ -10,7 +10,8 @@ sys.path.insert(0, str(ROOT/'data-service'))
 def run(cmd,dry=False,timeout=None):
     print(json.dumps({'step':' '.join(map(str,cmd))},ensure_ascii=False),flush=True)
     if dry: return True
-    try: subprocess.run(cmd,cwd=ROOT,check=True,timeout=timeout)
+    env=os.environ.copy(); env['PYTHONPATH']=str(ROOT/'data-service')+((os.pathsep+env['PYTHONPATH']) if env.get('PYTHONPATH') else '')
+    try: subprocess.run(cmd,cwd=ROOT,check=True,timeout=timeout,env=env)
     except subprocess.TimeoutExpired:
         print(json.dumps({'step_timeout':timeout,'command':cmd[0]},ensure_ascii=False),flush=True); return False
     return True
