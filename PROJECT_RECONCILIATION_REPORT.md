@@ -63,6 +63,7 @@
 - branch protection و release manifest رسمی هنوز برای فرایند سازمانی پیشنهاد می‌شوند.
 - secret scan روی کل محتوای tracked همان commit با `gitleaks detect --no-git` انجام شد و `no leaks found` گزارش کرد.
 - در `2026-08-26` گزارش به commit `dede3a92` رسید و هر دو شاخهٔ GitHub (`main` و `agent/data-engine-v1`) با آن همگام شدند؛ کنترل معادل `REMOTE_FINAL_GATE` روی release فعال دوباره `PASS` شد.
+- smoke test عمومی در همان روز برای `/healthz`، `/readyz`، `/api/market/overview`، `/api/market/dashboard`، `/api/stocks/فولاد` و `/login` با HTTP 200 و همچنین سرویس‌های داخلی با `INTERNAL_SMOKE=PASS` انجام شد.
 
 ## ۵) اصلاحات انجام‌شده
 
