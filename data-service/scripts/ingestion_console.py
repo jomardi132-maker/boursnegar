@@ -68,15 +68,26 @@ def discover_remote(target, log):
     return rows
 class App:
     def __init__(self,root,state,target):
-        self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold); self.tree=ttk.Treeview(root,columns=('symbol','industry','status','local','remote','error'),show='headings',style='Persian.Treeview');
+        self.root=root; self.state=state; self.target=target; self.events=queue.Queue(); families=tkfont.families(root); family=next((x for x in ('Vazirmatn','Noto Sans Arabic','DejaVu Sans') if x in families),'DejaVu Sans'); self.font=tkfont.Font(root,family=family,size=11); self.bold=tkfont.Font(root,family=family,size=11,weight='bold'); style=ttk.Style(root); style.configure('Persian.Treeview',font=self.font,rowheight=30); style.configure('Persian.Treeview.Heading',font=self.bold)
+        self.search_var=tk.StringVar(); self.industry_var=tk.StringVar(value='همه صنایع'); self.summary_var=tk.StringVar()
+        filters=ttk.Frame(root); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=22); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(12,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=24); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(root,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
+        self.tree=ttk.Treeview(root,columns=('symbol','industry','status','local','remote','error'),show='headings',style='Persian.Treeview');
         for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','محلی','سرور','خطا'),(120,220,120,100,100,360)): self.tree.heading(c,text=t,anchor='e'); self.tree.column(c,anchor='e',width=w)
         self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(root); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='اجرای آزمایشی',command=lambda:self.run(False)).pack(side='right',padx=4); ttk.Button(bar,text='دریافت و import',command=lambda:self.run(True)).pack(side='right'); self.logbox=tk.Text(root,height=10,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='both',expand=False,padx=8,pady=8); self.refresh(); root.after(250,self.drain)
     def log(self,s): self.events.put(('log',s))
     def refresh(self):
         for x in self.tree.get_children(): self.tree.delete(x)
+        rows=self.state.rows(); industries=sorted({r[1] or 'نامشخص' for r in rows}); self.industry_box['values']=['همه صنایع']+industries
+        query=self.search_var.get().strip().casefold(); selected=self.industry_var.get(); visible=[]
+        for row in rows:
+            if query and query not in (row[0] or '').casefold(): continue
+            if selected!='همه صنایع' and (row[1] or 'نامشخص')!=selected: continue
+            visible.append(row)
         labels={'complete':'کامل','comparable':'قابل‌مقایسه','incomplete':'ناقص','unknown':'نامشخص'}
-        for row in self.state.rows():
+        for row in visible:
             values=list(row); values[2]=labels.get(values[2],values[2]); self.tree.insert('', 'end', values=values)
+        counts={key:sum(1 for r in rows if r[2]==key) for key in ('complete','comparable','incomplete')}; total=len(rows); pct=(counts['complete']*100/total) if total else 0
+        self.summary_var.set(f'کل: {total} | کامل: {counts["complete"]} | قابل‌مقایسه: {counts["comparable"]} | ناقص: {counts["incomplete"]} | تکمیل کامل: {pct:.1f}% | نمایش: {len(visible)}')
     def discover(self):
         def work():
             try: rows=discover_remote(self.target,self.log); self.state.upsert_symbols(rows); self.events.put(('refresh',None)); self.log(f'{len(rows)} symbols discovered')
