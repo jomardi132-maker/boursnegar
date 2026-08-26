@@ -24,6 +24,10 @@ def main() -> None:
         db.execute("ALTER TABLE symbols ADD COLUMN gap_summary TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+    try:
+        db.execute("ALTER TABLE symbols ADD COLUMN last_error TEXT")
+    except sqlite3.OperationalError:
+        pass
     rows = db.execute(
         """
         SELECT s.symbol,
