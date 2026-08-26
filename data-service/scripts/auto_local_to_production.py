@@ -32,6 +32,8 @@ def server_symbols(target):
 def aggregate_manifests(run_root, out, kind):
     out.mkdir(parents=True, exist_ok=True); records=[]; errors=[]
     for source in sorted(run_root.rglob(f'{kind}/*.jsonl')):
+        if source.parent.parent.name == 'aggregate':
+            continue
         for number, line in enumerate(source.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
             if not line.strip(): continue
             try: row=json.loads(line)
@@ -56,6 +58,8 @@ def aggregate_manifests(run_root, out, kind):
 def aggregate_events(run_root, out):
     out.mkdir(parents=True, exist_ok=True); records=[]
     for source in sorted(run_root.rglob('events/notice-events.jsonl')):
+        if source.parent.parent.name == 'aggregate':
+            continue
         for line in source.read_text(encoding='utf-8', errors='replace').splitlines():
             if not line.strip(): continue
             row=json.loads(line)
@@ -67,6 +71,15 @@ def aggregate_events(run_root, out):
               'files':[{'path':target.name,'records':len(records),'sha256':sha256(target)}],'errors':[]}
     (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     return manifest
+
+def symbol_run_root(run_root: Path, symbol: str) -> Path:
+    """Reuse the newest checkpoint for a symbol across interrupted runs."""
+    candidates = sorted(
+        (p / symbol for p in run_root.iterdir() if p.is_dir() and (p / symbol).is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else run_root
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
@@ -87,7 +100,9 @@ def main():
         raise SystemExit('Local completion may fetch data; pass --allow-download explicitly')
     if not args.skip_local:
         for symbol in selected:
-            target=run_root/symbol
+            target=symbol_run_root(Path(args.run_root).resolve(), symbol)/symbol
+            if target.parent == Path(args.run_root).resolve():
+                target=run_root/symbol
             cmd=[PYTHON,'data-service/scripts/daily_local_ingestion.py','--symbol',symbol,'--from-jalali',args.from_jalali,'--to-jalali',args.to_jalali,
                  '--out',str(target),'--local-db',str(db),'--codalpy-first','--download-documents','--professional-documents','--defer-pdf']
             run(cmd,timeout=1800)
@@ -97,10 +112,11 @@ def main():
         if (codal_dir/'manifest.json').exists():
             run([PYTHON,'data-service/scripts/build_local_codal_db.py','--db',str(db),'--artifact',str(codal_dir)])
     manifests=[]
+    aggregate_root=Path(args.run_root).resolve()
     for kind in ('codalpy','normalized'):
-        manifest=aggregate_manifests(run_root,run_root/'aggregate'/kind,kind)
+        manifest=aggregate_manifests(aggregate_root,run_root/'aggregate'/kind,kind)
         if manifest['files'][0]['records']: manifests.append(manifest)
-    events_manifest=aggregate_events(run_root,run_root/'aggregate/events')
+    events_manifest=aggregate_events(aggregate_root,run_root/'aggregate/events')
     if events_manifest['files'][0]['records']: manifests.append(events_manifest)
     if not manifests:
         print(json.dumps({'status':'no-new-normalized-records','run_root':str(run_root)},ensure_ascii=False)); return
