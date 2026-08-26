@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pandas as pd
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
@@ -29,6 +31,13 @@ class OrphanDocumentAuditTest(unittest.TestCase):
             self.assertEqual(
                 MODULE.batch_symbol(document), ('فملی', 'unique_symbol_in_sibling_capture')
             )
+
+    def test_value_period_comes_from_the_same_numeric_column(self):
+        columns = pd.MultiIndex.from_tuples([
+            ('شرح', 'شرح'), ('دوره منتهی به ۱۴۰۴/۱۲/۲۹', 'حسابرسی شده')
+        ])
+        frame = pd.DataFrame([['درآمد عملیاتی', '۱۲۳']], columns=columns)
+        self.assertEqual(MODULE.parse_financial_statement.__globals__['_value_column_period'](frame), '1404/12/29')
 
 
 if __name__ == '__main__':

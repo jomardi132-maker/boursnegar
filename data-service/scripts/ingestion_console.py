@@ -60,6 +60,11 @@ class State:
             return dict(self.db.execute('SELECT status,COUNT(*) FROM artifact_parse_results GROUP BY status'))
         except sqlite3.OperationalError:
             return {}
+    def candidate_summary(self):
+        try:
+            return dict(self.db.execute('SELECT status,COUNT(*) FROM orphan_fact_candidates GROUP BY status'))
+        except sqlite3.OperationalError:
+            return {}
     def run(self,stage,fn):
         cur=self.db.execute('INSERT INTO runs(started_at,status,stage) VALUES(?,?,?)',(now(),'RUNNING',stage)); rid=cur.lastrowid; self.db.commit()
         try: result=fn(); self.db.execute('UPDATE runs SET finished_at=?,status=?,summary=? WHERE id=?',(now(),'PASSED',json.dumps(result,ensure_ascii=False),rid)); self.db.commit(); return result
@@ -128,7 +133,7 @@ class App:
             if selected_status!='همه وضعیت‌ها' and row[2]!=selected_status: continue
             visible.append(row)
         for row in visible[:5000]: self.file_tree.insert('', 'end', values=row)
-        counts=self.state.artifact_summary(); parsed=self.state.parse_summary(); self.file_summary_var.set(f'کل: {len(rows)} | تأیید: {counts.get("VERIFIED",0)} | واردشده: {counts.get("IMPORTED",0)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | Excel دارای fact: {parsed.get("PARSED_WITH_FACTS",0)} | بدون fact هسته‌ای: {parsed.get("PARSED_NO_CORE_FACTS",0)} | خطای parse: {parsed.get("PARSE_FAILED",0)} | نمایش: {min(len(visible),5000)}')
+        counts=self.state.artifact_summary(); parsed=self.state.parse_summary(); candidates=self.state.candidate_summary(); self.file_summary_var.set(f'کل فایل: {len(rows)} | بی‌مرجع: {counts.get("DISCOVERED",0)} | Excel دارای fact: {parsed.get("PARSED_WITH_FACTS",0)} | آماده اتصال: {candidates.get("READY_FOR_LINKAGE",0)} | تکراری: {candidates.get("DUPLICATE_EXISTING",0)} | تعارض: {candidates.get("NEEDS_DISAMBIGUATION",0)} | خطای parse: {parsed.get("PARSE_FAILED",0)} | نمایش: {min(len(visible),5000)}')
     def scan_artifacts(self):
         def work():
             cmd=['python3',str(ROOT/'data-service/scripts/reconcile_local_artifacts.py'),'--db',str(self.state.path)]

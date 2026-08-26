@@ -159,6 +159,15 @@ def _extract_keys_from_table(df, keys) -> dict:
     return local
 
 
+def _value_column_period(df) -> str | None:
+    """Extract the explicit period attached to the first numeric value column."""
+    if df.shape[1] < 2:
+        return None
+    column = df.columns[1]
+    text = ' '.join(str(part) for part in column) if isinstance(column, tuple) else str(column)
+    return extract_period_end_jalali(text)
+
+
 def _find_consistent_balance_sheet(tables) -> tuple[dict, int | None]:
     """
     صورت مالی کدال معمولاً هم نسخه‌ی تلفیقی و هم نسخه‌ی شرکت اصلی رو
@@ -224,6 +233,7 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
     result = {key: None for key in TARGET_ITEMS}
     found_items = set()
     source_tables = {}
+    source_periods = {}
 
     bs_values, bs_table_idx = _find_consistent_balance_sheet(tables)
     for key, value in bs_values.items():
@@ -231,6 +241,7 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
         found_items.add(key)
     if bs_table_idx is not None:
         source_tables["balance_sheet_table_index"] = bs_table_idx
+        source_periods["balance_sheet"] = _value_column_period(tables[bs_table_idx])
 
     is_values, is_table_idx = _find_consistent_income_statement(tables)
     for key, value in is_values.items():
@@ -238,6 +249,7 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
         found_items.add(key)
     if is_table_idx is not None:
         source_tables["income_statement_table_index"] = is_table_idx
+        source_periods["income_statement"] = _value_column_period(tables[is_table_idx])
 
     # اقلامی که هنوز پیدا نشدن (مثل جریان نقد عملیاتی) رو با جست‌وجوی
     # سراسری (بدون چک اتحاد حسابداری، چون تنها یک قلمه) امتحان می‌کنیم
@@ -259,6 +271,7 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
         "missing_items": sorted(set(TARGET_ITEMS.keys()) - found_items),
         "tables_scanned": len(tables),
         "source_tables": source_tables,
+        "source_periods": source_periods,
     }
 
 
