@@ -73,7 +73,7 @@ class App:
         filters=ttk.Frame(root); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=22); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(12,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=24); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(root,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
         self.tree=ttk.Treeview(root,columns=('symbol','industry','status','local','remote','error'),show='headings',style='Persian.Treeview');
         for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','محلی','سرور','خطا'),(120,220,120,100,100,360)): self.tree.heading(c,text=t,anchor='e'); self.tree.column(c,anchor='e',width=w)
-        self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(root); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='اجرای آزمایشی',command=lambda:self.run(False)).pack(side='right',padx=4); ttk.Button(bar,text='دریافت و import',command=lambda:self.run(True)).pack(side='right'); self.logbox=tk.Text(root,height=10,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='both',expand=False,padx=8,pady=8); self.refresh(); root.after(250,self.drain)
+        self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(root); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='آزمایشی انتخاب‌شده',command=lambda:self.run(False,True)).pack(side='right',padx=4); ttk.Button(bar,text='ارسال انتخاب‌شده',command=lambda:self.run(True,True)).pack(side='right',padx=4); ttk.Button(bar,text='آزمایشی همه ناقص',command=lambda:self.run(False)).pack(side='right',padx=4); ttk.Button(bar,text='دریافت و import ناقص‌ها',command=lambda:self.run(True)).pack(side='right'); self.logbox=tk.Text(root,height=10,font=self.font,wrap='word'); self.logbox.tag_configure('rtl',justify='right'); self.logbox.pack(fill='both',expand=False,padx=8,pady=8); self.refresh(); root.after(250,self.drain)
     def log(self,s): self.events.put(('log',s))
     def refresh(self):
         for x in self.tree.get_children(): self.tree.delete(x)
@@ -93,12 +93,15 @@ class App:
             try: rows=discover_remote(self.target,self.log); self.state.upsert_symbols(rows); self.events.put(('refresh',None)); self.log(f'{len(rows)} symbols discovered')
             except Exception as e:self.log('DISCOVER ERROR '+str(e))
         threading.Thread(target=work,daemon=True).start()
-    def run(self,do_import):
-        symbols=[r[0] for r in self.state.rows() if r[0]]
+    def run(self,do_import,selected_only=False):
+        selected={self.tree.item(item,'values')[0] for item in self.tree.selection()} if selected_only else None
+        symbols=[r[0] for r in self.state.rows() if r[0] and (selected is None or r[0] in selected)]
+        if selected_only and not symbols:
+            messagebox.showwarning('نمادها','ابتدا یک یا چند نماد را در جدول انتخاب کنید'); return
         if not symbols: messagebox.showwarning('نمادها','ابتدا بررسی سرور را اجرا کنید'); return
         def work():
             out=ROOT/'artifacts'/'console-run'; cmd=[str(ROOT/'data-service'/'venv'/'bin'/'python'),str(ROOT/'data-service/scripts/daily_local_ingestion.py')]
-            symbols=[r[0] for r in self.state.rows() if r[0] and r[2] != 'complete']
+            symbols=[r[0] for r in self.state.rows() if r[0] and r[2] != 'complete' and (selected is None or r[0] in selected)]
             for s in symbols: cmd += ['--symbol',s]
             cmd += ['--to-jalali',current_jalali(),'--out',str(out)]
             cmd.append('--download-documents')
