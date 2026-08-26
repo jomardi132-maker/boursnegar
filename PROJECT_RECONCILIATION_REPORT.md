@@ -36,6 +36,7 @@
 - batch معتبر v18 شمارهٔ ۰۰۴۰ نیز با checksum کامل منتقل شد: ۶ فایل، ۷۲۵۸ رکورد Codalpy و ۳۰۰ fact استاندارد، بدون validation error؛ پس از import گیت نهایی همچنان `PASS` بود.
 - batch معتبر v18 شمارهٔ ۰۰۱۴ نیز منتقل شد: ۶ فایل، ۱۹۶۷ رکورد Codalpy و ۱۴۴ fact استاندارد، بدون validation error؛ پس از import `REMOTE_FINAL_GATE=PASS` باقی ماند.
 - سه batch معتبر دیگر v18 (`۰۰۰۴`، `۰۰۲۶` و `۰۰۳۰`) نیز منتقل شدند: مجموعاً ۱٬۷۵۷ رکورد Codalpy و ۳۰۶ fact استاندارد، بدون validation error؛ پس از هر سه import گیت نهایی `PASS` بود.
+- یک batch معتبر کوچک از v16 (`۰۴۵۰`) نیز منتقل شد: ۴ فایل، ۴۷۸ رکورد و ۴۴ fact استاندارد، بدون validation error؛ پس از import گیت نهایی `PASS` بود.
 
 ## ۳) وضعیت سرور و Production
 
