@@ -25,6 +25,8 @@ except ModuleNotFoundError:
 def fa(value):
     """Shape Persian text for Tk, which has no Arabic shaping engine."""
     value = '' if value is None else str(value)
+    if not any('\u0600' <= ch <= '\u06ff' for ch in value):
+        return value
     if arabic_reshaper and get_display:
         return get_display(arabic_reshaper.reshape(value))
     return value
@@ -54,18 +56,22 @@ class State:
         self.db.executemany('INSERT INTO symbols(symbol,industry,status,last_remote_count,standard_count,period_count,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET industry=excluded.industry,status=excluded.status,last_remote_count=excluded.last_remote_count,standard_count=excluded.standard_count,period_count=excluded.period_count,updated_at=excluded.updated_at',[(r['symbol'],r.get('industry'),r.get('status','incomplete'),r.get('raw_count',0),r.get('standard_count',0),r.get('period_count',0),now()) for r in rows]); self.db.commit()
     def rows(self):
         return self.db.execute('''SELECT s.symbol,s.industry,s.status,s.last_local_count,s.last_remote_count,s.gap_summary,s.last_error,
-            COALESCE((SELECT COUNT(*) FROM orphan_fact_candidates c WHERE c.inferred_symbol=s.symbol AND c.status='READY_FOR_NORMALIZATION'),0),
-            COALESCE((SELECT COUNT(*) FROM orphan_fact_candidates c WHERE c.inferred_symbol=s.symbol AND c.status='NEEDS_DISAMBIGUATION'),0),
-            COALESCE((SELECT COUNT(*) FROM orphan_fact_candidates c WHERE c.inferred_symbol=s.symbol AND c.status='READY_FOR_LINKAGE'),0)
-            FROM symbols s ORDER BY s.symbol''').fetchall()
+            COALESCE(c.ready,0),COALESCE(c.conflicts,0),COALESCE(c.unlinked,0)
+            FROM symbols s LEFT JOIN (
+              SELECT inferred_symbol,
+                SUM(CASE WHEN status='READY_FOR_NORMALIZATION' THEN 1 ELSE 0 END) ready,
+                SUM(CASE WHEN status='NEEDS_DISAMBIGUATION' THEN 1 ELSE 0 END) conflicts,
+                SUM(CASE WHEN status='READY_FOR_LINKAGE' THEN 1 ELSE 0 END) unlinked
+              FROM orphan_fact_candidates GROUP BY inferred_symbol
+            ) c ON c.inferred_symbol=s.symbol ORDER BY s.symbol''').fetchall()
     def artifact_rows(self):
         try:
             return self.db.execute('''SELECT f.path,f.role,f.status,f.size_bytes,f.json_records,f.json_errors,
                 f.imported_rows,COALESCE(p.status,''),COALESCE(p.inferred_symbol,'')
-                FROM artifact_files f LEFT JOIN artifact_parse_results p ON p.path=f.path ORDER BY f.path''').fetchall()
+                FROM artifact_files f LEFT JOIN artifact_parse_results p ON p.path=f.path ORDER BY f.path LIMIT 5000''').fetchall()
         except sqlite3.OperationalError:
             try:
-                return [tuple(row)+('','') for row in self.db.execute('SELECT path,role,status,size_bytes,json_records,json_errors,imported_rows FROM artifact_files ORDER BY path')]
+                return [tuple(row)+('','') for row in self.db.execute('SELECT path,role,status,size_bytes,json_records,json_errors,imported_rows FROM artifact_files ORDER BY path LIMIT 5000')]
             except sqlite3.OperationalError:
                 return []
     def artifact_summary(self):
