@@ -24,7 +24,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
   const [smsProvider, setSmsProvider] = useState<NonNullable<SmsGatewayConfig['serviceProvider']>>('unconfigured');
   const [apiCredentialInput, setApiCredentialInput] = useState(stats.serviceConfig.serviceValue ?? '');
-  const [patternInput, setPatternInput] = useState(stats.smsGateway.otpPatternCode ?? '');
+  const [patternInput, setPatternInput] = useState(stats.serviceConfig.otpPatternCode ?? '');
   const [saveNotice, setSaveNotice] = useState(false);
 
   if (!isOpen) return null;
