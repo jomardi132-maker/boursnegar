@@ -234,7 +234,7 @@ export interface AdminStats {
   vipUsers: number;
   totalAnalysesCount: number;
   totalRevenueToman: number;
-  serviceConfig: SmsGatewayConfig;
+  data?: SmsGatewayConfig;
 }
 
 export interface StockHealthCardData {

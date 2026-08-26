@@ -18,13 +18,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     vipUsers: 0,
     totalAnalysesCount: 0,
     totalRevenueToman: 0,
-    serviceConfig: {
-    },
   });
 
   const [smsProvider, setSmsProvider] = useState<NonNullable<SmsGatewayConfig['serviceProvider']>>('unconfigured');
-  const [apiCredentialInput, setApiCredentialInput] = useState(stats.serviceConfig.serviceValue ?? '');
-  const [patternInput, setPatternInput] = useState(stats.serviceConfig.otpPatternCode ?? '');
+  const [apiCredentialInput, setApiCredentialInput] = useState(stats.data?.serviceValue ?? '');
+  const [patternInput, setPatternInput] = useState(stats.data?.otpPatternCode ?? '');
   const [saveNotice, setSaveNotice] = useState(false);
 
   if (!isOpen) return null;
@@ -33,7 +31,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     e.preventDefault();
     setStats({
       ...stats,
-      serviceConfig: {
+      data: {
         serviceProvider: smsProvider,
         serviceValue: apiCredentialInput,
         otpPatternCode: patternInput,
