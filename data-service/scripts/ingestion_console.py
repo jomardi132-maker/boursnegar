@@ -60,7 +60,11 @@ def discover_remote(target, log):
     for line in out.splitlines():
         parts=line.split('|')
         if len(parts)>=5:
-            raw,standard,period=map(int,parts[2:5]); rows.append({'industry':parts[0],'symbol':parts[1],'raw_count':raw,'standard_count':standard,'period_count':period,'status':'complete' if standard>=4 and period>=1 else 'incomplete'})
+            raw,standard,period=map(int,parts[2:5]);
+            # Keep the operator state aligned with the evidence-based audit tiers:
+            # core facts alone are not a complete comparable history.
+            status = 'complete' if standard >= 7 and period >= 2 else ('comparable' if period >= 2 else 'incomplete')
+            rows.append({'industry':parts[0],'symbol':parts[1],'raw_count':raw,'standard_count':standard,'period_count':period,'status':status})
     return rows
 class App:
     def __init__(self,root,state,target):
@@ -70,7 +74,9 @@ class App:
     def log(self,s): self.events.put(('log',s))
     def refresh(self):
         for x in self.tree.get_children(): self.tree.delete(x)
-        for row in self.state.rows(): self.tree.insert('', 'end', values=row)
+        labels={'complete':'کامل','comparable':'قابل‌مقایسه','incomplete':'ناقص','unknown':'نامشخص'}
+        for row in self.state.rows():
+            values=list(row); values[2]=labels.get(values[2],values[2]); self.tree.insert('', 'end', values=values)
     def discover(self):
         def work():
             try: rows=discover_remote(self.target,self.log); self.state.upsert_symbols(rows); self.events.put(('refresh',None)); self.log(f'{len(rows)} symbols discovered')
