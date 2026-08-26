@@ -59,8 +59,12 @@ SELECT
  (SELECT count(*) FROM daily_prices WHERE quality_status='VALID') valid_prices,
  (SELECT count(*) FROM codalpy_records) raw_codal_records,
  (SELECT count(*) FROM codalpy_records WHERE symbol IS NOT NULL) linked_codal_records,
+ (SELECT count(*) FROM codalpy_records WHERE symbol IS NULL) unlinked_codal_records,
  (SELECT count(*) FROM codalpy_records WHERE output_type='monthly_activity') monthly_records,
- (SELECT count(*) FROM codalpy_records WHERE output_type='monthly_activity' AND symbol IS NOT NULL) linked_monthly_records
+ (SELECT count(*) FROM codalpy_records WHERE output_type='monthly_activity' AND symbol IS NOT NULL) linked_monthly_records,
+ (SELECT count(DISTINCT symbol) FROM codalpy_records WHERE output_type='income_statement' AND symbol IS NOT NULL) income_statement_symbols,
+ (SELECT count(DISTINCT symbol) FROM codalpy_records WHERE output_type='balance_sheet' AND symbol IS NOT NULL) balance_sheet_symbols,
+ (SELECT count(DISTINCT symbol) FROM codalpy_records WHERE output_type='monthly_activity' AND symbol IS NOT NULL) monthly_activity_symbols
 """)
 
 
