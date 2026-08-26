@@ -113,6 +113,7 @@ def main() -> None:
     cache: dict[Path, dict[tuple[str, str], set[str]]] = {}
     title_cache: dict[Path, dict[str, str]] = {}
     linked = ambiguous = missing = 0
+    value_linked = 0
     for raw_path, symbol, period, existing_tracing in rows:
         path = Path(raw_path)
         if not path.is_absolute():
@@ -123,6 +124,31 @@ def main() -> None:
             scope = 'consolidated' if title and 'تلفیقی' in title else ('separate' if title else None)
             db.execute('UPDATE artifact_parse_results SET report_title=?,report_scope=? WHERE path=?', (title, scope, raw_path))
             db.execute('UPDATE orphan_fact_candidates SET report_scope=? WHERE path=?', (scope, raw_path))
+            continue
+        candidate_values = {key: float(value) for key, value in db.execute(
+            'SELECT fact_key,value FROM orphan_fact_candidates WHERE path=?', (raw_path,)
+        ) if value not in (None, '')}
+        scores = {}
+        for tracing, key, value in db.execute(
+            'SELECT tracing_no,fact_key,value FROM facts WHERE symbol=? AND period_end_jalali=?', (symbol, period)
+        ):
+            if key in candidate_values:
+                try:
+                    if abs(float(value) - candidate_values[key]) < 1e-9:
+                        scores[tracing] = scores.get(tracing, 0) + 1
+                except (TypeError, ValueError):
+                    pass
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        if ranked and ranked[0][1] >= 2 and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
+            tracing = ranked[0][0]
+            evidence = json.dumps({'rule': 'unique_existing_fact_value_match', 'score': ranked[0][1], 'ranking': ranked}, ensure_ascii=False)
+            db.execute('UPDATE artifact_parse_results SET linked_tracing_no=?,linkage_evidence=? WHERE path=?', (tracing, evidence, raw_path))
+            db.execute('UPDATE orphan_fact_candidates SET tracing_no=?,linkage_evidence=? WHERE path=?', (tracing, evidence, raw_path))
+            title = report_title(path.parent, tracing)
+            scope = 'consolidated' if title and 'تلفیقی' in title else ('separate' if title else None)
+            db.execute('UPDATE artifact_parse_results SET report_title=?,report_scope=? WHERE path=?', (title, scope, raw_path))
+            db.execute('UPDATE orphan_fact_candidates SET report_scope=? WHERE path=?', (scope, raw_path))
+            linked += 1; value_linked += 1
             continue
         letters = cache.setdefault(path.parent, captured_excel_letters(path.parent))
         matches = sorted(letters.get((symbol, period), set()))
@@ -156,7 +182,7 @@ def main() -> None:
     db.execute("""UPDATE orphan_fact_candidates SET status='READY_FOR_NORMALIZATION'
         WHERE status='READY_FOR_IMPORT' AND tracing_no IS NOT NULL""")
     db.commit()
-    print(json.dumps({'files': len(rows), 'linked': linked, 'filename_links': filename_links, 'ambiguous': ambiguous, 'missing': missing}, ensure_ascii=False))
+    print(json.dumps({'files': len(rows), 'linked': linked, 'value_linked': value_linked, 'filename_links': filename_links, 'ambiguous': ambiguous, 'missing': missing}, ensure_ascii=False))
 
 
 if __name__ == '__main__':
