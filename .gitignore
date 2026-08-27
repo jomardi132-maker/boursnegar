@@ -33,6 +33,7 @@ uploads/
 coverage/
 
 # Provenanced ingestion artifacts stay local and are imported explicitly.
-artifacts/
+artifacts/*
+!artifacts/.gitkeep
 .chrome-codal-profile/
 .venv-codalpy/
