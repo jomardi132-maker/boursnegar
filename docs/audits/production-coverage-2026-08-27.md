@@ -1,6 +1,6 @@
 # Production coverage audit - 2026-08-27
 
-Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, post-sync at `2026-08-27T13:16:51Z`, and recovery follow-ups through `2026-08-27T16:36:08Z`.
+Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, post-sync at `2026-08-27T13:16:51Z`, and recovery follow-ups through `2026-08-27T17:03:59Z`.
 
 ## Runtime Context
 
@@ -45,6 +45,8 @@ Post-cleanup evidence:
   - SHA-256: `2af2701028dd3ebc85758ca441976935d89e9a41ed056636a901b0b0c6881714`
 - `coverage-after-supervisor-20260827T1636Z.json`
   - SHA-256: `d696e1a4df67a21dae21a4de1b9e144e6eaad1762af0a53b95222f8eb376181c`
+- `coverage-after-supervisor-20260827T1703Z.json`
+  - SHA-256: `9ce05a6e1966b0395ce90e0bacdd10a5fa5da11787e5dc876fb37bb2b12b3dbf`
 - Production backup: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
 - Production rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
@@ -140,6 +142,8 @@ The following checkpointed cycle completed batches `0021` through `0025` (50 add
 The following checkpointed cycle completed batches `0026` through `0030` (50 additional symbols), all with exit code 0. The supervisor pending queue decreased from `944` to `900`. The new Production audit reports financial periods `12,678`, financial facts `46,792`, valid facts `20,250`, raw Codalpy records `1,162,855`, linked Codalpy records `1,114,647`, monthly records `784,104`, and linked monthly records `741,723`. No validation errors were reported by the audit, and runtime health remained green.
 
 The following checkpointed cycle completed batches `0031` through `0035` (50 additional symbols), all with exit code 0. The supervisor pending queue decreased from `900` to `873`. The new Production audit reports financial periods `12,742`, financial facts `47,029`, valid facts `20,493`, raw Codalpy records `1,163,102`, linked Codalpy records `1,114,894`, monthly records `784,104`, and linked monthly records `741,723`. No validation errors were reported by the audit, and runtime health remained green.
+
+The following checkpointed cycle completed batches `0036` through `0040` (50 additional symbols), all with exit code 0. The supervisor pending queue decreased from `873` to `844`. The new Production audit reports financial periods `12,830`, financial facts `47,431`, valid facts `20,814`, raw Codalpy records `1,170,801`, linked Codalpy records `1,122,593`, monthly records `788,400`, and linked monthly records `746,019`. No validation errors were reported by the audit, and runtime health remained green.
 
 From the initial symbol-level audit across all 1,533 active instruments:
 
