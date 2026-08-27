@@ -1,18 +1,18 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T09:21:00+03:30
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T09:30:00+03:30
 
 ## خلاصه اجرایی
 
-Production فعال است و مسیر اجرایی واقعی همچنان Nginx -> PM2 `bourse-app` -> `127.0.0.1:3000` و FastAPI روی `127.0.0.1:8001` است. در این بررسی read-only هیچ اقدام عملیاتی روی Production انجام نشد.
+Production فعال است و مسیر اجرایی واقعی همچنان Nginx -> PM2 `bourse-app` -> `127.0.0.1:3000` و FastAPI روی `127.0.0.1:8001` است. پس از بررسی read-only، یک پاک‌سازی محدود و transaction-guarded برای ۹ رکورد تکراری/بی‌وابستگی انجام شد؛ قبل از تغییر backup و rollback SQL ساخته شد و هیچ داده‌ای حذف نشد.
 
 شکاف GitHub قبلی رفع شده است: remote پیش‌فرض repo اکنون HTTPS است و `git push --dry-run origin agent/data-engine-v1` وضعیت `Everything up-to-date` داد. شاخه‌های `agent/data-engine-v1` و `main` روی GitHub با HEAD همین شاخه همسان‌اند.
 
 ## وضعیت لوکال و Git
 
 - شاخه فعلی: `agent/data-engine-v1`
-- HEAD پیش از ثبت گزارش وضعیت: `ee4e926605da3dbe5931e813b8847afcfa29804c`
-- این گزارش و اصلاحات بعدی خودش به‌عنوان commit مستندات روی همین شاخه ثبت می‌شود؛ برای hash نهایی از `git rev-parse HEAD origin/agent/data-engine-v1 origin/main` استفاده شود.
+- HEAD فعلی پیش از ثبت این الحاق: `591129196775c934db15e0db8baf6d402ed42ab2`
+- گزارش تکمیلی پاک‌سازی alias نیز به‌عنوان commit مستندات ثبت و به هر دو شاخه push می‌شود.
 - `origin`: `https://github.com/jomardi132-maker/boursnegar.git`
 - `origin/agent/data-engine-v1`: با HEAD همین شاخه همسان است.
 - `origin/main`: با HEAD همین شاخه همسان است.
@@ -85,29 +85,34 @@ Health/smoke checks:
   - `docs/audits/production-coverage-2026-08-27.md`
   - raw JSON: `artifacts/production-audits/coverage-20260827T054703Z.json`
   - symbol-level raw JSON: `artifacts/production-audits/symbol-coverage-20260827T055105Z.json`
+  - post-cleanup JSON: `artifacts/production-audits/coverage-after-alias-cleanup-20260827T055539Z.json`
+  - post-cleanup symbol JSON/CSV: `artifacts/production-audits/symbol-coverage-after-alias-cleanup-20260827T055609Z.json` و `.csv`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
 آخرین اعداد Production در 2026-08-27:
 
-- Active instruments: 1,533
+- Active instruments: 1,524
 - Industry-level current aliases: 1,524
+- Active instruments with current alias: 1,524
+- Active instruments without current alias: 0
 - Financial periods: 12,018
 - Financial facts: 44,088
 - Valid facts: 17,761
 - Raw Codalpy records: 1,127,218
 - Linked Codalpy records: 1,079,010
-- Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=9`
-- Latest decisions: `INSUFFICIENT_DATA=1,529`, `SELL=3`, `HOLD=1`, `BUY=0`
+- Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
+- Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
+- Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
+- Rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
 ## موارد باز
 
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
-2. ۹ ابزار فعال بدون current alias باید فقط با شواهد هویتی رسمی reconcile شوند.
-3. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
-4. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
-5. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
+2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
+3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
+4. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
 ## اقدام بعدی پیشنهادی
 
-اولویت عملی بعدی، reconcile کردن ۹ ابزار بدون alias و سپس برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
+اولویت عملی بعدی، برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
