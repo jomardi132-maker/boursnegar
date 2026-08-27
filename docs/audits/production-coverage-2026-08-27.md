@@ -31,6 +31,8 @@ Post-cleanup evidence:
   - SHA-256: `caa92aa3ff02d07ea93ddb64b1599f9a90ea9972f93f63ebd8a71b1c5234699c`
 - `coverage-after-sync-20260827T1316Z.json`
   - SHA-256: `14280d7202fa854360b23fcfa71890e60f16aa721bd7e676f532ef0e1dbc6e20`
+- `coverage-after-supervisor-20260827T1342Z.json`
+  - SHA-256: `f5f15072eec3a044290bd7be03ec1635b24dc3288d3cd793a78735f412e198b0`
 - Production backup: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
 - Production rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
@@ -92,6 +94,16 @@ The first bounded local-first recovery batch after the cleanup processed 3 selec
 - Post-sync health: FastAPI `/health`, Node `/healthz`, and `/readyz` passed
 
 The imported batch is evidence-backed but does not establish full analytical coverage. Local Codalpy timeouts and statement-normalization errors were retained in checkpoints/manifests; they were not converted into facts by inference.
+
+## Supervisor Recovery Progress
+
+The checkpointed all-symbol supervisor completed 5 batches of 10 symbols (50 symbols total), each with exit code 0. It imported only validated artifacts and kept symbols with missing or unusable evidence in the retry/coverage queue.
+
+- Local recovery state after the cycle: `complete=492`, `comparable=291`, `incomplete=741`
+- Supervisor pending queue after the cycle: 1,081 symbols
+- The batch logs and checkpoints remain under ignored `artifacts/all-symbols/`; they are local operational evidence, not production claims.
+- Production audit after the cycle: financial periods `12,104`, financial facts `44,429`, valid facts `18,101`, raw Codalpy records `1,127,600`, linked Codalpy records `1,079,392`
+- Production health remained green after the cycle.
 
 ## Symbol-Level Coverage Tiers
 
@@ -165,7 +177,7 @@ Top industries by `MISSING_CORE_FACTS`:
 
 ## Next Data Work
 
-1. Continue bounded local-first recovery batches for operating symbols, using `--skip-preimport` and per-run aggregation boundaries.
+1. Continue bounded local-first recovery batches for operating symbols, using checkpointed retries and per-batch manifests.
 2. Keep ETF/fund instruments separate from operating-company coverage; `CORE_READY=0` for ETFs should not be forced through operating-company fact logic.
 3. Prioritize operating industries with large comparable-period gaps before trying to improve decision counts.
 4. Promote monthly Codalpy evidence to canonical monthly facts only after explicit label, period, unit, source, and row/column validation.
