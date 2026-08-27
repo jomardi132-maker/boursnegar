@@ -1,6 +1,6 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T17:03:59Z
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T17:34:52Z
 
 ## خلاصه اجرایی
 
@@ -88,7 +88,7 @@ Health/smoke checks:
   - post-cleanup JSON: `artifacts/production-audits/coverage-after-alias-cleanup-20260827T055539Z.json`
   - post-cleanup symbol JSON/CSV: `artifacts/production-audits/symbol-coverage-after-alias-cleanup-20260827T055609Z.json` و `.csv`
   - post-sync JSON: `artifacts/production-audits/coverage-after-sync-20260827T1316Z.json`
-  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1703Z.json`
+  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1734Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
@@ -98,11 +98,11 @@ Health/smoke checks:
 - Industry-level current aliases: 1,524
 - Active instruments with current alias: 1,524
 - Active instruments without current alias: 0
-- Financial periods: 12,830
-- Financial facts: 47,431
-- Valid facts: 20,814
-- Raw Codalpy records: 1,170,801
-- Linked Codalpy records: 1,122,593
+- Financial periods: 12,952
+- Financial facts: 47,935
+- Valid facts: 21,257
+- Raw Codalpy records: 1,177,421
+- Linked Codalpy records: 1,129,213
 - Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
 - Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
 - Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
@@ -115,7 +115,7 @@ Health/smoke checks:
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
 4. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
-آخرین چرخهٔ supervisor: batchهای 0036 تا 0040، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۸۴۴ نماد. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
+آخرین چرخهٔ supervisor: batchهای 0041 تا 0045، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۸۰۲ نماد. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
 
 ## اقدام بعدی پیشنهادی
 
