@@ -1,7 +1,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+import sys
+from unittest.mock import patch
 
+from scripts.daily_local_ingestion import run
 from scripts.run_all_incomplete import cleanup_profile
 
 
@@ -14,6 +17,14 @@ class RecoverySupervisorTest(unittest.TestCase):
             cleanup_profile(profile)
             cleanup_profile(profile)
             self.assertFalse(profile.exists())
+
+    @patch('scripts.browser_codal_fetch.cleanup_profile_processes')
+    def test_run_timeout_cleans_profile_processes(self, cleanup):
+        with tempfile.TemporaryDirectory() as temp:
+            profile = Path(temp) / '.chrome-profile'
+            result = run([sys.executable, '-c', 'import time; time.sleep(10)', '--profile', str(profile)], timeout=0.01)
+            self.assertFalse(result)
+            cleanup.assert_called_once_with(profile)
 
 
 if __name__ == '__main__':

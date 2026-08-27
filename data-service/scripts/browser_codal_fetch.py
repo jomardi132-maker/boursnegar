@@ -15,6 +15,26 @@ def _stop(*_):
     global STOP
     STOP = True
 
+def cleanup_profile_processes(profile: Path):
+    target = f'--user-data-dir={profile.resolve()}'.encode()
+    for entry in Path('/proc').glob('[0-9]*'):
+        try:
+            cmdline = (entry / 'cmdline').read_bytes()
+            if target not in cmdline or b'/opt/google/chrome/chrome' not in cmdline:
+                continue
+            os.kill(int(entry.name), signal.SIGTERM)
+        except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError):
+            pass
+    time.sleep(0.5)
+    for entry in Path('/proc').glob('[0-9]*'):
+        try:
+            cmdline = (entry / 'cmdline').read_bytes()
+            if target not in cmdline or b'/opt/google/chrome/chrome' not in cmdline:
+                continue
+            os.kill(int(entry.name), signal.SIGKILL)
+        except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError):
+            pass
+
 class ChromeCDP:
     def __init__(self, port: int, profile: Path):
         self.port, self.profile, self.proc, self.ws, self.seq = port, profile, None, None, 0
@@ -71,6 +91,7 @@ class ChromeCDP:
             except (ProcessLookupError, subprocess.TimeoutExpired):
                 try: os.killpg(self.proc.pid, signal.SIGKILL)
                 except ProcessLookupError: pass
+        cleanup_profile_processes(self.profile)
 
 def sha(path):
     h=hashlib.sha256()

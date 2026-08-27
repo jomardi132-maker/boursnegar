@@ -1,6 +1,6 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T19:27:51Z
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T20:08:25Z
 
 ## خلاصه اجرایی
 
@@ -88,7 +88,8 @@ Health/smoke checks:
   - post-cleanup JSON: `artifacts/production-audits/coverage-after-alias-cleanup-20260827T055539Z.json`
   - post-cleanup symbol JSON/CSV: `artifacts/production-audits/symbol-coverage-after-alias-cleanup-20260827T055609Z.json` و `.csv`
   - post-sync JSON: `artifacts/production-audits/coverage-after-sync-20260827T1316Z.json`
-  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1927Z.json`
+  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1947Z.json`
+  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T2008Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
@@ -98,11 +99,11 @@ Health/smoke checks:
 - Industry-level current aliases: 1,524
 - Active instruments with current alias: 1,524
 - Active instruments without current alias: 0
-- Financial periods: 13,277
-- Financial facts: 48,727
-- Valid facts: 22,078
-- Raw Codalpy records: 1,178,426
-- Linked Codalpy records: 1,130,218
+- Financial periods: 13,524
+- Financial facts: 49,042
+- Valid facts: 22,390
+- Raw Codalpy records: 1,178,976
+- Linked Codalpy records: 1,130,768
 - Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
 - Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
 - Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
@@ -115,7 +116,7 @@ Health/smoke checks:
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
 4. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
-آخرین چرخهٔ supervisor: batchهای 0061 تا 0066، مجموعاً ۶۰ نماد با exit code صفر؛ batchهای 0061 تا 0065 پنجاه نماد و batch 0066 یک verification batch ده‌نمادی بود. صف باقی‌مانده ۶۳۳ نماد است. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
+آخرین چرخهٔ supervisor: batchهای 0072 تا 0076، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۵۴۵ نماد است. در بررسی بعدی مشخص شد timeout لایهٔ ingestion می‌توانست Chrome profile را orphan کند؛ مسیر timeout و cleanup با terminate محدود بر اساس profile اصلاح شد و همهٔ profileهای باقی‌مانده پاک شدند. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
 
 ## اقدام بعدی پیشنهادی
 
