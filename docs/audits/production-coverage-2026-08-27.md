@@ -1,13 +1,13 @@
 # Production coverage audit - 2026-08-27
 
-Generated from Production at `2026-08-27T05:47:03Z` and `2026-08-27T05:51:05Z`.
+Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, and post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`.
 
 ## Runtime Context
 
 - Web runtime: PM2 `bourse-app`, release `/var/www/boursnegar-releases/20260826T103100Z-mobile-screener-fix`.
 - Data runtime: `boursnegar-data-service.service`, `/var/www/boursnegar-data-current` -> `/var/www/boursnegar-data-releases/20260825T173000Z-all-industry-models`.
 - Health checks passed for internal web health/ready, FastAPI `/health`, internal `/api/health`, and `nginx -t`.
-- No Production write, restart, migration, or data import was performed during this audit.
+- The initial audit was read-only. A subsequent guarded cleanup deactivated 9 duplicate/orphan active instrument and issuer rows after dependency and collision checks; no data rows were deleted.
 
 ## Evidence Files
 
@@ -20,6 +20,17 @@ Raw audit outputs are intentionally kept under ignored `artifacts/production-aud
   - SHA-256: `3c00804b02697e12c474af41fa9f65cd3a5eb607613fa52492a25cbd465553cd`
 - `symbol-coverage-20260827T055105Z.csv`
   - SHA-256: `fd7ac9d6596b8f2f5865a9bb9fc3a0f7d998bb7c84ec75ec5269267353d27a07`
+
+Post-cleanup evidence:
+
+- `coverage-after-alias-cleanup-20260827T055539Z.json`
+  - SHA-256: `0df714fed1ae39661603e7993d3a10eae611ba38d3e4e32a5e59ecc27e48f777`
+- `symbol-coverage-after-alias-cleanup-20260827T055609Z.json`
+  - SHA-256: `ef798e086608d10beb0c04ffcb5610117d720f0a2d8914a685331e93c5aed735`
+- `symbol-coverage-after-alias-cleanup-20260827T055609Z.csv`
+  - SHA-256: `caa92aa3ff02d07ea93ddb64b1599f9a90ea9972f93f63ebd8a71b1c5234699c`
+- Production backup: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
+- Production rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
 ## Global Counts
 
@@ -39,9 +50,35 @@ From the industry-level audit:
 
 The industry-level query groups by current symbol aliases and therefore totals 1,524 symbols, while the symbol-level audit includes all 1,533 active instruments and exposes 9 active instruments without a current alias.
 
+## Post-Cleanup Reconciliation
+
+The 9 alias-less active rows were verified as duplicate/orphan records: each had no aliases, disclosures, periods, facts, prices, or corporate actions, while the same symbol already had a validated current `BrsApi` alias on another active instrument. They were deactivated together with their empty issuer rows under a transaction guard. The backup and rollback files above remain available.
+
+Post-cleanup active identity check:
+
+- Active instruments: 1,524
+- Active instruments with current alias: 1,524
+- Active instruments without current alias: 0
+
+Post-cleanup symbol-level coverage tiers:
+
+- `CORE_READY`: 215
+- `MISSING_CORE_FACTS`: 418
+- `MISSING_COMPARABLE_PERIODS`: 891
+- `NO_CURRENT_ALIAS`: 0
+
+Post-cleanup latest persisted decisions:
+
+- `INSUFFICIENT_DATA`: 1,520
+- `SELL`: 3
+- `HOLD`: 1
+- `BUY`: 0
+
+The four decision counts sum to 1,524. The identity cleanup did not add analytical facts or infer decisions; the remaining gaps are data-coverage gaps.
+
 ## Symbol-Level Coverage Tiers
 
-From the symbol-level audit across all 1,533 active instruments:
+From the initial symbol-level audit across all 1,533 active instruments:
 
 - `CORE_READY`: 215
 - `MISSING_CORE_FACTS`: 418
@@ -111,8 +148,7 @@ Top industries by `MISSING_CORE_FACTS`:
 
 ## Next Data Work
 
-1. Reconcile the 9 active instruments without current aliases from authoritative identity evidence.
-2. Keep ETF/fund instruments separate from operating-company coverage; `CORE_READY=0` for ETFs should not be forced through operating-company fact logic.
-3. Prioritize operating industries with large comparable-period gaps before trying to improve decision counts.
-4. Promote monthly Codalpy evidence to canonical monthly facts only after explicit label, period, unit, source, and row/column validation.
-5. Keep `INSUFFICIENT_DATA` for any symbol below the required tier; do not infer buy/hold/sell from raw-record counts.
+1. Keep ETF/fund instruments separate from operating-company coverage; `CORE_READY=0` for ETFs should not be forced through operating-company fact logic.
+2. Prioritize operating industries with large comparable-period gaps before trying to improve decision counts.
+3. Promote monthly Codalpy evidence to canonical monthly facts only after explicit label, period, unit, source, and row/column validation.
+4. Keep `INSUFFICIENT_DATA` for any symbol below the required tier; do not infer buy/hold/sell from raw-record counts.
