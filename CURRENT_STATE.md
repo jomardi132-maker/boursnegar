@@ -1,6 +1,6 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T14:10:56Z
 
 ## خلاصه اجرایی
 
@@ -11,8 +11,8 @@ Production فعال است و مسیر اجرایی واقعی همچنان Ngin
 ## وضعیت لوکال و Git
 
 - شاخه فعلی: `agent/data-engine-v1`
-- آخرین commit شاخهٔ کاری پیش از این الحاق: `475c9132826295af6fc1ee954a628144a7ce1402`
-- آخرین merge commit مستندات در `main`: `1454979d8704082b150d5be17560ae7eaca6c38d`
+- آخرین commit شاخهٔ کاری: `07aab8ab458ea2d3ef9530191e822a13ac5ce11c`
+- آخرین merge commit مستندات در `main`: `9c6aec22cc761f349528a7a90536bc199381eb25`
 - `origin`: `https://github.com/jomardi132-maker/boursnegar.git`
 - `origin/agent/data-engine-v1`: با HEAD شاخهٔ کاری همسان است (`e2e241a7`).
 - `origin/main`: شامل تغییرات این دوره با merge commit `09fcac38` است.
@@ -88,7 +88,7 @@ Health/smoke checks:
   - post-cleanup JSON: `artifacts/production-audits/coverage-after-alias-cleanup-20260827T055539Z.json`
   - post-cleanup symbol JSON/CSV: `artifacts/production-audits/symbol-coverage-after-alias-cleanup-20260827T055609Z.json` و `.csv`
   - post-sync JSON: `artifacts/production-audits/coverage-after-sync-20260827T1316Z.json`
-  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1342Z.json`
+  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1410Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
@@ -98,11 +98,11 @@ Health/smoke checks:
 - Industry-level current aliases: 1,524
 - Active instruments with current alias: 1,524
 - Active instruments without current alias: 0
-- Financial periods: 12,104
-- Financial facts: 44,429
-- Valid facts: 18,101
-- Raw Codalpy records: 1,127,600
-- Linked Codalpy records: 1,079,392
+- Financial periods: 12,225
+- Financial facts: 44,949
+- Valid facts: 18,588
+- Raw Codalpy records: 1,130,358
+- Linked Codalpy records: 1,082,150
 - Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
 - Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
 - Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
@@ -115,7 +115,7 @@ Health/smoke checks:
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
 4. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
-آخرین چرخهٔ supervisor: ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۱۰۸۱ نماد. وضعیت local mirror پس از آن `complete=492`، `comparable=291` و `incomplete=741` است.
+آخرین چرخهٔ supervisor: batchهای 0006 تا 0010، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۱۰۵۰ نماد. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
 
 ## اقدام بعدی پیشنهادی
 

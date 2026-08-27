@@ -1,6 +1,6 @@
 # Production coverage audit - 2026-08-27
 
-Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, and post-sync at `2026-08-27T13:16:51Z`.
+Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, post-sync at `2026-08-27T13:16:51Z`, and recovery follow-up at `2026-08-27T14:10:56Z`.
 
 ## Runtime Context
 
@@ -33,6 +33,8 @@ Post-cleanup evidence:
   - SHA-256: `14280d7202fa854360b23fcfa71890e60f16aa721bd7e676f532ef0e1dbc6e20`
 - `coverage-after-supervisor-20260827T1342Z.json`
   - SHA-256: `f5f15072eec3a044290bd7be03ec1635b24dc3288d3cd793a78735f412e198b0`
+- `coverage-after-supervisor-20260827T1410Z.json`
+  - SHA-256: `f4d92ae4288d59d4e17deeef7d0b820cb33a2d122bd12c0b7d5a03e31540acdc`
 - Production backup: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
 - Production rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
@@ -106,6 +108,18 @@ The checkpointed all-symbol supervisor completed 5 batches of 10 symbols (50 sym
 - Production health remained green after the cycle.
 
 ## Symbol-Level Coverage Tiers
+
+## Recovery Follow-up
+
+The next checkpointed supervisor cycle completed batches `0006` through `0010` (50 additional symbols), all with exit code 0. Validated normalized statements, notice events, and available Codalpy artifacts were imported through the existing artifact-only Production path; no inferred facts were created.
+
+- Supervisor pending queue: `1,050` symbols, down from `1,081`
+- Local supervisor state files: 31 no-notice symbols, 47 insufficient-fact symbols, and 32 stable-fact symbols
+- Production audit: financial periods `12,225`, financial facts `44,949`, valid facts `18,588`, raw Codalpy records `1,130,358`, linked Codalpy records `1,082,150`
+- Validation errors in the Production audit: none reported
+- Production health remained green after the cycle
+
+The remaining queue is still not analytical completion. Symbols with no authoritative notices, insufficient comparable periods, or unresolved normalization evidence remain explicitly queued or quarantined.
 
 From the initial symbol-level audit across all 1,533 active instruments:
 
