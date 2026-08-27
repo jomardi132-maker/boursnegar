@@ -26,7 +26,7 @@ class ChromeCDP:
             f"--user-data-dir={self.profile}", "--no-first-run", "--no-default-browser-check",
             "--remote-allow-origins=*",
             "https://codal.ir/"
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         for _ in range(60):
             try:
                 tabs=json.load(urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json", timeout=2))
@@ -64,7 +64,13 @@ class ChromeCDP:
         self.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": str(directory.resolve())})
     def close(self):
         if self.ws: self.ws.close()
-        if self.proc: self.proc.terminate()
+        if self.proc and self.proc.poll() is None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGTERM)
+                self.proc.wait(timeout=5)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                try: os.killpg(self.proc.pid, signal.SIGKILL)
+                except ProcessLookupError: pass
 
 def sha(path):
     h=hashlib.sha256()

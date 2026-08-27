@@ -6,6 +6,14 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 PY=ROOT/'data-service/venv/bin/python'
 sys.path.insert(0, str(ROOT/'data-service'))
+def cleanup_profile(path):
+    if not path.exists(): return
+    for _ in range(3):
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists(): return
+        time.sleep(0.5)
+    # A leftover browser lock must not turn a successful import into a failed batch.
+    shutil.rmtree(path, ignore_errors=True)
 def symbols(target):
     from scripts.ingestion_console import discover_remote
     rows=discover_remote(target,lambda _:None); seen=[]
@@ -90,8 +98,7 @@ def main():
         if rc==0:
             consecutive_failures=0
             profile_dir=out/'.chrome-profile'
-            if profile_dir.exists():
-                shutil.rmtree(profile_dir)
+            cleanup_profile(profile_dir)
         else:
             consecutive_failures += 1
             if consecutive_failures >= args.max_consecutive_failures:
