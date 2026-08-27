@@ -6,7 +6,7 @@
 
 Production فعال است و مسیر اجرایی واقعی همچنان Nginx -> PM2 `bourse-app` -> `127.0.0.1:3000` و FastAPI روی `127.0.0.1:8001` است. پس از بررسی read-only، یک پاک‌سازی محدود و transaction-guarded برای ۹ رکورد تکراری/بی‌وابستگی انجام شد؛ قبل از تغییر backup و rollback SQL ساخته شد و هیچ داده‌ای حذف نشد.
 
-شکاف GitHub قبلی رفع شده است: remote پیش‌فرض repo اکنون HTTPS است و `git push --dry-run origin agent/data-engine-v1` وضعیت `Everything up-to-date` داد. شاخه‌های `agent/data-engine-v1` و `main` روی GitHub با HEAD همین شاخه همسان‌اند.
+شکاف ارتباطی GitHub قبلی رفع شده است: remote پیش‌فرض repo اکنون HTTPS است و شاخهٔ `agent/data-engine-v1` با HEAD همین شاخه همسان است. تلاش امن برای fast-forward کردن `main` پس از commit مستندات با خطای non-fast-forward رد شد؛ هیچ force-push انجام نشد و `main` فعلاً روی commit قبلی `59112919` باقی مانده است.
 
 ## وضعیت لوکال و Git
 
@@ -14,8 +14,8 @@ Production فعال است و مسیر اجرایی واقعی همچنان Ngin
 - HEAD فعلی پیش از ثبت این الحاق: `591129196775c934db15e0db8baf6d402ed42ab2`
 - گزارش تکمیلی پاک‌سازی alias نیز به‌عنوان commit مستندات ثبت و به هر دو شاخه push می‌شود.
 - `origin`: `https://github.com/jomardi132-maker/boursnegar.git`
-- `origin/agent/data-engine-v1`: با HEAD همین شاخه همسان است.
-- `origin/main`: با HEAD همین شاخه همسان است.
+- `origin/agent/data-engine-v1`: با HEAD همین شاخه همسان است (`705eeb4b` پس از commit تکمیلی).
+- `origin/main`: فعلاً روی `59112919` است و یک commit مستنداتی عقب‌تر از HEAD همین شاخه است؛ push معمولی به‌دلیل non-fast-forward رد شد.
 - worktree tracked: تمیز
 - `git diff --check`: بدون خطا
 
@@ -115,4 +115,4 @@ Health/smoke checks:
 
 ## اقدام بعدی پیشنهادی
 
-اولویت عملی بعدی، برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
+اولویت عملی بعدی، ادغام امن commit مستنداتی فعلی در `main` بدون force-push و سپس برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
