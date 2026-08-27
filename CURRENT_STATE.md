@@ -1,6 +1,6 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T20:08:25Z
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T17:15:00+03:30؛ آخرین recovery audit: 2026-08-27T20:27:52Z
 
 ## خلاصه اجرایی
 
@@ -90,6 +90,7 @@ Health/smoke checks:
   - post-sync JSON: `artifacts/production-audits/coverage-after-sync-20260827T1316Z.json`
   - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T1947Z.json`
   - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T2008Z.json`
+  - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T2027Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
@@ -99,11 +100,11 @@ Health/smoke checks:
 - Industry-level current aliases: 1,524
 - Active instruments with current alias: 1,524
 - Active instruments without current alias: 0
-- Financial periods: 13,524
-- Financial facts: 49,042
-- Valid facts: 22,390
-- Raw Codalpy records: 1,178,976
-- Linked Codalpy records: 1,130,768
+- Financial periods: 13,650
+- Financial facts: 49,202
+- Valid facts: 22,549
+- Raw Codalpy records: 1,179,247
+- Linked Codalpy records: 1,131,039
 - Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
 - Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
 - Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
@@ -116,7 +117,7 @@ Health/smoke checks:
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
 4. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
-آخرین چرخهٔ supervisor: batchهای 0072 تا 0076، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۵۴۵ نماد است. در بررسی بعدی مشخص شد timeout لایهٔ ingestion می‌توانست Chrome profile را orphan کند؛ مسیر timeout و cleanup با terminate محدود بر اساس profile اصلاح شد و همهٔ profileهای باقی‌مانده پاک شدند. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
+آخرین چرخهٔ supervisor: batchهای 0077 تا 0081، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۴۹۹ نماد است. پس از اصلاح timeout/cleanup، شمارش Chrome process و profile باقی‌مانده صفر تأیید شد. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
 
 ## اقدام بعدی پیشنهادی
 
