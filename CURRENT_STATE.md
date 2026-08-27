@@ -1,21 +1,21 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T09:30:00+03:30
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T14:58:00+03:30
 
 ## خلاصه اجرایی
 
 Production فعال است و مسیر اجرایی واقعی همچنان Nginx -> PM2 `bourse-app` -> `127.0.0.1:3000` و FastAPI روی `127.0.0.1:8001` است. پس از بررسی read-only، یک پاک‌سازی محدود و transaction-guarded برای ۹ رکورد تکراری/بی‌وابستگی انجام شد؛ قبل از تغییر backup و rollback SQL ساخته شد و هیچ داده‌ای حذف نشد.
 
-شکاف ارتباطی GitHub قبلی رفع شده است: remote پیش‌فرض repo اکنون HTTPS است و شاخهٔ `agent/data-engine-v1` با HEAD همین شاخه همسان است. تلاش امن برای fast-forward کردن `main` پس از commit مستندات با خطای non-fast-forward رد شد؛ هیچ force-push انجام نشد و `main` فعلاً روی commit قبلی `59112919` باقی مانده است.
+شکاف ارتباطی GitHub قبلی رفع شده است: remote پیش‌فرض repo اکنون HTTPS است و تغییرات audit از مسیر Pull Request شمارهٔ ۱ با merge commit `09fcac38` وارد `main` شده‌اند. هیچ force-push انجام نشد.
 
 ## وضعیت لوکال و Git
 
 - شاخه فعلی: `agent/data-engine-v1`
-- HEAD فعلی پیش از ثبت این الحاق: `591129196775c934db15e0db8baf6d402ed42ab2`
-- گزارش تکمیلی پاک‌سازی alias نیز به‌عنوان commit مستندات ثبت و به هر دو شاخه push می‌شود.
+- آخرین commit شاخهٔ کاری هنگام این بررسی: `e2e241a717249efc432a12ef2eb70a6e05367b30`
+- merge commit متناظر در `main`: `09fcac38bc0165ed724e2a16e78c35ec6ae6345a`
 - `origin`: `https://github.com/jomardi132-maker/boursnegar.git`
-- `origin/agent/data-engine-v1`: با HEAD همین شاخه همسان است (`705eeb4b` پس از commit تکمیلی).
-- `origin/main`: فعلاً روی `59112919` است و یک commit مستنداتی عقب‌تر از HEAD همین شاخه است؛ push معمولی به‌دلیل non-fast-forward رد شد.
+- `origin/agent/data-engine-v1`: با HEAD شاخهٔ کاری همسان است (`e2e241a7`).
+- `origin/main`: شامل تغییرات این دوره با merge commit `09fcac38` است.
 - worktree tracked: تمیز
 - `git diff --check`: بدون خطا
 
@@ -115,4 +115,4 @@ Health/smoke checks:
 
 ## اقدام بعدی پیشنهادی
 
-اولویت عملی بعدی، ادغام امن commit مستنداتی فعلی در `main` بدون force-push و سپس برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
+اولویت عملی بعدی، برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
