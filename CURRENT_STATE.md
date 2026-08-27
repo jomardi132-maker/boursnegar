@@ -1,20 +1,21 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۴، 2026-08-26T22:29:58+03:30
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T09:21:00+03:30
 
 ## خلاصه اجرایی
 
 Production فعال است و مسیر اجرایی واقعی همچنان Nginx -> PM2 `bourse-app` -> `127.0.0.1:3000` و FastAPI روی `127.0.0.1:8001` است. در این بررسی read-only هیچ اقدام عملیاتی روی Production انجام نشد.
 
-مهم‌ترین شکاف اولیه Git این بود که checkout لوکال روی `agent/data-engine-v1` تمیز بود اما از remote جلوتر بود. اتصال SSH به GitHub در این نوبت طی ۲۰ ثانیه پاسخ نداد و push محدود ۳۰ ثانیه‌ای با remote SSH هم timeout شد. سپس با احراز هویت موجود `gh` و URL مستقیم HTTPS، هر دو شاخه‌ی `agent/data-engine-v1` و `main` روی GitHub به HEAD همین شاخه fast-forward شدند.
+شکاف GitHub قبلی رفع شده است: remote پیش‌فرض repo اکنون HTTPS است و `git push --dry-run origin agent/data-engine-v1` وضعیت `Everything up-to-date` داد. شاخه‌های `agent/data-engine-v1` و `main` روی GitHub با HEAD همین شاخه همسان‌اند.
 
 ## وضعیت لوکال و Git
 
 - شاخه فعلی: `agent/data-engine-v1`
 - HEAD پیش از ثبت گزارش وضعیت: `ee4e926605da3dbe5931e813b8847afcfa29804c`
-- این گزارش و اصلاحات بعدی خودش به‌عنوان commit مستندات روی همین شاخه ثبت شده است؛ برای hash نهایی از `git rev-parse HEAD origin/agent/data-engine-v1 origin/main` استفاده شود.
-- `origin/agent/data-engine-v1`: پس از push مستقیم HTTPS با HEAD همین شاخه همسان شد.
-- `origin/main`: پس از fast-forward مستقیم HTTPS با HEAD همین شاخه همسان شد.
+- این گزارش و اصلاحات بعدی خودش به‌عنوان commit مستندات روی همین شاخه ثبت می‌شود؛ برای hash نهایی از `git rev-parse HEAD origin/agent/data-engine-v1 origin/main` استفاده شود.
+- `origin`: `https://github.com/jomardi132-maker/boursnegar.git`
+- `origin/agent/data-engine-v1`: با HEAD همین شاخه همسان است.
+- `origin/main`: با HEAD همین شاخه همسان است.
 - worktree tracked: تمیز
 - `git diff --check`: بدون خطا
 
@@ -46,7 +47,7 @@ commitهای اصلی که قبل از مستندسازی از remote جلوتر
 ## وضعیت Production
 
 - host: `srv6626362878`
-- زمان بررسی سرور: `2026-08-26T18:58:15+00:00`
+- زمان بررسی سرور: `2026-08-27T05:45:54+00:00`
 - PM2 process: `bourse-app`
 - PM2 status: `online`
 - PM2 cwd: `/var/www/boursnegar-releases/20260826T103100Z-mobile-screener-fix`
@@ -57,7 +58,7 @@ commitهای اصلی که قبل از مستندسازی از remote جلوتر
 - resolved data symlink: `/var/www/boursnegar-data-releases/20260825T173000Z-all-industry-models`
 - web releases: ۱۷
 - data releases: ۱۶
-- backup entries: ۶۳
+- backup entries: ۶۳ در بررسی قبلی؛ در این بررسی شمارش backup تکرار نشد.
 - `nginx -t`: موفق
 
 Health/smoke checks:
@@ -73,24 +74,40 @@ Health/smoke checks:
 - public `/login`: HTTP 200
 - public `/api/stocks/فولاد`: HTTP 200
 
-## وضعیت artifact و ingestion محلی
+## وضعیت coverage و artifact
 
 - `artifacts/local-ingestion.sqlite3`: به‌روزشده در 2026-08-26 22:29، اندازه حدود ۸۴.۸ MB
 - `artifacts/local-coverage-latest.csv`: ۱۵۲۴ نماد + header
 - `artifacts/local-recovery-plan.csv`: ۱۵۲۴ نماد + header
 - `artifacts/promoted-remote-batch/normalized.jsonl`: موجود، حدود ۱.۲ MB
 - `artifacts/candidate-review.csv`: موجود، حدود ۱۸۹ KB
+- Production coverage audit امروز:
+  - `docs/audits/production-coverage-2026-08-27.md`
+  - raw JSON: `artifacts/production-audits/coverage-20260827T054703Z.json`
+  - symbol-level raw JSON: `artifacts/production-audits/symbol-coverage-20260827T055105Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
+آخرین اعداد Production در 2026-08-27:
+
+- Active instruments: 1,533
+- Industry-level current aliases: 1,524
+- Financial periods: 12,018
+- Financial facts: 44,088
+- Valid facts: 17,761
+- Raw Codalpy records: 1,127,218
+- Linked Codalpy records: 1,079,010
+- Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=9`
+- Latest decisions: `INSUFFICIENT_DATA=1,529`, `SELL=3`, `HOLD=1`, `BUY=0`
+
 ## موارد باز
 
-1. همگام‌سازی GitHub: push با HTTPS انجام شد و هر دو شاخه‌ی `main` و `agent/data-engine-v1` fast-forward شدند. با این حال remote پیش‌فرض repo هنوز SSH است و SSH به GitHub در این نوبت timeout شد؛ برای pushهای بعدی یا SSH باید اصلاح شود یا دوباره از HTTPS/`gh` استفاده شود.
-2. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
+1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
+2. ۹ ابزار فعال بدون current alias باید فقط با شواهد هویتی رسمی reconcile شوند.
 3. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
 4. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
 5. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
 ## اقدام بعدی پیشنهادی
 
-اولویت عملی بعدی، رفع مسیر SSH GitHub یا تغییر آگاهانه‌ی پروتکل Git به HTTPS است. بعد از آن باید گزارش coverage تفکیک‌شده و قابل بازتولید از Production گرفته شود و فقط بر اساس آن برای ingestion بعدی تصمیم گرفت.
+اولویت عملی بعدی، reconcile کردن ۹ ابزار بدون alias و سپس برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
