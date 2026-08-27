@@ -1,6 +1,6 @@
 # Production coverage audit - 2026-08-27
 
-Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, post-sync at `2026-08-27T13:16:51Z`, and recovery follow-ups through `2026-08-27T20:27:52Z`.
+Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, post-sync at `2026-08-27T13:16:51Z`, and recovery follow-ups through `2026-08-27T20:43:19Z`.
 
 ## Runtime Context
 
@@ -63,6 +63,8 @@ Post-cleanup evidence:
   - SHA-256: `a94bb2fe6cad5862b61e09db707535b6591e135505b97377ff510d3e8a0fb16d`
 - `coverage-after-supervisor-20260827T2027Z.json`
   - SHA-256: `0995a70439b90bafd9d1b776c19c424c2c19bf9d62b6ba25daf87ac0a4bf73ec`
+- `coverage-after-supervisor-20260827T2043Z.json`
+  - SHA-256: `6318d17fd555d54f8d109f8db02d1c533c0e0de990102f5f5f592817aa8fa72a`
 - Production backup: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
 - Production rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
@@ -178,6 +180,8 @@ The following checkpointed cycle completed batches `0067` through `0071` (50 add
 The following checkpointed cycle completed batches `0072` through `0076` (50 additional symbols), all with exit code 0. The pending queue decreased from `586` to `545`. A follow-up process audit found that timed-out browser subprocesses could leave Chrome descendants behind despite normal process-group cleanup; timeout handling now terminates the subprocess group and then terminates Chrome processes matching the exact profile path. All stale supervisor profiles and Chrome processes were removed after verification. The latest Production audit reports financial periods `13,524`, financial facts `49,042`, valid facts `22,390`, raw Codalpy records `1,178,976`, linked Codalpy records `1,130,768`, monthly records `792,226`, and linked monthly records `749,845`. No validation errors were reported, and runtime health remained green.
 
 The following checkpointed cycle completed batches `0077` through `0081` (50 additional symbols), all with exit code 0. The pending queue decreased from `545` to `499`. After the timeout/cleanup fix, a post-cycle process and profile audit found zero supervisor-owned Chrome processes and zero leftover `.chrome-profile` directories. The latest Production audit reports financial periods `13,650`, financial facts `49,202`, valid facts `22,549`, raw Codalpy records `1,179,247`, linked Codalpy records `1,131,039`, monthly records `792,226`, and linked monthly records `749,845`. No validation errors were reported, and runtime health remained green.
+
+The following checkpointed cycle completed batches `0082` through `0086` (50 additional symbols), all with exit code 0. The pending queue decreased from `499` to `456`. A post-cycle process and profile audit again found zero supervisor-owned Chrome processes and zero leftover `.chrome-profile` directories. The latest Production audit reports financial periods `13,750`, financial facts `49,330`, valid facts `22,677`, raw Codalpy records `1,179,463`, linked Codalpy records `1,131,255`, monthly records `792,226`, and linked monthly records `749,845`. No validation errors were reported, and runtime health remained green.
 
 From the initial symbol-level audit across all 1,533 active instruments:
 
