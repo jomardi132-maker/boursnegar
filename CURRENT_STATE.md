@@ -1,6 +1,6 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T14:58:00+03:30
+آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-27T16:47:00+03:30
 
 ## خلاصه اجرایی
 
@@ -11,8 +11,8 @@ Production فعال است و مسیر اجرایی واقعی همچنان Ngin
 ## وضعیت لوکال و Git
 
 - شاخه فعلی: `agent/data-engine-v1`
-- آخرین commit شاخهٔ کاری هنگام این بررسی: `e2e241a717249efc432a12ef2eb70a6e05367b30`
-- merge commit متناظر در `main`: `09fcac38bc0165ed724e2a16e78c35ec6ae6345a`
+- آخرین commit شاخهٔ کاری پیش از این الحاق: `475c9132826295af6fc1ee954a628144a7ce1402`
+- آخرین merge commit مستندات در `main`: `1454979d8704082b150d5be17560ae7eaca6c38d`
 - `origin`: `https://github.com/jomardi132-maker/boursnegar.git`
 - `origin/agent/data-engine-v1`: با HEAD شاخهٔ کاری همسان است (`e2e241a7`).
 - `origin/main`: شامل تغییرات این دوره با merge commit `09fcac38` است.
@@ -87,6 +87,7 @@ Health/smoke checks:
   - symbol-level raw JSON: `artifacts/production-audits/symbol-coverage-20260827T055105Z.json`
   - post-cleanup JSON: `artifacts/production-audits/coverage-after-alias-cleanup-20260827T055539Z.json`
   - post-cleanup symbol JSON/CSV: `artifacts/production-audits/symbol-coverage-after-alias-cleanup-20260827T055609Z.json` و `.csv`
+  - post-sync JSON: `artifacts/production-audits/coverage-after-sync-20260827T1316Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
@@ -96,11 +97,11 @@ Health/smoke checks:
 - Industry-level current aliases: 1,524
 - Active instruments with current alias: 1,524
 - Active instruments without current alias: 0
-- Financial periods: 12,018
-- Financial facts: 44,088
-- Valid facts: 17,761
-- Raw Codalpy records: 1,127,218
-- Linked Codalpy records: 1,079,010
+- Financial periods: 12,026
+- Financial facts: 44,098
+- Valid facts: 17,770
+- Raw Codalpy records: 1,127,269
+- Linked Codalpy records: 1,079,061
 - Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
 - Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
 - Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
@@ -115,4 +116,4 @@ Health/smoke checks:
 
 ## اقدام بعدی پیشنهادی
 
-اولویت عملی بعدی، برنامه‌ریزی ingestion برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
+اولویت عملی بعدی، ادامهٔ batchهای محدود local-first برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. supervisor اکنون فقط artifactهای نمادهای همان batch را aggregate می‌کند و از خواندن کل تاریخچه جلوگیری می‌شود. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.

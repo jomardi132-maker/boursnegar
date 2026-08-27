@@ -1,6 +1,6 @@
 # Production coverage audit - 2026-08-27
 
-Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, and post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`.
+Generated from Production at `2026-08-27T05:47:03Z`, `2026-08-27T05:51:05Z`, post-cleanup at `2026-08-27T05:55:39Z` / `2026-08-27T05:56:09Z`, and post-sync at `2026-08-27T13:16:51Z`.
 
 ## Runtime Context
 
@@ -29,6 +29,8 @@ Post-cleanup evidence:
   - SHA-256: `ef798e086608d10beb0c04ffcb5610117d720f0a2d8914a685331e93c5aed735`
 - `symbol-coverage-after-alias-cleanup-20260827T055609Z.csv`
   - SHA-256: `caa92aa3ff02d07ea93ddb64b1599f9a90ea9972f93f63ebd8a71b1c5234699c`
+- `coverage-after-sync-20260827T1316Z.json`
+  - SHA-256: `14280d7202fa854360b23fcfa71890e60f16aa721bd7e676f532ef0e1dbc6e20`
 - Production backup: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
 - Production rollback SQL: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.rollback.sql`
 
@@ -75,6 +77,21 @@ Post-cleanup latest persisted decisions:
 - `BUY`: 0
 
 The four decision counts sum to 1,524. The identity cleanup did not add analytical facts or infer decisions; the remaining gaps are data-coverage gaps.
+
+## Post-Sync Import
+
+The first bounded local-first recovery batch after the cleanup processed 3 selected symbols. It reused existing checkpoints, fetched through the local Codalpy/browser pipeline, validated manifests, and imported through the Production artifact importer.
+
+- Backup: `/var/backups/boursnegar/20260827T131431Z-auto-local-to-production.dump`
+- Manifests: Codalpy, normalized statements, and notice events
+- Aggregate records transferred: 3,702
+- First-pass importer results: 36 Codalpy records / 216 standardized facts, 15 normalized records / 9 standardized facts, and 21 notice events
+- Repeat-import idempotency gate: passed with `inserted=0` for all three manifests
+- Validation errors: 0
+- Post-sync global counts: financial periods `12,026`, financial facts `44,098`, valid facts `17,770`, raw Codalpy records `1,127,269`, linked Codalpy records `1,079,061`
+- Post-sync health: FastAPI `/health`, Node `/healthz`, and `/readyz` passed
+
+The imported batch is evidence-backed but does not establish full analytical coverage. Local Codalpy timeouts and statement-normalization errors were retained in checkpoints/manifests; they were not converted into facts by inference.
 
 ## Symbol-Level Coverage Tiers
 
@@ -148,7 +165,8 @@ Top industries by `MISSING_CORE_FACTS`:
 
 ## Next Data Work
 
-1. Keep ETF/fund instruments separate from operating-company coverage; `CORE_READY=0` for ETFs should not be forced through operating-company fact logic.
-2. Prioritize operating industries with large comparable-period gaps before trying to improve decision counts.
-3. Promote monthly Codalpy evidence to canonical monthly facts only after explicit label, period, unit, source, and row/column validation.
-4. Keep `INSUFFICIENT_DATA` for any symbol below the required tier; do not infer buy/hold/sell from raw-record counts.
+1. Continue bounded local-first recovery batches for operating symbols, using `--skip-preimport` and per-run aggregation boundaries.
+2. Keep ETF/fund instruments separate from operating-company coverage; `CORE_READY=0` for ETFs should not be forced through operating-company fact logic.
+3. Prioritize operating industries with large comparable-period gaps before trying to improve decision counts.
+4. Promote monthly Codalpy evidence to canonical monthly facts only after explicit label, period, unit, source, and row/column validation.
+5. Keep `INSUFFICIENT_DATA` for any symbol below the required tier; do not infer buy/hold/sell from raw-record counts.

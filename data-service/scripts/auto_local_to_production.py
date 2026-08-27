@@ -125,29 +125,36 @@ def select_symbols(remote: list[dict[str, object]], local_rows: dict[str, dict[s
     return [symbol for _, symbol in sorted(candidates)[:limit]]
 
 def aggregate_manifests(run_root, out, kind):
-    out.mkdir(parents=True, exist_ok=True); records=[]; errors=[]
+    out.mkdir(parents=True, exist_ok=True); errors=[]; record_count=0
     expected_source = 'codalpy/codal.ir' if kind == 'codalpy' else 'browser/codal.ir'
-    for source in sorted(run_root.rglob(f'{kind}/*.jsonl')):
-        if source.parent.parent.name == 'aggregate':
-            continue
-        for number, line in enumerate(source.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
-            if not line.strip(): continue
-            try: row=json.loads(line)
-            except json.JSONDecodeError as exc:
-                errors.append(f'{source}:{number}: invalid JSON: {exc}'); continue
-            required=('symbol','from_jalali','to_jalali','output_type','payload','source','retrieved_at')
-            missing=[key for key in required if not row.get(key)]
-            if missing or not isinstance(row.get('payload'), dict):
-                errors.append(f'{source}:{number}: invalid record fields={missing or ["payload"]}'); continue
-            if row.get('source') != expected_source:
-                errors.append(f'{source}:{number}: untrusted source={row.get("source")}'); continue
-            records.append(row)
-    if errors:
-        raise SystemExit(f'{kind} validation failed: {len(errors)} invalid records')
     target=out/f'{kind}.jsonl'
-    target.write_text(''.join(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n' for row in records),encoding='utf-8')
+    temporary=out/f'.{kind}.jsonl.tmp'
+    with temporary.open('w', encoding='utf-8') as handle:
+        roots = [run_root] if isinstance(run_root, Path) else list(run_root)
+        sources = sorted(source for root in roots for source in root.rglob(f'{kind}/*.jsonl'))
+        for source in sources:
+            if source.parent.parent.name == 'aggregate':
+                continue
+            with source.open(encoding='utf-8', errors='replace') as input_handle:
+                for number, line in enumerate(input_handle, 1):
+                    if not line.strip(): continue
+                    try: row=json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        errors.append(f'{source}:{number}: invalid JSON: {exc}'); continue
+                    required=('symbol','from_jalali','to_jalali','output_type','payload','source','retrieved_at')
+                    missing=[key for key in required if not row.get(key)]
+                    if missing or not isinstance(row.get('payload'), dict):
+                        errors.append(f'{source}:{number}: invalid record fields={missing or ["payload"]}'); continue
+                    if row.get('source') != expected_source:
+                        errors.append(f'{source}:{number}: untrusted source={row.get("source")}'); continue
+                    handle.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n')
+                    record_count += 1
+    if errors:
+        temporary.unlink(missing_ok=True)
+        raise SystemExit(f'{kind} validation failed: {len(errors)} invalid records')
+    temporary.replace(target)
     manifest={'schema':'boursnegar-codalpy-jsonl-v1','source':expected_source,'generated_at':datetime.now(timezone.utc).isoformat(),
-              'files':[{'path':target.name,'records':len(records),'sha256':sha256(target)}],'errors':errors}
+              'files':[{'path':target.name,'records':record_count,'sha256':sha256(target)}],'errors':errors}
     (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     return manifest
 
@@ -157,19 +164,26 @@ def manifest_kind(manifest):
     return 'codalpy' if manifest.get('source') == 'codalpy/codal.ir' else 'normalized'
 
 def aggregate_events(run_root, out):
-    out.mkdir(parents=True, exist_ok=True); records=[]
-    for source in sorted(run_root.rglob('events/notice-events.jsonl')):
-        if source.parent.parent.name == 'aggregate':
-            continue
-        for line in source.read_text(encoding='utf-8', errors='replace').splitlines():
-            if not line.strip(): continue
-            row=json.loads(line)
-            if not row.get('symbol') or not row.get('tracing_no') or not row.get('source'):
-                raise SystemExit(f'event validation failed: {source}')
-            records.append(row)
-    target=out/'events.jsonl'; target.write_text(''.join(json.dumps(x,ensure_ascii=False,sort_keys=True)+'\n' for x in records),encoding='utf-8')
+    out.mkdir(parents=True, exist_ok=True); record_count=0
+    target=out/'events.jsonl'; temporary=out/'.events.jsonl.tmp'
+    with temporary.open('w', encoding='utf-8') as handle:
+        roots = [run_root] if isinstance(run_root, Path) else list(run_root)
+        sources = sorted(source for root in roots for source in root.rglob('events/notice-events.jsonl'))
+        for source in sources:
+            if source.parent.parent.name == 'aggregate':
+                continue
+            with source.open(encoding='utf-8', errors='replace') as input_handle:
+                for line in input_handle:
+                    if not line.strip(): continue
+                    row=json.loads(line)
+                    if not row.get('symbol') or not row.get('tracing_no') or not row.get('source'):
+                        temporary.unlink(missing_ok=True)
+                        raise SystemExit(f'event validation failed: {source}')
+                    handle.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n')
+                    record_count += 1
+    temporary.replace(target)
     manifest={'schema':'boursnegar-codal-notices-v1','source':'browser/codal.ir','generated_at':datetime.now(timezone.utc).isoformat(),
-              'files':[{'path':target.name,'records':len(records),'sha256':sha256(target)}],'errors':[]}
+              'files':[{'path':target.name,'records':record_count,'sha256':sha256(target)}],'errors':[]}
     (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     return manifest
 
@@ -209,10 +223,12 @@ def main():
     if args.allow_download is False and not args.skip_local:
         raise SystemExit('Local completion may fetch data; pass --allow-download explicitly')
     if not args.skip_local:
+        aggregation_roots=[]
         for symbol in selected:
             target=symbol_run_root(run_base, symbol)/symbol
             if target.parent == run_base:
                 target=run_root/symbol
+            aggregation_roots.append(target)
             cmd=[PYTHON,'data-service/scripts/daily_local_ingestion.py','--symbol',symbol,'--from-jalali',args.from_jalali,'--to-jalali',args.to_jalali,
                  '--out',str(target),'--local-db',str(db),'--codalpy-first','--download-documents','--professional-documents','--defer-pdf']
             run(cmd,timeout=1800)
@@ -226,7 +242,8 @@ def main():
             if (codal_dir/'manifest.json').exists():
                 run([PYTHON,'data-service/scripts/build_local_codal_db.py','--db',str(db),'--artifact',str(codal_dir)])
     manifests=[]
-    aggregate_root=Path(args.run_root).resolve()
+    # Aggregate only this run; historical runs are already tracked by the local ledger.
+    aggregate_root=aggregation_roots if not args.skip_local else run_root
     for kind in ('codalpy','normalized'):
         manifest=aggregate_manifests(aggregate_root,run_root/'aggregate'/kind,kind)
         if manifest['files'][0]['records']: manifests.append(manifest)
