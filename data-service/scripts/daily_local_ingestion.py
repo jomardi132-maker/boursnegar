@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local Codalpy-first ingestion with browser fallback and artifact import."""
 from __future__ import annotations
-import argparse, json, os, subprocess, sys
+import argparse, json, os, signal, subprocess, sys
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]; PYTHON=sys.executable
@@ -11,9 +11,23 @@ def run(cmd,dry=False,timeout=None):
     print(json.dumps({'step':' '.join(map(str,cmd))},ensure_ascii=False),flush=True)
     if dry: return True
     env=os.environ.copy(); env['PYTHONPATH']=str(ROOT/'data-service')+((os.pathsep+env['PYTHONPATH']) if env.get('PYTHONPATH') else '')
-    try: subprocess.run(cmd,cwd=ROOT,check=True,timeout=timeout,env=env)
+    process = subprocess.Popen(cmd,cwd=ROOT,env=env,start_new_session=True)
+    try:
+        rc = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=5)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            try: os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError: pass
+        profile = next((Path(value) for index, value in enumerate(cmd) if index and cmd[index - 1] == '--profile'), None)
+        if profile:
+            from scripts.browser_codal_fetch import cleanup_profile_processes
+            cleanup_profile_processes(profile)
         print(json.dumps({'step_timeout':timeout,'command':cmd[0]},ensure_ascii=False),flush=True); return False
+    if rc:
+        raise subprocess.CalledProcessError(rc, cmd)
     return True
 
 def main():
