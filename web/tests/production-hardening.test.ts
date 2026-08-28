@@ -25,6 +25,26 @@ describe("production hardening contract", () => {
     expect(source).toContain("IDEMPOTENCY_CONFLICT");
     expect(source).toContain("l.idempotency_key=$2");
   });
+  it("protects comment workflows and keeps rewards idempotent", () => {
+    expect(source).toMatch(
+      /app\.post\("\/api\/comments",\s*requireUser,\s*requireCsrf/,
+    );
+    expect(source).toMatch(
+      /app\.post\("\/api\/comments\/:id\/like",requireUser,requireCsrf/,
+    );
+    expect(source).toMatch(
+      /app\.post\("\/api\/comments\/:id\/report",requireUser,requireCsrf/,
+    );
+    expect(source).toMatch(
+      /app\.get\("\/api\/admin\/comments", requireUser, requireCommentModerator/,
+    );
+    expect(source).toMatch(
+      /app\.patch\("\/api\/admin\/comments\/:id", requireUser, requireCommentModerator, requireCsrf/,
+    );
+    expect(source).toContain("comment-reward:${req.params.id}");
+    expect(source).toContain("ON CONFLICT DO NOTHING");
+    expect(source).toContain("z.enum(['published','hidden','rejected'])");
+  });
   it("does not charge v2 analyses with insufficient data", () => {
     expect(source).toContain('"/api/v2/analyze"');
     expect(source).toContain('data.decision !== "INSUFFICIENT_DATA"');
