@@ -29,6 +29,14 @@ describe("platform routes security contract", () => {
     expect(source).toContain("LIMIT 50 OFFSET $9");
     expect(source).not.toContain("RSI_FAKE");
   });
+  it("exposes evidence state and scenario zones instead of one generic label", () => {
+    expect(source).toContain("CONDITIONAL_REVIEW");
+    expect(source).toContain("NOT_EVALUABLE");
+    expect(source).toContain("fundamental_strength");
+    expect(source).toContain("buy_zone_high");
+    expect(source).toContain("sell_zone_low");
+    expect(source).toContain("fairValueBase");
+  });
   it.each(["/api/account/overview", "/api/account/referrals", "/api/alerts"])(
     "protects account route %s",
     (route) =>
