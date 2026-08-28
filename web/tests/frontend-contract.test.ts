@@ -45,6 +45,9 @@ describe('analysis UI contract', () => {
   it('shows a sourced market dashboard and links screener rows to stock pages', () => {
     expect(marketSource).toContain('/api/market/dashboard');
     expect(marketSource).toContain('/api/market/screener');
+    expect(marketSource).toContain('محدوده خرید');
+    expect(marketSource).toContain('بررسی مشروط');
+    expect(marketSource).toContain('fundamental_strength');
     expect(marketSource).toContain('بالاتر از میانگین ۲۰روزه');
     expect(marketSource).toContain('/s/${encodeURIComponent(row.symbol)}');
   });

@@ -112,8 +112,37 @@ export function installPlatformRoutes(app: express.Express) {
         universe AS (
           SELECT sa.symbol,ir.legal_name,coalesce(ind.title_fa,'') AS industry,l.trading_date,l.trading_date_jalali,l.price,l.volume,l.value,l.trade_count,
             round(((l.price/NULLIF(month.price,0))-1)*100,2) AS return_1m,round(moving.ma20,2) AS ma20,round(moving.ma50,2) AS ma50,
-            snap.quality_summary->>'decision' AS decision,nullif(snap.quality_summary->>'healthScore','')::numeric AS health_score,
-            nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
+            snap.quality_summary->>'decision' AS decision,
+            CASE
+              WHEN snap.quality_summary->>'decision' IN ('BUY','HOLD','SELL') THEN snap.quality_summary->>'decision'
+              WHEN nullif(snap.quality_summary->'valuation'->>'fairValueBase','') IS NOT NULL
+                AND coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0) >= 70 THEN 'CONDITIONAL_REVIEW'
+              WHEN snap.quality_summary IS NULL OR coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0)=0 THEN 'NOT_EVALUABLE'
+              ELSE 'DATA_REVIEW'
+            END AS action_state,
+            CASE
+              WHEN nullif(snap.quality_summary->>'healthScore','')::numeric >= 70 THEN 'STRONG'
+              WHEN nullif(snap.quality_summary->>'healthScore','')::numeric >= 40 THEN 'MODERATE'
+              WHEN snap.quality_summary->>'healthScore' IS NOT NULL THEN 'WEAK'
+              ELSE 'UNKNOWN'
+            END AS fundamental_strength,
+            CASE
+              WHEN nullif(snap.quality_summary->'valuation'->>'fairValueBase','') IS NOT NULL
+                AND coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0) >= 70 THEN 'WORTH_REVIEW'
+              WHEN snap.quality_summary IS NULL OR coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0)=0 THEN 'WAIT_FOR_DATA'
+              ELSE 'INCOMPLETE_EVIDENCE'
+            END AS review_signal,
+            nullif(snap.quality_summary->>'healthScore','')::numeric AS health_score,
+            nullif(snap.quality_summary->>'dataCoverage','')::numeric AS data_coverage,
+            nullif(snap.quality_summary->>'confidence','')::numeric AS confidence,
+            nullif(snap.quality_summary->'valuation'->>'fairValueLow','')::numeric AS fair_value_low,
+            nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric AS fair_value_base,
+            nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric AS fair_value_high,
+            nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80 AS buy_zone_high,
+            nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15 AS sell_zone_low,
+            snap.quality_summary->>'analysisState' AS analysis_state,
+            nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,
+            nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
           FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL JOIN issuers ir ON ir.id=i.issuer_id AND ir.active LEFT JOIN industries ind ON ind.id=ir.industry_id
           LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' ORDER BY p.trading_date DESC LIMIT 1) month ON true
           LEFT JOIN moving ON moving.instrument_id=l.instrument_id
@@ -226,7 +255,14 @@ export function installPlatformRoutes(app: express.Express) {
         pool.query(
           `SELECT s.id,s.status,s.data_as_of,s.calculated_at,s.coverage,s.confidence,
                   r.decision,r.top_reasons,r.top_risks,r.critical_warning,
-                  h.score,v.fair_value_low,v.fair_value_base,v.fair_value_high,v.model_type,v.model_version
+                  h.score,v.fair_value_low,v.fair_value_base,v.fair_value_high,v.model_type,v.model_version,
+                  s.quality_summary->>'analysisState' AS analysis_state,
+                  s.quality_summary->>'dataCoverage' AS data_coverage,
+                  s.quality_summary->>'confidence' AS analysis_confidence,
+                  s.quality_summary->'valuation'->>'fairValueLow' AS scenario_low,
+                  s.quality_summary->'valuation'->>'fairValueBase' AS scenario_base,
+                  s.quality_summary->'valuation'->>'fairValueHigh' AS scenario_high,
+                  s.quality_summary->'valuation'->>'method' AS valuation_method
            FROM analytical_snapshots s
            LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
            LEFT JOIN health_score_results h ON h.snapshot_id=s.id
