@@ -215,6 +215,10 @@ The following checkpointed cycle completed batches `0121` through `0125` (50 add
 
 The following checkpointed cycle completed batches `0126` through `0130` (50 additional symbols), all with exit code 0. The pending queue decreased from `140` to `99`. The latest Production audit reports financial periods `14,680`, financial facts `52,859`, valid facts `25,479`, raw Codalpy records `1,262,716`, linked Codalpy records `1,214,508`, monthly records `849,476`, and linked monthly records `807,095`. No validation errors were reported, runtime health remained green, and post-cycle Chrome/profile counts were zero.
 
+The final checkpointed recovery completed batches `0131` through `0141` (108 additional symbols), all with exit code 0. The pending recovery queue reached `0`. The final Production audit was generated at `2026-08-28T01:02:06.755565+00:00` and is stored as `artifacts/production-audits/boursnegar-coverage-final-20260828T0101Z.json` with SHA-256 `991c56ee890457b858c56a07d8293f6d1727a951fc1f7d36476a3bd83e470382`. It reports financial periods `15,138`, financial facts `55,051`, valid facts `26,663`, raw Codalpy records `1,371,661`, linked Codalpy records `1,323,453`, monthly records `928,101`, and linked monthly records `885,720`. Health remained green and no ingestion-owned Chrome/profile remained after completion. This closes the recovery queue only; it does not establish full analytical coverage.
+
+The live web surface was also checked in a real browser at desktop and mobile widths. The homepage rendered its operational counts, screener and table with no console errors; at mobile width `390x844`, rendered document width matched the viewport, so no horizontal overflow was observed. Authenticated moderator comment/reward E2E remains an explicit unverified gate because no authorized session was used.
+
 From the initial symbol-level audit across all 1,533 active instruments:
 
 - `CORE_READY`: 215

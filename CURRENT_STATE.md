@@ -1,6 +1,6 @@
 # وضعیت فعلی بورس‌نگار
 
-آخرین بررسی: ۱۴۰۵/۰۶/۰۵، 2026-08-28T05:21:11+03:30؛ آخرین recovery audit: 2026-08-27T23:51:11Z
+آخرین بررسی: ۱۴۰۵/۰۶/۰۶، 2026-08-28T04:33:22+03:30؛ آخرین recovery audit: 2026-08-28T01:02:06Z
 
 ## خلاصه اجرایی
 
@@ -100,20 +100,23 @@ Health/smoke checks:
   - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T2258Z.json`
   - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T2321Z.json`
   - post-supervisor JSON: `artifacts/production-audits/coverage-after-supervisor-20260827T2351Z.json`
+  - final post-supervisor JSON: `artifacts/production-audits/boursnegar-coverage-final-20260828T0101Z.json`
 
 این artifactها برای reconciliation ارزشمندند، اما نباید با پوشش کامل Production یکی گرفته شوند. هر ارسال جدید به Production باید manifest/schema/checksum، advisory lock و اجرای تکراری با inserted=0 داشته باشد.
 
-آخرین اعداد Production در 2026-08-27:
+آخرین اعداد Production در 2026-08-28:
 
 - Active instruments: 1,524
 - Industry-level current aliases: 1,524
 - Active instruments with current alias: 1,524
 - Active instruments without current alias: 0
-- Financial periods: 14,680
-- Financial facts: 52,859
-- Valid facts: 25,479
-- Raw Codalpy records: 1,262,716
-- Linked Codalpy records: 1,214,508
+- Financial periods: 15,138
+- Financial facts: 55,051
+- Valid facts: 26,663
+- Raw Codalpy records: 1,371,661
+- Linked Codalpy records: 1,323,453
+- Monthly records: 928,101
+- Linked monthly records: 885,720
 - Symbol-level tiers: `CORE_READY=215`, `MISSING_CORE_FACTS=418`, `MISSING_COMPARABLE_PERIODS=891`, `NO_CURRENT_ALIAS=0`
 - Latest decisions: `INSUFFICIENT_DATA=1,520`, `SELL=3`, `HOLD=1`, `BUY=0`
 - Backup پاک‌سازی alias: `/var/backups/boursnegar/20260827T055454Z-duplicate-symbol-instruments.json`
@@ -126,7 +129,13 @@ Health/smoke checks:
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
 4. UI: health و HTTP 200 کافی نیست؛ برای تغییرات UI بعدی باید DOM/console/network و viewport موبایل/دسکتاپ بررسی شود.
 
-آخرین چرخهٔ supervisor: batchهای 0126 تا 0130، مجموعاً ۵۰ نماد با exit code صفر، و صف باقی‌مانده ۹۹ نماد است. پس از اصلاح timeout/cleanup، شمارش Chrome process و profile باقی‌مانده صفر تأیید شد. پس از بازخوانی مستقیم وضعیت Production در mirror محلی، وضعیت `complete=430`، `comparable=219` و `incomplete=875` ثبت شد؛ این طبقه‌بندی بر اساس fact معتبر و دوره است و با «داشتن چند سند» یکی نیست.
+آخرین چرخهٔ supervisor: batchهای 0131 تا 0141، مجموعاً ۱۰۸ نماد با exit code صفر، و صف recovery به صفر رسید. ممیزی نهایی با `generatedAt=2026-08-28T01:02:06.755565Z` ثبت شد؛ پس از پایان کار، health سبز بود و هیچ Chrome/profile متعلق به ingestion باقی نماند. این پایان صف recovery است، نه پایان پوشش تحلیلی؛ tierهای fact، دوره و provenance همچنان معیار اعتبار هستند.
+
+## شواهد رندر زنده
+
+- صفحهٔ اصلی `https://boursnegar.ir/` در مرورگر واقعی روی desktop رندر شد؛ عنوان، وضعیت اتصال، اعداد عملیاتی، screener و جدول قابل مشاهده بودند و خطای کنسول ثبت نشد.
+- همان صفحه در viewport موبایل ۳۹۰×۸۴۴ رندر شد؛ DOM خوانا بود، دکمهٔ منو حاضر بود، خطای کنسول ثبت نشد و `scrollWidth` با عرض viewport برابر بود.
+- احراز هویت‌شدهٔ moderator و چرخهٔ واقعی comment/reward هنوز اجرا نشده است؛ بدون نشست معتبر یا هویت مجاز، ایجاد comment یا reward ممنوع است.
 
 ## اقدام بعدی پیشنهادی
 
