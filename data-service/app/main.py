@@ -417,7 +417,24 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
       JOIN disclosures d ON d.id=dv.disclosure_id
       WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
         AND ff.quality_status='VALID'
-      ORDER BY fp.end_date DESC,fp.audited DESC,ff.fact_key
+        -- A newer interim or subsidiary statement may contain only balance-sheet
+        -- facts. Select a period that can actually support the core analysis.
+        AND EXISTS (
+          SELECT 1 FROM financial_facts revenue_fact
+          WHERE revenue_fact.period_id=fp.id
+            AND revenue_fact.fact_key='revenue'
+            AND revenue_fact.quality_status='VALID'
+            AND revenue_fact.normalized_value IS NOT NULL
+        )
+        AND EXISTS (
+          SELECT 1 FROM financial_facts profit_fact
+          WHERE profit_fact.period_id=fp.id
+            AND profit_fact.fact_key='net_profit'
+            AND profit_fact.quality_status='VALID'
+            AND profit_fact.normalized_value IS NOT NULL
+        )
+      ORDER BY CASE WHEN fp.scope='consolidated' THEN 0 ELSE 1 END,
+               fp.end_date DESC,fp.audited DESC,ff.fact_key
     """), {"symbol": symbol}).mappings().all()
     if not rows:
         return None
