@@ -49,7 +49,8 @@ describe('analysis UI contract', () => {
     expect(marketSource).toContain('بررسی مشروط');
     expect(marketSource).toContain('fundamental_strength');
     expect(marketSource).toContain('برداشت سریع');
-    expect(marketSource).toContain('داده ناقص؛ فعلاً صبر برای تکمیل');
+    expect(marketSource).toContain('پوشش داده');
+    expect(marketSource).toContain('فعلاً صبر برای تکمیل داده');
     expect(marketSource).toContain('محدوده خرید ارزش‌گذاری');
     expect(marketSource).toContain('technical_state');
     expect(fs.readFileSync(path.resolve('src/components/StockPage.tsx'), 'utf8')).toContain('سنجه‌های غایب');
