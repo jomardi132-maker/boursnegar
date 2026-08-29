@@ -98,5 +98,8 @@ describe("production hardening contract", () => {
     expect(source).toContain("reward_credits");
     expect(source).toContain("comment.reward.manual");
     expect(source).toContain("comment-automation-failed");
+    expect(source).toContain("FOR UPDATE");
+    expect(source).toContain("requestedReward");
+    expect(source).toContain("grantedReward");
   });
 });
