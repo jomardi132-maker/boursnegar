@@ -467,7 +467,7 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
         "HasExcel": bool(first["excel_url"]), "scope": first["scope"],
         "_period_id": str(first["period_id"]), "_end_date": first["end_date"],
         "_end_date_jalali": first["end_date_jalali"],
-        "_length_months": first["length_months"],
+        "_length_months": first["length_months"], "_audited": bool(first["audited"]),
     }
     return candidate, str(first["excel_url"] or ""), {
         "metrics": metrics,
@@ -593,6 +593,68 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
     if result.get("latest_price_date") is not None:
         result["latest_price_date"] = result["latest_price_date"].isoformat()
     return result
+
+
+def _stored_financial_history(db: Session, symbol: str, candidate: dict) -> list[dict]:
+    """Return a comparable, provenance-preserving financial history.
+
+    Separate Codal disclosures can represent the same period. Aggregate only
+    exact date/length/scope/audit groups, then expose only groups with both
+    revenue and net profit. Missing cash flow stays null rather than being
+    backfilled from an incompatible statement.
+    """
+    if not candidate.get("_end_date"):
+        return []
+    rows = db.execute(text("""
+      SELECT fp.end_date,fp.end_date_jalali,fp.length_months,fp.scope,fp.audited,
+             max(CASE WHEN ff.fact_key='revenue' THEN ff.normalized_value END) AS revenue,
+             max(CASE WHEN ff.fact_key='net_profit' THEN ff.normalized_value END) AS net_profit,
+             max(CASE WHEN ff.fact_key='operating_cash_flow' THEN ff.normalized_value END) AS operating_cash_flow,
+             max(d.published_date_jalali) AS published_date
+      FROM symbol_aliases sa
+      JOIN instruments i ON i.id=sa.instrument_id
+      JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+      JOIN financial_facts ff ON ff.period_id=fp.id
+      JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
+      JOIN disclosures d ON d.id=dv.disclosure_id
+      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
+        AND fp.scope=:scope AND fp.audited=:audited
+        AND fp.end_date <= :end_date
+        AND ff.quality_status='VALID'
+        AND ff.fact_key IN ('revenue','net_profit','operating_cash_flow')
+      GROUP BY fp.end_date,fp.end_date_jalali,fp.length_months,fp.scope,fp.audited
+      HAVING max(CASE WHEN ff.fact_key='revenue' THEN ff.normalized_value END) IS NOT NULL
+         AND max(CASE WHEN ff.fact_key='net_profit' THEN ff.normalized_value END) IS NOT NULL
+      ORDER BY fp.end_date DESC,fp.length_months DESC
+      LIMIT 4
+    """), {"symbol": symbol, "scope": candidate.get("scope") or "unknown",
+             "audited": bool(candidate.get("_audited", False)),
+             "end_date": candidate["_end_date"]}).mappings().all()
+    history = []
+    for row in rows:
+        item = {
+            "periodEnd": str(row["end_date_jalali"] or row["end_date"]),
+            "periodLengthMonths": row["length_months"],
+            "scope": row["scope"],
+            "audited": bool(row["audited"]),
+            "publishedDate": row["published_date"],
+            "revenue": float(row["revenue"]) if row["revenue"] is not None else None,
+            "netProfit": float(row["net_profit"]) if row["net_profit"] is not None else None,
+            "operatingCashFlow": float(row["operating_cash_flow"])
+            if row["operating_cash_flow"] is not None else None,
+        }
+        history.append(item)
+    for index, item in enumerate(history):
+        previous = next(
+            (older for older in history[index + 1:]
+             if older["periodLengthMonths"] == item["periodLengthMonths"]),
+            None,
+        )
+        for value_key, growth_key in (("revenue", "revenueGrowthPercent"), ("netProfit", "netProfitGrowthPercent")):
+            current = item[value_key]
+            prior = previous[value_key] if previous else None
+            item[growth_key] = round((current / prior - 1) * 100, 2) if prior not in (None, 0) else None
+    return history
 
 
 def _stored_monthly_signals(db: Session, symbol: str) -> dict:
@@ -824,6 +886,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     candidate, excel_url, parsed = local_report
 
     comparison, comparison_unavailable_reason = _stored_period_comparison(db, symbol, candidate, parsed)
+    financial_history = _stored_financial_history(db, symbol, candidate)
     ttm, ttm_unavailable_reason = _stored_ttm(db, symbol, candidate, parsed)
     related_disclosures = _related_codal_disclosures(letters, candidate)
 
@@ -895,6 +958,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,
         "period_comparison_unavailable_reason": comparison_unavailable_reason,
+        "financial_history": financial_history,
         "analysis_context": analysis_context,
         "monthly_activity": monthly_signals,
         "ttm": ttm,
@@ -916,7 +980,9 @@ def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
     if request.report_mode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="reportMode نامعتبر است.")
     symbol = request.query.strip().removeprefix("نماد ").strip()
-    if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}", symbol):
+    # Some valid TSETMC aliases contain an internal ASCII space (for example
+    # «آ س پ»). Preserve the exact stored alias while rejecting punctuation.
+    if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_ -]{1,32}", symbol):
         raise HTTPException(status_code=400, detail="نماد نامعتبر است.")
     raw = analyze_symbol(symbol, request.report_mode, db)
     settings = dict(db.execute(text("""

@@ -155,6 +155,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "valuation": valuation,
         "analysisState": analysis_state,
         "analysisContext": context,
+        "financialHistory": raw.get("financial_history") or [],
         "monthlyActivity": monthly_activity,
         "references": {
             "bankDepositRate": bank_rate,

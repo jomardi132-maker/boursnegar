@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Database, ShieldCheck, TrendingUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, LineChart, ShieldCheck, TrendingUp } from "lucide-react";
 
 export type AnalysisPayload = {
   symbol: string;
@@ -17,6 +17,7 @@ export type AnalysisPayload = {
   };
   analysisState?: "STANDARD" | "MARKET_FUNDAMENTAL_DIVERGENCE" | "TURNAROUND_CANDIDATE" | "CAPITAL_ACTION_DATA_GAP";
   analysisContext?: { financial_periods?: number; monthly_disclosures?: number; price_observations?: number; price_return_90d_percent?: number | null; price_return_365d_percent?: number | null; shares_change_percent?: number | null; corporate_actions?: number };
+  financialHistory?: Array<{ periodEnd: string; periodLengthMonths: number; scope: string; audited: boolean; publishedDate?: string | null; revenue: number | null; netProfit: number | null; operatingCashFlow: number | null; revenueGrowthPercent?: number | null; netProfitGrowthPercent?: number | null }>;
   monthlyActivity?: { available: boolean; monthlySales?: { current?: number; currentPeriod?: string; previous?: number | null; previousPeriod?: string | null; growthPercent?: number | null }; ytdSales?: { current?: number; currentPeriod?: string; previous?: number | null; previousPeriod?: string | null; growthPercent?: number | null }; source?: string };
   references?: { bankDepositRate: number | null; inflationRate: number | null };
   keyMetrics?: Record<string, number | null>;
@@ -67,6 +68,7 @@ const precisePercent = (value: number | null) => value == null
   : `${value.toLocaleString("fa-IR", { minimumFractionDigits: value > 0 && value < 0.1 ? 2 : 0, maximumFractionDigits: 2 })}٪`;
 
 const dateFa = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("fa-IR") : "نامشخص";
+const periodLabel = (months: number) => months === 12 ? "۱۲ماهه" : months === 9 ? "۹ماهه" : months === 6 ? "۶ماهه" : months === 3 ? "۳ماهه" : `${months}ماهه`;
 
 export function DecisionReport({ report }: { report: AnalysisPayload }) {
   const actionable = report.decision !== "INSUFFICIENT_DATA";
@@ -88,6 +90,7 @@ export function DecisionReport({ report }: { report: AnalysisPayload }) {
       <article><CheckCircle2/><span><small>اطمینان محاسبه</small><b>{number(report.confidence, "٪")}</b></span></article>
     </div>
     {report.keyMetrics&&<section className="fundamental-metrics"><header><div><small>اعداد استخراج‌شده از صورت مالی</small><h3>شاخص‌های بنیادی کلیدی</h3><em>{availableMetrics.toLocaleString("fa-IR")} شاخص از گزارش استخراج شده</em></div>{report.report&&<span>{report.report.audited?"حسابرسی‌شده":"حسابرسی‌نشده"}{report.report.publishedAt?` · ${report.report.publishedAt}`:""}</span>}</header>{report.report?.basisNote&&<div className="report-basis-note"><AlertTriangle/><span>{report.report.basisNote}</span></div>}{report.report?.relatedDisclosures?.length&&<div className="report-basis-note"><AlertTriangle/><span>اطلاعیه توضیحی/اصلاحیه مرتبط وجود دارد و باید بررسی شود: {report.report.relatedDisclosures.slice(0,2).map((d)=>d.title).join("، ")}</span></div>}<div>{Object.entries(metricLabels).map(([key,meta])=>{const value=report.keyMetrics?.[key];return <article key={key} data-missing={value==null}><small>{meta.label}</small><strong>{value==null?"داده موجود نیست":number(value,meta.suffix)}</strong></article>;})}</div>{report.report?.title&&<p>{report.report.title}</p>}</section>}
+    {report.financialHistory?.length&&<section className="financial-history"><header><div><small>مقایسه‌ی فقط هم‌دامنه و هم‌وضعیت حسابرسی</small><h3><LineChart/> روند چنددوره‌ای</h3></div><span>منبع: صورت‌های مالی رسمی کدال</span></header><p className="history-note">مقادیر زیر به میلیون ریال‌اند. رشد فقط با دوره‌ی قبلیِ هم‌طول محاسبه شده و نبود جریان نقد به‌صورت «موجود نیست» نمایش داده می‌شود.</p><div className="history-table-wrap"><table><thead><tr><th>دوره</th><th>درآمد</th><th>رشد درآمد</th><th>سود خالص</th><th>رشد سود</th><th>جریان نقد عملیاتی</th></tr></thead><tbody>{report.financialHistory.map((item)=><tr key={`${item.periodEnd}-${item.periodLengthMonths}`}><td>{item.periodEnd} · {periodLabel(item.periodLengthMonths)}</td><td>{number(item.revenue)}</td><td>{precisePercent(item.revenueGrowthPercent??null)}</td><td>{number(item.netProfit)}</td><td>{precisePercent(item.netProfitGrowthPercent??null)}</td><td>{number(item.operatingCashFlow)}</td></tr>)}</tbody></table></div></section>}
     {actionable && report.valuation&&<section className="valuation-panel"><div><small>ارزش منصفانه سناریویی ـ ریال به‌ازای هر سهم</small><h3>{number(report.valuation.fairValueBase)}</h3><p>مدل {report.valuation.method} · نسخه {report.valuation.modelVersion}{typeof report.valuation.assumptions?.multiple==="number"?` · فرض P/E برابر ${number(report.valuation.assumptions.multiple as number)}`:""}</p></div><div className="valuation-range"><span><small>سناریوی محتاطانه</small><b>{number(report.valuation.fairValueLow)}</b></span><i/><span><small>سناریوی خوش‌بینانه</small><b>{number(report.valuation.fairValueHigh)}</b></span></div></section>}
     <section className="question-grid">{Object.entries(report.coreQuestions).map(([key,item])=>{
       const detail = key==="earnings_vs_bank"

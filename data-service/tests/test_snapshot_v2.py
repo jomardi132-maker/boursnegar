@@ -50,6 +50,21 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertLess(payload["dataCoverage"], 30)
         self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
 
+    def test_financial_history_is_exposed_without_inventing_missing_cash_flow(self):
+        history = [{
+            "periodEnd": "1404/12/29", "periodLengthMonths": 12,
+            "scope": "consolidated", "audited": True,
+            "revenue": 1000, "netProfit": 100, "operatingCashFlow": None,
+            "revenueGrowthPercent": None, "netProfitGrowthPercent": None,
+        }]
+        payload = build_snapshot_payload({
+            "symbol": "تاریخچه", "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "financial_metrics": {"revenue": 1000, "net_profit": 100},
+            "financial_history": history,
+        }, "audited")
+        self.assertEqual(payload["financialHistory"], history)
+        self.assertIsNone(payload["financialHistory"][0]["operatingCashFlow"])
+
     def test_pilot_industry_can_produce_auditable_actionable_decision(self):
         payload = build_snapshot_payload({
             "symbol": "فولاد",
