@@ -367,7 +367,7 @@ app.get("/api/comments", asyncRoute(async (req, res) => {
 }));
 app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*60_000), asyncRoute(async (req,res)=>{
   const p=z.object({ ...commentSchema.shape, parentId:z.string().uuid().nullable().optional() }).safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
-  if (p.data.parentId) { const parent=await pool.query(`SELECT id,kind,symbol,status FROM comments WHERE id=$1`,[p.data.parentId]); const row=parent.rows[0]; if(!row || row.status!=='published' || row.kind!==p.data.kind || (row.symbol||null)!==(p.data.symbol||null)) return res.status(400).json({success:false,error:"پیام مرجع معتبر نیست."}); }
+  if (p.data.parentId) return res.status(403).json({success:false,error:"پاسخ مستقیم کاربران غیرفعال است. پاسخ‌ها توسط سامانه یا مدیر گفت‌وگو منتشر می‌شوند."});
   const duplicateKey = [req.authUser!.id, p.data.kind, p.data.symbol || "", p.data.parentId || "", p.data.body].join("\u001f");
   const row=await withTransaction(async c=>{
     await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`,[duplicateKey]);

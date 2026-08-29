@@ -83,4 +83,11 @@ describe("production hardening contract", () => {
   it("keeps the automation ledger writable by the application role", () => {
     expect(fs.readFileSync(path.resolve("migrations/023_comment_automation_permissions.sql"), "utf8")).toContain("GRANT SELECT, INSERT");
   });
+  it("blocks user-authored replies while retaining internal automation replies", () => {
+    expect(source).toContain("پاسخ مستقیم کاربران غیرفعال است");
+    expect(source).toContain("parentId");
+    const comments = fs.readFileSync(path.resolve("src/components/Comments.tsx"), "utf8");
+    expect(comments).not.toContain("پاسخ به این نظر");
+    expect(comments).not.toContain("<Reply");
+  });
 });
