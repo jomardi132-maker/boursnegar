@@ -265,6 +265,7 @@ export function installPlatformRoutes(app: express.Express) {
                   s.quality_summary->>'analysisState' AS analysis_state,
                   s.quality_summary->>'dataCoverage' AS data_coverage,
                   s.quality_summary->>'confidence' AS analysis_confidence,
+                  s.quality_summary->'missingMetrics' AS missing_metrics,
                   s.quality_summary->'valuation'->>'fairValueLow' AS scenario_low,
                   s.quality_summary->'valuation'->>'fairValueBase' AS scenario_base,
                   s.quality_summary->'valuation'->>'fairValueHigh' AS scenario_high,
