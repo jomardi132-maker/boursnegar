@@ -109,6 +109,8 @@ export function installPlatformRoutes(app: express.Express) {
         WITH market_dates AS (SELECT max(trading_date) AS latest,(SELECT trading_date FROM (SELECT DISTINCT trading_date FROM daily_prices WHERE quality_status='VALID' ORDER BY trading_date DESC LIMIT 1 OFFSET 49) d) AS cutoff FROM daily_prices WHERE quality_status='VALID'),
         latest AS (SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date=d.latest ORDER BY p.instrument_id,p.retrieved_at DESC),
         moving AS (SELECT instrument_id,avg(price) FILTER (WHERE rn<=20) AS ma20,avg(price) FILTER (WHERE rn<=50) AS ma50 FROM (SELECT p.instrument_id,coalesce(p.adjusted_close,p.close) AS price,row_number() OVER (PARTITION BY p.instrument_id ORDER BY p.trading_date DESC) AS rn FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date>=d.cutoff) recent GROUP BY instrument_id),
+        latest_financial_period AS (SELECT DISTINCT ON (fp.issuer_id) fp.issuer_id,fp.id FROM financial_periods fp ORDER BY fp.issuer_id,fp.end_date DESC,fp.audited DESC,fp.id DESC),
+        fact_coverage AS (SELECT lfp.issuer_id,round(count(DISTINCT ff.fact_key) FILTER (WHERE ff.fact_key IN ('revenue','net_profit','operating_cash_flow','total_assets','total_liabilities','total_equity','eps_basic'))::numeric / 7 * 100,2) AS coverage FROM latest_financial_period lfp JOIN financial_facts ff ON ff.period_id=lfp.id AND ff.quality_status='VALID' GROUP BY lfp.issuer_id),
         universe AS (
           SELECT sa.symbol,ir.legal_name,coalesce(ind.title_fa,'') AS industry,l.trading_date,l.trading_date_jalali,l.price,l.volume,l.value,l.trade_count,
             round(((l.price/NULLIF(month.price,0))-1)*100,2) AS return_1m,round(moving.ma20,2) AS ma20,round(moving.ma50,2) AS ma50,
@@ -117,6 +119,7 @@ export function installPlatformRoutes(app: express.Express) {
               WHEN snap.quality_summary->>'decision' IN ('BUY','HOLD','SELL') THEN snap.quality_summary->>'decision'
               WHEN nullif(snap.quality_summary->'valuation'->>'fairValueBase','') IS NOT NULL
                 AND coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0) >= 70 THEN 'CONDITIONAL_REVIEW'
+              WHEN snap.quality_summary IS NULL AND coalesce(fc.coverage,0)>0 THEN 'DATA_REVIEW'
               WHEN snap.quality_summary IS NULL OR coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0)=0 THEN 'NOT_EVALUABLE'
               ELSE 'DATA_REVIEW'
             END AS action_state,
@@ -129,11 +132,12 @@ export function installPlatformRoutes(app: express.Express) {
             CASE
               WHEN nullif(snap.quality_summary->'valuation'->>'fairValueBase','') IS NOT NULL
                 AND coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0) >= 70 THEN 'WORTH_REVIEW'
+              WHEN snap.quality_summary IS NULL AND coalesce(fc.coverage,0)>0 THEN 'INCOMPLETE_EVIDENCE'
               WHEN snap.quality_summary IS NULL OR coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,0)=0 THEN 'WAIT_FOR_DATA'
               ELSE 'INCOMPLETE_EVIDENCE'
             END AS review_signal,
             nullif(snap.quality_summary->>'healthScore','')::numeric AS health_score,
-            nullif(snap.quality_summary->>'dataCoverage','')::numeric AS data_coverage,
+            coalesce(nullif(snap.quality_summary->>'dataCoverage','')::numeric,fc.coverage) AS data_coverage,
             nullif(snap.quality_summary->>'confidence','')::numeric AS confidence,
             nullif(snap.quality_summary->'valuation'->>'fairValueLow','')::numeric AS fair_value_low,
             nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric AS fair_value_base,
@@ -150,6 +154,7 @@ export function installPlatformRoutes(app: express.Express) {
             nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,
             nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
           FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL JOIN issuers ir ON ir.id=i.issuer_id AND ir.active LEFT JOIN industries ind ON ind.id=ir.industry_id
+          LEFT JOIN fact_coverage fc ON fc.issuer_id=ir.issuer_id
           LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' ORDER BY p.trading_date DESC LIMIT 1) month ON true
           LEFT JOIN moving ON moving.instrument_id=l.instrument_id
           LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
