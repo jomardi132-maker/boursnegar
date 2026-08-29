@@ -198,6 +198,12 @@ Health/smoke checks:
 - صفحه سهم جدول «مقایسه با شواهد هم‌صنعت» را با سلامت بنیادی، پوشش، P/E، ROE و نتیجه فعلی نشان می‌دهد و صریحاً آن را رتبه‌بندی/توصیه مستقل معرفی نمی‌کند.
 - Production release `/var/www/boursnegar-releases/20260829T173000Z-peer-comparison` فعال است. برای «شپنا» دو peer واقعی (`شتران` و `شبندر`) در desktop و mobile دیده شد؛ console error صفر و overflow موبایل صفر بود.
 
+### پوشش fallback اسکرینر - 2026-08-29
+
+- برای نمادهایی که snapshot تحلیلی ندارند، اسکرینر اکنون آخرین دوره مالی و هفت fact اصلی معتبر را از Production محاسبه می‌کند؛ این مقدار فقط پوشش evidence را نشان می‌دهد و بدون snapshot تصمیم BUY/HOLD/SELL تولید نمی‌کند.
+- یک خطای cast و سپس یک خطای نام ستون در rollout شناسایی و اصلاح شد. release فعال `/var/www/boursnegar-releases/20260829T183000Z-fact-coverage` با backupهای فایل build در `/var/backups/boursnegar/20260829T193000Z-fact-coverage-hotfix-server.cjs` و `/var/backups/boursnegar/20260829T194500Z-fact-coverage-join-fix-server.cjs` قابل بازگشت است.
+- پاسخ زنده `GET /api/market/screener?sort=health` با موفقیت ۵۰ ردیف از مجموع ۶۹۵ ردیف را برگرداند. صفحه اصلی در مرورگر واقعی ۱۰ ردیف، پوشش ۴۳٪ تا ۸۶٪، بنیاد و وضعیت اقدام را نشان داد و خطای console ثبت نشد.
+
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
