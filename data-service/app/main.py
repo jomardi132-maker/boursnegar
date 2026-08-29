@@ -445,7 +445,17 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     )}
     first = rows[0]
     for row in rows:
-        if row["period_id"] != first["period_id"]:
+        # Codal often publishes the income statement and balance sheet as
+        # separate disclosures. They may share a period end but have different
+        # period ids; combine only an exact same-date, same-length, same-scope,
+        # same-audit-status set so parent/subsidiary facts never mix.
+        same_financial_period = (
+            row["end_date"] == first["end_date"]
+            and row["length_months"] == first["length_months"]
+            and row["scope"] == first["scope"]
+            and row["audited"] == first["audited"]
+        )
+        if not same_financial_period:
             continue
         if row["fact_key"] in metrics and row["normalized_value"] is not None:
             metrics[row["fact_key"]] = float(row["normalized_value"])
