@@ -192,6 +192,12 @@ Health/smoke checks:
 - release فعال web: `/var/www/boursnegar-releases/20260829T160000Z-valuation-alerts`. health عمومی و screener عمومی پس از rollout موفق بودند.
 - ناسازگاری `schema_migrations` نیز رفع شد: migrationهای موجود 012، 013، 014، 015 مالی، 017 و 020 پس از بررسی idempotency با مالک دیتابیس ثبت شدند؛ `scripts/migrate.ts` روی همان release بعد از اصلاح بدون خطا و بدون migration جدید اجرا شد.
 
+### مقایسه هم‌صنعت با داده واقعی - 2026-08-29
+
+- endpoint `/api/stocks/:symbol` اکنون peerهای همان صنعت را از قیمت معتبر و آخرین snapshot می‌سازد؛ فقط نماد فعال با پوشش حداقل ۷۰٪ وارد جدول می‌شود و حداکثر ۵ ردیف نمایش داده می‌شود.
+- صفحه سهم جدول «مقایسه با شواهد هم‌صنعت» را با سلامت بنیادی، پوشش، P/E، ROE و نتیجه فعلی نشان می‌دهد و صریحاً آن را رتبه‌بندی/توصیه مستقل معرفی نمی‌کند.
+- Production release `/var/www/boursnegar-releases/20260829T173000Z-peer-comparison` فعال است. برای «شپنا» دو peer واقعی (`شتران` و `شبندر`) در desktop و mobile دیده شد؛ console error صفر و overflow موبایل صفر بود.
+
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
