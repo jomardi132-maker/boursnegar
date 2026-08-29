@@ -90,4 +90,13 @@ describe("production hardening contract", () => {
     expect(comments).not.toContain("پاسخ به این نظر");
     expect(comments).not.toContain("<Reply");
   });
+  it("caps automated rewards, rejects repeated rewarded content, and audits actions", () => {
+    expect(source).toContain("COMMENT_REWARD_DAILY_CAP");
+    expect(source).toContain("COMMENT_REWARD_MONTHLY_CAP");
+    expect(source).toContain("now()-interval '30 days'");
+    expect(source).toContain("comment.automation");
+    expect(source).toContain("reward_credits");
+    expect(source).toContain("comment.reward.manual");
+    expect(source).toContain("comment-automation-failed");
+  });
 });

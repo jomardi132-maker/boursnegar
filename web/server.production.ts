@@ -131,6 +131,8 @@ const analyzeSchema = z.object({
   reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
 });
 const commentSchema = z.object({ kind: z.enum(["site_feedback", "symbol_comment"]), symbol: z.string().max(32).optional(), body: z.string().trim().min(3).max(2000) });
+const COMMENT_REWARD_DAILY_CAP = 30;
+const COMMENT_REWARD_MONTHLY_CAP = 100;
 
 type CommentAssessment = {
   quality: number;
@@ -183,12 +185,18 @@ function assessComment(comment: { kind: string; symbol?: string | null; body: st
 
 async function automateComment(comment: { id: string; userId: string; kind: string; symbol?: string | null; body: string }) {
   const assessment = assessComment(comment);
-  const reward = assessment.reward;
   await withTransaction(async (client) => {
     const existing = await client.query(`SELECT 1 FROM comment_automation_actions WHERE comment_id=$1`, [comment.id]);
     if (existing.rowCount) return;
     const actor = await client.query(`SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id WHERE u.status='active' AND r.code IN ('admin','comment_moderator') AND u.id<>$1 ORDER BY CASE r.code WHEN 'comment_moderator' THEN 0 ELSE 1 END, u.created_at ASC LIMIT 1`, [comment.userId]);
     if (!actor.rows[0]) return;
+    let reward = assessment.reward;
+    if (reward > 0) {
+      const normalizedBody = comment.body.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+      const totals = await client.query(`SELECT coalesce(sum(cr.credits) FILTER (WHERE cr.created_at >= current_date),0)::int AS daily, coalesce(sum(cr.credits) FILTER (WHERE cr.created_at >= date_trunc('month',now())),0)::int AS monthly FROM comment_rewards cr JOIN comments c ON c.id=cr.comment_id WHERE c.user_id=$1`, [comment.userId]);
+      const duplicate = await client.query(`SELECT 1 FROM comments c JOIN comment_rewards cr ON cr.comment_id=c.id WHERE c.user_id=$1 AND regexp_replace(lower(trim(c.body)), '\\s+', ' ', 'g')=$2 AND c.id<>$3 AND cr.created_at >= now()-interval '30 days' LIMIT 1`, [comment.userId, normalizedBody, comment.id]);
+      if (Number(totals.rows[0]?.daily || 0) + reward > COMMENT_REWARD_DAILY_CAP || Number(totals.rows[0]?.monthly || 0) + reward > COMMENT_REWARD_MONTHLY_CAP || duplicate.rowCount) reward = 0;
+    }
     const reply = await client.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id`, [actor.rows[0].id, comment.kind, comment.symbol || null, comment.id, assessment.replyText]);
     if (reward > 0) {
       const balance = await client.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`, [comment.userId, reward]);
@@ -199,7 +207,8 @@ async function automateComment(comment: { id: string; userId: string; kind: stri
       }
     }
     await client.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) VALUES($1,'comment_reply',$2,$3,$4)`, [comment.userId, 'پاسخ خودکار به نظر شما', assessment.replyText, comment.symbol ? `/s/${encodeURIComponent(comment.symbol)}#symbol-comments` : '#symbol-comments']);
-    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, assessment.quality, assessment.actionKind, assessment.reward, reply.rows[0].id]);
+    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, assessment.quality, assessment.actionKind, reward, reply.rows[0].id]);
+    await client.query(`INSERT INTO admin_audit_logs(admin_user_id,action,target_type,target_id,metadata,ip) VALUES(NULL,'comment.automation','comment',$1,$2,'0.0.0.0'::inet)`, [comment.id, { quality: assessment.quality, topic: assessment.topic, actionKind: assessment.actionKind, reward, rewardCaps: { daily: COMMENT_REWARD_DAILY_CAP, monthly: COMMENT_REWARD_MONTHLY_CAP } }]);
   });
 }
 
@@ -377,7 +386,11 @@ app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*
     return {rows:inserted.rows,duplicate:false};
   });
   if(row.duplicate) return res.status(200).json({success:true,comment:row.rows[0],duplicate:true});
-  await automateComment({id: row.rows[0].id, userId: req.authUser!.id, kind: p.data.kind, symbol: p.data.symbol || null, body: p.data.body});
+  try {
+    await automateComment({id: row.rows[0].id, userId: req.authUser!.id, kind: p.data.kind, symbol: p.data.symbol || null, body: p.data.body});
+  } catch (error) {
+    console.error('[comment-automation-failed]', { commentId: row.rows[0].id, error: error instanceof Error ? error.message : 'UNKNOWN' });
+  }
   if(p.data.parentId){await pool.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) SELECT c.user_id,'comment_reply','پاسخ تازه به نظر شما',$1,$2 FROM comments c WHERE c.id=$3 AND c.user_id<>$4`,[p.data.body.slice(0,180),p.data.symbol?`/s/${encodeURIComponent(p.data.symbol)}#symbol-comments`:'#symbol-comments',p.data.parentId,req.authUser!.id]);}
   res.status(201).json({success:true,comment:row.rows[0]});
 }));
@@ -984,6 +997,7 @@ app.patch("/api/admin/comments/:id", requireUser, requireCommentModerator, requi
     const found=await c.query(`SELECT id,user_id FROM comments WHERE id=$1 FOR UPDATE`,[req.params.id]); if(!found.rows[0]) throw new Error('COMMENT_NOT_FOUND');
     await c.query(`UPDATE comments SET status=$2,updated_at=now() WHERE id=$1`,[req.params.id,p.data.status]);
     if(p.data.reward>0){const balance=await c.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`,[found.rows[0].user_id,p.data.reward]);if(!balance.rows[0])throw new Error('CREDITS_NOT_FOUND');await c.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5) ON CONFLICT DO NOTHING`,[found.rows[0].user_id,p.data.reward,balance.rows[0].balance,req.params.id,`comment-reward:${req.params.id}`]);await c.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[req.params.id,req.authUser!.id,p.data.reward]);}
+    await c.query(`INSERT INTO admin_audit_logs(admin_user_id,action,target_type,target_id,metadata,ip) VALUES($1,'comment.reward.manual','comment',$2,$3,$4::inet)`, [req.authUser!.id, req.params.id, { status: p.data.status, reward: p.data.reward }, req.ip || '0.0.0.0']);
     return {status:p.data.status,reward:p.data.reward};
   });
   res.json({success:true,result});
