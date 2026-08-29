@@ -3,6 +3,7 @@ import { ArrowRight, BarChart3, Bell, BellRing, CalendarDays, Database, External
 import { api } from "../AppProduction";
 import { DecisionReport, type AnalysisPayload } from "./DecisionReport";
 import { Comments } from "./Comments";
+import "../peer.css";
 
 type Price = { trading_date: string; trading_date_jalali: string; close: string | null; adjusted_close: string | null; volume: string | null; value: string | null; trade_count: number | null };
 type Payload = {
@@ -10,6 +11,7 @@ type Payload = {
   latest: Price | null; returns: { oneMonth: number | null; sixMonths: number | null; oneYear: number | null }; prices: Price[];
   disclosures: Array<{ source_disclosure_id: string; title: string; published_date_jalali: string | null; is_audited: boolean | null; detail_url: string | null }>;
   rahavardReports: Array<{report_id:string;title:string;subtitle:string|null;report_date:string|null;fiscal_year:string|null;pdf_url:string;text_status:string;source_status:string}>;
+  peers: Array<{symbol:string;legal_name:string;price:string;health_score:string|null;data_coverage:string|null;pe:string|null;roe:string|null;decision:string|null}>;
   snapshot: null | { decision: string; score: string | null; coverage: string; confidence: string; fair_value_low: string | null; fair_value_base: string | null; fair_value_high: string | null; calculated_at: string; top_reasons: string[]; top_risks: string[]; analysis_state:string|null; data_coverage:string|null; analysis_confidence:string|null; missing_metrics:string[]|null; scenario_low:string|null; scenario_base:string|null; scenario_high:string|null; valuation_method:string|null };
 };
 
@@ -59,6 +61,7 @@ export function StockPage({ symbol, user, onLogin, onAnalyze, analysis, analysis
         <article className="chart-card"><header><div><span>روند قیمت پایانی</span><h2>عملکرد یک‌سال اخیر</h2></div><span className={positive ? "trend positive" : "trend negative"}>{positive ? <TrendingUp/> : <TrendingDown/>}{fa(chartReturn,1)}٪</span></header><PriceChart prices={data.prices}/><footer><span><i className="legend-price"/> قیمت پایانی (ریال)</span><span>منبع: BrsApi / TSETMC</span></footer></article>
         <SnapshotCard snapshot={data.snapshot}/>
       </section>
+      {data.peers?.length ? <PeerComparison industry={data.stock.industry || "هم‌صنعت"} peers={data.peers}/> : null}
       {analysisError && <div className="error-state" role="alert">{analysisError}</div>}
       {analysisLoading && <section className="analysis-skeleton" aria-label="در حال تحلیل"><div/><div/><div/></section>}
       {analysis && <DecisionReport report={analysis}/>}
@@ -85,6 +88,10 @@ function SnapshotCard({ snapshot }: { snapshot: Payload["snapshot"] }) {
   const high = Number(snapshot.scenario_high || snapshot.fair_value_high);
   const missingFa:Record<string,string>={operating_cash_flow:"جریان نقد عملیاتی",total_assets:"دارایی‌ها",total_liabilities:"بدهی‌ها",total_equity:"حقوق صاحبان سهام",eps_basic:"EPS",revenue:"درآمد",net_profit:"سود خالص"};
   return <article className={`snapshot-card ${snapshot.decision?.toLowerCase()}`}><header><span>آخرین تحلیل ثبت‌شده</span><em>{actionable ? (decisionFa[snapshot.decision] || snapshot.decision) : hasScenario ? "بررسی مشروط" : "قابل ارزیابی نیست"}</em></header><div className="score-ring" style={{"--score": `${Number(snapshot.score || 0) * 3.6}deg`} as CSSProperties}><strong>{fa(snapshot.score,0)}</strong><small>امتیاز سلامت</small></div><div className="snapshot-metrics"><span>پوشش داده <b>{fa(snapshot.data_coverage || snapshot.coverage,0)}٪</b></span><span>اطمینان <b>{fa(snapshot.analysis_confidence || snapshot.confidence,0)}٪</b></span></div>{hasScenario && <div className="fair-band"><small>ارزش منصفانهٔ سناریویی</small><b>{fa(base)} ریال</b><span>بازه: {fa(Number(snapshot.scenario_low || snapshot.fair_value_low))} تا {fa(high)} · خرید تا {fa(base * .8)} · فروش از {fa(high * 1.15)}</span></div>}{snapshot.missing_metrics?.length ? <p className="snapshot-note">سنجه‌های غایب: {snapshot.missing_metrics.map((key)=>missingFa[key]||key).join("، ")}.</p> : null}{!hasScenario && <p className="snapshot-note">برای این نماد گزارش مالی قابل‌استخراج کافی وجود ندارد؛ پیش از تصمیم، انتشار و تطبیق گزارش معتبر لازم است.</p>}{hasScenario && !actionable && <p className="snapshot-note">این بازه سناریویی است؛ به‌دلیل کمبود دوره یا اطمینان، سیستم توصیهٔ قطعی خرید یا فروش نمی‌دهد.</p>}<small className="snapshot-date">محاسبه: {new Date(snapshot.calculated_at).toLocaleString("fa-IR")}</small></article>;
+}
+
+function PeerComparison({ industry, peers }: { industry: string; peers: Payload["peers"] }) {
+  return <section className="peer-comparison"><header><div><span>مقایسه با شواهد هم‌صنعت</span><h2>نمادهای قابل‌مقایسه در {industry}</h2></div><small>فقط نمادهای فعال با پوشش حداقل ۷۰٪</small></header><div className="peer-table-wrap"><table><thead><tr><th>نماد</th><th>سلامت بنیادی</th><th>پوشش</th><th>P/E</th><th>ROE</th><th>نتیجه</th></tr></thead><tbody>{peers.map(peer=><tr key={peer.symbol}><td><a href={"/s/" + encodeURIComponent(peer.symbol)}>{peer.symbol}<small>{peer.legal_name}</small></a></td><td>{fa(peer.health_score,0)}</td><td>{fa(peer.data_coverage,0)}٪</td><td>{fa(peer.pe,1)}</td><td>{fa(peer.roe,1)}٪</td><td>{peer.decision==="BUY"?"خرید":peer.decision==="HOLD"?"نگهداری":peer.decision==="SELL"?"فروش":"بررسی"}</td></tr>)}</tbody></table></div><p>مقایسه برای کشف تفاوت‌های قابل‌بررسی است، نه رتبه‌بندی یا توصیه مستقل؛ مبنا snapshotهای رسمی و هم‌صنعت همین سامانه است.</p></section>;
 }
 
 function PriceChart({ prices }: { prices: Price[] }) {

@@ -236,7 +236,7 @@ export function installPlatformRoutes(app: express.Express) {
       );
       if (!profile.rowCount) return res.status(404).json({ success: false, error: "نماد پیدا نشد." });
       const stock = profile.rows[0];
-      const [history, disclosureRows, legacyDisclosureRows, snapshot, rahavard] = await Promise.all([
+      const [history, disclosureRows, legacyDisclosureRows, snapshot, rahavard, peers] = await Promise.all([
         pool.query(
           `SELECT trading_date,trading_date_jalali,open,high,low,close,last,adjusted_close,volume,value,trade_count,quality_status
            FROM daily_prices WHERE instrument_id=$1 ORDER BY trading_date DESC LIMIT 420`,
@@ -278,6 +278,33 @@ export function installPlatformRoutes(app: express.Express) {
           [stock.instrument_id],
         ),
         pool.query(`SELECT report_id,title,subtitle,report_date,fiscal_year,pdf_url,text_status,source_status,collected_at FROM rahavard_public_reports WHERE symbol=$1 ORDER BY report_date DESC NULLS LAST,collected_at DESC LIMIT 8`,[stock.symbol]),
+        pool.query(
+          `WITH latest_price AS (
+             SELECT DISTINCT ON (p.instrument_id) p.instrument_id,coalesce(p.adjusted_close,p.close) AS price
+             FROM daily_prices p WHERE p.quality_status='VALID' ORDER BY p.instrument_id,p.trading_date DESC,p.retrieved_at DESC
+           ), latest_snapshot AS (
+             SELECT DISTINCT ON (s.instrument_id) s.instrument_id,s.quality_summary,r.decision
+             FROM analytical_snapshots s LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
+             ORDER BY s.instrument_id,s.calculated_at DESC
+           )
+           SELECT sa.symbol,ir.legal_name,lp.price,
+                  nullif(ls.quality_summary->>'healthScore','')::numeric AS health_score,
+                  nullif(ls.quality_summary->>'dataCoverage','')::numeric AS data_coverage,
+                  nullif(ls.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,
+                  nullif(ls.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe,
+                  ls.decision
+           FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id AND i.active
+           JOIN issuers ir ON ir.id=i.issuer_id AND ir.active
+           JOIN industries ind ON ind.id=ir.industry_id
+           JOIN latest_price lp ON lp.instrument_id=i.id
+           JOIN latest_snapshot ls ON ls.instrument_id=i.id
+           WHERE i.id<>$1 AND ind.title_fa=$2 AND sa.valid_to IS NULL
+             AND sa.symbol !~ '[0-9۰-۹]$'
+             AND nullif(ls.quality_summary->>'dataCoverage','')::numeric >= 70
+           ORDER BY health_score DESC NULLS LAST,data_coverage DESC,lp.price DESC
+           LIMIT 5`,
+          [stock.instrument_id, stock.industry],
+        ),
       ]);
       const prices = history.rows.reverse();
       const latest = prices.at(-1) ?? null;
@@ -291,7 +318,7 @@ export function installPlatformRoutes(app: express.Express) {
         .map((row) => ({ ...row, detail_url: row.detail_url || `https://codal.ir/ReportList.aspx?search&Symbol=${encodeURIComponent(stock.symbol)}` }))
         .slice(0, 16);
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, rahavardReports:rahavard.rows, snapshot: snapshot.rows[0] ?? null });
+      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, rahavardReports:rahavard.rows, snapshot: snapshot.rows[0] ?? null, peers: peers.rows });
     }),
   );
   app.get("/api/stocks/:symbol/follow",requireUser,asyncRoute(async(req,res)=>{const row=await pool.query(`SELECT 1 FROM stock_follows WHERE user_id=$1 AND symbol=$2`,[req.authUser!.id,req.params.symbol]);res.json({success:true,following:Boolean(row.rowCount)});}));
