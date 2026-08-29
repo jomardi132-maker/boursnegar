@@ -252,3 +252,11 @@ Health/smoke checks:
 - اجرای دقیق ۳۷ نماد با backup `/var/backups/boursnegar/20260830T120829Z-auto-local-to-production.dump` تکمیل شد: ۳ manifest، ۲۳۱۳۱۱ رکورد، بدون validation error و بدون symbol failure. audit طول دوره پس از انتقال `mismatches=0` بود.
 - پس از refresh واقعی `latest_codal`، از ۵۰ ردیف نمای اصلی ۴۱ نماد coverage=100، هفت نماد coverage=85.71 و دو نماد coverage=28.57 دارند؛ همه ۵۰ endpoint بدون خطا پاسخ دادند. تصمیم‌ها ۶ SELL، یک HOLD و ۴۳ INSUFFICIENT_DATA است.
 - ۹ نماد ناقص باقی‌مانده عبارت‌اند از `شپنا، احیا، فزر، شبریز، سیسکو، ددانا، انرژی، فاراک، ونوین`. این موارد به‌دلیل کمبود fact/سند معتبر در مبنای تحلیل مسدودند، نه به‌دلیل مشکل صفحه یا API. باید فقط با سند معتبر بعدی یا artifact قابل‌اثبات تکمیل شوند.
+
+## انتخاب تازه‌ترین گزارش و audit نهایی نمای اصلی - 2026-08-30
+
+- در `data-service/app/main.py` ترتیب انتخاب گروه گزارش اصلاح شد: ابتدا جدیدترین تاریخ پایان دوره، سپس برای همان دوره scope تلفیقی، و بعد وضعیت حسابرسی ترجیح داده می‌شود. این مانع انتخاب صورت مالی تلفیقی قدیمی‌تر به‌جای گزارش جدیدتر می‌شود.
+- rollout سرویس با backup `/var/backups/boursnegar/20260830T131500Z-homepage-selection-fix-before.py` انجام شد؛ سرویس active است و health پاسخ `ok` دارد.
+- پس از refresh هر ۵۰ تحلیل `latest_codal` بدون خطای endpoint بازتولید شدند. پوشش: ۴۴ ردیف ۱۰۰٪، چهار ردیف ۸۵٫۷۱٪ و دو ردیف ۲۸٫۵۷٪. موارد ناقص فعلی: `شبریز، ددانا، وگردش، انرژی، فاراک، ونوین`.
+- تصمیم‌های صفحه اصلی: ۶ `SELL`، یک `HOLD` و ۴۳ `INSUFFICIENT_DATA`. در ۴۳ مورد، واگرایی بازار/بنیاد یا نبود cash-flow هم‌دوره مانع نتیجه قطعی است؛ این رفتار مورد انتظار سیاست evidence-only است.
+- تست‌ها پس از اصلاح: data-service تعداد ۸۱ و web تعداد ۶۴ موفق؛ build وب موفق؛ `project-memory-check.sh` و `git diff --check` موفق و worktree clean است. رندر زنده قبلی desktop/mobile بدون console error و overflow ثبت شده و تغییر فعلی فقط سرویس داده است.

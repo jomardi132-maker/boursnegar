@@ -420,8 +420,9 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
            AND bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL)
       ), selected_group AS (
         SELECT * FROM period_groups
-        ORDER BY CASE WHEN scope='consolidated' THEN 0 ELSE 1 END,
-                 end_date DESC,audited DESC
+        ORDER BY end_date DESC,
+                 CASE WHEN scope='consolidated' THEN 0 ELSE 1 END,
+                 audited DESC
         LIMIT 1
       )
       SELECT fp.id AS period_id,d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
