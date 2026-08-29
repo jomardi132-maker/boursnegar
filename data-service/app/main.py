@@ -980,7 +980,9 @@ def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
     if request.report_mode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="reportMode نامعتبر است.")
     symbol = request.query.strip().removeprefix("نماد ").strip()
-    if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}", symbol):
+    # Some valid TSETMC aliases contain an internal ASCII space (for example
+    # «آ س پ»). Preserve the exact stored alias while rejecting punctuation.
+    if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_ -]{1,32}", symbol):
         raise HTTPException(status_code=400, detail="نماد نامعتبر است.")
     raw = analyze_symbol(symbol, request.report_mode, db)
     settings = dict(db.execute(text("""
