@@ -154,7 +154,7 @@ export function installPlatformRoutes(app: express.Express) {
             nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,
             nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
           FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL JOIN issuers ir ON ir.id=i.issuer_id AND ir.active LEFT JOIN industries ind ON ind.id=ir.industry_id
-          LEFT JOIN fact_coverage fc ON fc.issuer_id=ir.issuer_id
+          LEFT JOIN fact_coverage fc ON fc.issuer_id=ir.id
           LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' ORDER BY p.trading_date DESC LIMIT 1) month ON true
           LEFT JOIN moving ON moving.instrument_id=l.instrument_id
           LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
