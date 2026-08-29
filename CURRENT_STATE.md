@@ -184,6 +184,13 @@ Health/smoke checks:
 - `data-service` روی release `/var/www/boursnegar-data-releases/20260829T140000Z-codal-links` و web روی `/var/www/boursnegar-releases/20260829T140000Z-codal-links` فعال است. backupهای قبل از rollout در `/var/backups/boursnegar/20260829T140000Z-codal-links-data-before.tar.gz` و `/var/backups/boursnegar/20260829T140000Z-codal-links-web-before.tar.gz` نگهداری می‌شوند.
 - صفحه سهم اکنون لینک مستقیم را در صورت وجود نشان می‌دهد و فقط در نبود شواهد به فهرست رسمی نماد fallback می‌کند؛ در viewport موبایل 390×844، 6 لینک مستقیم برای «آ س پ»، بدون خطای console و بدون overflow، مشاهده شد.
 
+### هشدارهای مبتنی بر محدوده ارزش‌گذاری - 2026-08-29
+
+- هشدارهای `buy_zone` و `sell_zone` به schema و UI اضافه شدند. این دو نوع target دستی ندارند و فقط از `fairValueBase * 0.80` و `fairValueHigh * 1.15` همان snapshot معتبر استفاده می‌کنند.
+- worker اکنون snapshot نسخه v2 را می‌خواند و همچنان opt-in، محدودشده، دارای advisory lock، deduplication و سقف ارسال در هر اجراست. در Production اجرای safety با هر دو پرچم SMS خاموش، بدون ارسال پیامک و با خروج موفق انجام شد.
+- migration `021_valuation_alerts` روی دیتابیس با backup `/var/backups/boursnegar/20260829T160000Z-valuation-alerts-before-migration.dump` اعمال شد؛ constraintهای `alerts_kind_check` و `alerts_target_check` موجودند.
+- release فعال web: `/var/www/boursnegar-releases/20260829T160000Z-valuation-alerts`. health عمومی و screener عمومی پس از rollout موفق بودند.
+
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
