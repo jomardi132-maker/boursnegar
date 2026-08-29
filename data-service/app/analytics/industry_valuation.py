@@ -24,6 +24,9 @@ MODEL_SPECS = {
     # the payload must make that limitation explicit until sourced NAV data is
     # available.
     "real_estate": ModelSpec("price_to_book", 1.0, 0.25, 0.25),
+    # Holdings need NAV data for a proper SOTP model. Until sourced NAV is
+    # available, expose only a conservative accounting book-value proxy.
+    "holding": ModelSpec("price_to_book", 1.0, 0.30, 0.20),
     "ceramics": ModelSpec("normalized_pe", 7.0),
     # A transparent policy scenario, not an asserted market consensus. The
     # multiple is deliberately aligned with the existing defensive consumer

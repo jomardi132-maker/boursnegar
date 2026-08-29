@@ -33,6 +33,7 @@ class MarketHistoryTests(unittest.TestCase):
         self.assertEqual(model_family("بانک‌ها و موسسات اعتباری"), "bank")
         self.assertEqual(model_family("سیمان، آهک و گچ"), "cement")
         self.assertEqual(model_family("مواد و محصولات دارویی"), "pharmaceutical")
+        self.assertEqual(model_family("شرکت‌های چند رشته‌ای صنعتی"), "holding")
 
     def test_converts_first_day_of_1404(self):
         self.assertEqual(jalali_iso(date(2025, 3, 21)), "1404-01-01")
