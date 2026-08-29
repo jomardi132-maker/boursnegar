@@ -19,6 +19,12 @@ class BrowserStatementNormalizerTests(unittest.TestCase):
     def test_unknown_unit_is_explicit(self):
         self.assertIsNone(MODULE.detect_unit(b"no declared currency unit"))
 
+    def test_official_url_rejects_untrusted_or_non_https_values(self):
+        self.assertEqual(MODULE.official_url('/Reports/Decision.aspx?id=1', 'codal.ir'), 'https://codal.ir/Reports/Decision.aspx?id=1')
+        self.assertEqual(MODULE.official_url('https://codal.ir/Reports/Decision.aspx?id=1', 'codal.ir'), 'https://codal.ir/Reports/Decision.aspx?id=1')
+        self.assertIsNone(MODULE.official_url('http://example.test/report', 'codal.ir'))
+        self.assertIsNone(MODULE.official_url('javascript:alert(1)', 'codal.ir'))
+
     def test_statement_metadata_does_not_confuse_unaudited(self):
         self.assertEqual(MODULE.statement_metadata("صورت مالی (حسابرسی شده) تلفیقی"), (True, "consolidated"))
         self.assertEqual(MODULE.statement_metadata("صورت مالی (حسابرسی نشده)"), (False, "separate"))

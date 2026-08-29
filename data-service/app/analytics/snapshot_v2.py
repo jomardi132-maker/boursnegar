@@ -230,7 +230,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "staleAfter": (now + timedelta(hours=24)).isoformat(),
         "sourceLineage": {
             "codalTracingNo": report.get("tracing_no"),
-            "codalDocument": report.get("excel_url"),
+            "codalDocument": report.get("detail_url") or report.get("excel_url"),
+            "codalExcel": report.get("excel_url"),
             "marketSource": (
                 "BrsApi (آخرین داده ذخیره‌شده)"
                 if live.get("_fallback")
