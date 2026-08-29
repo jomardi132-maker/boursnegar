@@ -177,6 +177,13 @@ Health/smoke checks:
 - Production با backup `/var/backups/boursnegar/20260829T130000Z-cashflow-parser-fix-before-import.dump`، manifest/checksum و advisory lock به‌روزرسانی شد: 1,414 رکورد جدید، اجرای تکراری 0، خطای validation صفر. سپس 43 نماد از 44 نماد دوباره با `latest_codal` تحلیل شدند؛ نماد آرمان به‌علت نبود گزارش واردشده با پاسخ `برای نماد ... گزارش واردشده‌ای موجود نیست` باقی ماند.
 - artifactهای ممیزی: `artifacts/cashflow-batches-20260829T121500Z/` و `artifacts/cashflow-parser-fix-20260829T124500Z/`. این بازیابی coverage را بهتر می‌کند اما به‌تنهایی ادعای تحلیل کامل همه نمادها نیست.
 
+### لینک مستقیم اطلاعیه‌های رسمی - 2026-08-29
+
+- parser و importer اکنون فقط URLهای `https://codal.ir/Reports/Decision.aspx...` و `https://excel.codal.ir/...` قابل‌اثبات را در provenance نگه می‌دارند؛ URLهای ناشناخته/غیر HTTPS رد می‌شوند.
+- برای artifactهای browser-Codal، 1,429 رکورد مالی با URL اطلاعیه و 1,429 رکورد با URL فایل مالی نرمال شد؛ در Production پس از import، 302 لینک مستقیم اطلاعیه و 302 لینک مستقیم فایل مالی در metadata معتبر ثبت شد.
+- `data-service` روی release `/var/www/boursnegar-data-releases/20260829T140000Z-codal-links` و web روی `/var/www/boursnegar-releases/20260829T140000Z-codal-links` فعال است. backupهای قبل از rollout در `/var/backups/boursnegar/20260829T140000Z-codal-links-data-before.tar.gz` و `/var/backups/boursnegar/20260829T140000Z-codal-links-web-before.tar.gz` نگهداری می‌شوند.
+- صفحه سهم اکنون لینک مستقیم را در صورت وجود نشان می‌دهد و فقط در نبود شواهد به فهرست رسمی نماد fallback می‌کند؛ در viewport موبایل 390×844، 6 لینک مستقیم برای «آ س پ»، بدون خطای console و بدون overflow، مشاهده شد.
+
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
