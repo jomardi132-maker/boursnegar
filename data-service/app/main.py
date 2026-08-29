@@ -405,6 +405,25 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     audited_clause = "AND fp.audited" if report_mode == "audited" else ""
     annual_clause = "AND fp.length_months = 12" if report_mode == "audited" else ""
     rows = db.execute(text(f"""
+      WITH period_groups AS (
+        SELECT fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,fp.scope,
+               bool_or(ff.fact_key='revenue' AND ff.normalized_value IS NOT NULL) AS has_revenue,
+               bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL) AS has_net_profit
+        FROM symbol_aliases sa
+        JOIN instruments i ON i.id=sa.instrument_id
+        JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+        JOIN financial_facts ff ON ff.period_id=fp.id
+        WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
+          AND ff.quality_status='VALID'
+        GROUP BY fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,fp.scope
+        HAVING bool_or(ff.fact_key='revenue' AND ff.normalized_value IS NOT NULL)
+           AND bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL)
+      ), selected_group AS (
+        SELECT * FROM period_groups
+        ORDER BY CASE WHEN scope='consolidated' THEN 0 ELSE 1 END,
+                 end_date DESC,audited DESC
+        LIMIT 1
+      )
       SELECT fp.id AS period_id,d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
              fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,
              coalesce(dv.metadata->>'excel_url',fr.excel_url) AS excel_url,
@@ -414,29 +433,16 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
       FROM symbol_aliases sa
       JOIN instruments i ON i.id=sa.instrument_id
       JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+      JOIN selected_group sg ON sg.end_date=fp.end_date
+        AND sg.length_months=fp.length_months AND sg.audited=fp.audited
+        AND sg.scope IS NOT DISTINCT FROM fp.scope
       JOIN financial_facts ff ON ff.period_id=fp.id
       JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
       JOIN disclosures d ON d.id=dv.disclosure_id
       LEFT JOIN financial_reports fr ON fr.company_id=(SELECT c.id FROM companies c WHERE c.symbol=:symbol LIMIT 1)
         AND fr.tracing_no=split_part(d.source_disclosure_id, ':', 1)
-      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
+      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
         AND ff.quality_status='VALID'
-        -- A newer interim or subsidiary statement may contain only balance-sheet
-        -- facts. Select a period that can actually support the core analysis.
-        AND EXISTS (
-          SELECT 1 FROM financial_facts revenue_fact
-          WHERE revenue_fact.period_id=fp.id
-            AND revenue_fact.fact_key='revenue'
-            AND revenue_fact.quality_status='VALID'
-            AND revenue_fact.normalized_value IS NOT NULL
-        )
-        AND EXISTS (
-          SELECT 1 FROM financial_facts profit_fact
-          WHERE profit_fact.period_id=fp.id
-            AND profit_fact.fact_key='net_profit'
-            AND profit_fact.quality_status='VALID'
-            AND profit_fact.normalized_value IS NOT NULL
-        )
       ORDER BY CASE WHEN fp.scope='consolidated' THEN 0 ELSE 1 END,
                fp.end_date DESC,fp.audited DESC,ff.fact_key
     """), {"symbol": symbol}).mappings().all()
@@ -449,18 +455,6 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     )}
     first = rows[0]
     for row in rows:
-        # Codal often publishes the income statement and balance sheet as
-        # separate disclosures. They may share a period end but have different
-        # period ids; combine only an exact same-date, same-length, same-scope,
-        # same-audit-status set so parent/subsidiary facts never mix.
-        same_financial_period = (
-            row["end_date"] == first["end_date"]
-            and row["length_months"] == first["length_months"]
-            and row["scope"] == first["scope"]
-            and row["audited"] == first["audited"]
-        )
-        if not same_financial_period:
-            continue
         if row["fact_key"] in metrics and row["normalized_value"] is not None:
             metrics[row["fact_key"]] = float(row["normalized_value"])
     if metrics["revenue"] is None or metrics["net_profit"] is None:
@@ -954,6 +948,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
             "publish_datetime": candidate.get("PublishDateTime"),
             "period_end": candidate.get("_end_date_jalali") or candidate.get("_end_date"),
             "period_length_months": candidate.get("_length_months"),
+            "detail_url": candidate.get("Url"),
             "excel_url": excel_url,
         },
         "live_price": live_data,

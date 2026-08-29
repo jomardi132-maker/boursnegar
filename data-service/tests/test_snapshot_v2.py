@@ -36,6 +36,24 @@ class SnapshotV2Tests(unittest.TestCase):
         )
         self.assertEqual(len(payload["payloadChecksum"]), 64)
 
+    def test_official_detail_url_is_preferred_over_excel_fallback(self):
+        payload = build_snapshot_payload(
+            {
+                "symbol": "نماد",
+                "report_used": {
+                    "title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده",
+                    "detail_url": "https://codal.ir/Reports/Decision.aspx?LetterSerial=abc",
+                    "excel_url": "https://excel.codal.ir/service/Excel/GetAll/abc/0",
+                },
+                "financial_metrics": {"revenue": 100, "net_profit": 20},
+            },
+            "audited",
+        )
+        self.assertEqual(
+            payload["sourceLineage"]["codalDocument"],
+            "https://codal.ir/Reports/Decision.aspx?LetterSerial=abc",
+        )
+
     def test_missing_metrics_reduce_coverage_without_becoming_zero_values(self):
         payload = build_snapshot_payload(
             {
