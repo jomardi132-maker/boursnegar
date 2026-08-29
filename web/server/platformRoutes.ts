@@ -417,16 +417,16 @@ export function installPlatformRoutes(app: express.Express) {
 
   const alertBaseSchema = z.object({
     symbol: z.string().regex(/^[\u0600-\u06FFa-zA-Z0-9‌_-]{1,32}$/),
-    kind: z.enum(["price", "pe", "codal"]),
+    kind: z.enum(["price", "pe", "codal", "buy_zone", "sell_zone"]),
     comparator: z.enum(["gte", "lte"]).optional(),
     targetValue: z.number().positive().optional(),
   });
   const alertSchema = alertBaseSchema.superRefine((v, c) => {
-    if (v.kind === "codal" && v.targetValue != null)
+    if (["codal", "buy_zone", "sell_zone"].includes(v.kind) && v.targetValue != null)
       c.addIssue({ code: "custom", message: "targetValue forbidden" });
-    if (v.kind !== "codal" && v.targetValue == null)
+    if (!["codal", "buy_zone", "sell_zone"].includes(v.kind) && v.targetValue == null)
       c.addIssue({ code: "custom", message: "targetValue required" });
-    if (v.kind !== "codal" && v.comparator == null)
+    if (!["codal", "buy_zone", "sell_zone"].includes(v.kind) && v.comparator == null)
       c.addIssue({ code: "custom", message: "comparator required" });
   });
   app.get(
@@ -457,8 +457,8 @@ export function installPlatformRoutes(app: express.Express) {
           req.authUser!.id,
           v.symbol,
           v.kind,
-          v.kind === "codal" ? null : v.comparator,
-          v.kind === "codal" ? null : v.targetValue,
+          ["codal", "buy_zone", "sell_zone"].includes(v.kind) ? null : v.comparator,
+          ["codal", "buy_zone", "sell_zone"].includes(v.kind) ? null : v.targetValue,
         ],
       );
       res.status(201).json({ success: true, alert: r.rows[0] });
@@ -490,11 +490,11 @@ export function installPlatformRoutes(app: express.Express) {
         symbol: p.data.symbol ?? current.rows[0].symbol,
         kind: p.data.kind ?? current.rows[0].kind,
         comparator:
-          p.data.kind === "codal"
+          ["codal", "buy_zone", "sell_zone"].includes(p.data.kind)
             ? undefined
             : (p.data.comparator ?? current.rows[0].comparator),
         targetValue:
-          p.data.kind === "codal"
+          ["codal", "buy_zone", "sell_zone"].includes(p.data.kind)
             ? undefined
             : (p.data.targetValue ?? current.rows[0].target_value),
       };
@@ -517,8 +517,8 @@ export function installPlatformRoutes(app: express.Express) {
           req.authUser!.id,
           v.symbol,
           v.kind,
-          v.kind === "codal" ? null : v.comparator,
-          v.kind === "codal" ? null : v.targetValue,
+          ["codal", "buy_zone", "sell_zone"].includes(v.kind) ? null : v.comparator,
+          ["codal", "buy_zone", "sell_zone"].includes(v.kind) ? null : v.targetValue,
           p.data.active ?? current.rows[0].active,
           criteriaChanged,
         ],

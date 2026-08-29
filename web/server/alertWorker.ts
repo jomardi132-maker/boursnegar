@@ -11,7 +11,7 @@ type Alert = {
   user_id: string;
   mobile_e164: string;
   symbol: string;
-  kind: 'price' | 'pe' | 'codal';
+  kind: 'price' | 'pe' | 'codal' | 'buy_zone' | 'sell_zone';
   comparator: 'gte' | 'lte' | null;
   target_value: string | null;
   last_trigger_key: string | null;
@@ -75,9 +75,13 @@ async function main() {
     for (const symbol of symbols) {
       try {
         const response = await timeoutFetch(
-          `${process.env.PYTHON_API_BASE || 'http://127.0.0.1:8001'}/api/analyze/${encodeURIComponent(symbol)}?report_mode=latest_codal`,
+          `${process.env.PYTHON_API_BASE || 'http://127.0.0.1:8001'}/api/v2/analyze`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: symbol, reportMode: 'latest_codal' }) },
         );
-        if (response.ok) snapshots.set(symbol, await response.json());
+        if (response.ok) {
+          const envelope = await response.json();
+          snapshots.set(symbol, envelope.data || envelope);
+        }
       } catch {
         // A later scheduled run retries transient data-service errors.
       }
@@ -89,9 +93,11 @@ async function main() {
       if(submittedThisRun>=maxPerRun) break;
       const data = snapshots.get(alert.symbol);
       if (!data) continue;
-      const price = Number(data.live_price?.last_price);
-      const pe = Number(data.live_price?.pe_ratio);
-      const trace = String(data.report_used?.tracing_no || '');
+      const price = Number(data.analysisContext?.latest_price ?? data.live_price?.last_price);
+      const pe = Number(data.keyMetrics?.pe ?? data.live_price?.pe_ratio);
+      const trace = String(data.sourceLineage?.codalTracingNo || data.report_used?.tracing_no || '');
+      const fairBase = Number(data.valuation?.fairValueBase);
+      const fairHigh = Number(data.valuation?.fairValueHigh);
       let value: number | undefined;
       let key = '';
       let message = '';
@@ -109,13 +115,27 @@ async function main() {
         message = `اطلاعیه جدید کدال برای ${alert.symbol} منتشر شد.`;
       }
 
+      if (alert.kind === 'buy_zone' || alert.kind === 'sell_zone') {
+        const zone = alert.kind === 'buy_zone' ? fairBase * 0.80 : fairHigh * 1.15;
+        value = price;
+        key = `${alert.kind}:${zone}`;
+        message = alert.kind === 'buy_zone'
+          ? `قیمت ${alert.symbol} وارد محدوده خرید ارزش‌گذاری شد (${Math.round(zone).toLocaleString('fa-IR')} ریال).`
+          : `قیمت ${alert.symbol} از محدوده فروش ارزش‌گذاری عبور کرد (${Math.round(zone).toLocaleString('fa-IR')} ریال).`;
+        if (!Number.isFinite(zone) || zone <= 0) continue;
+      }
+
       const target = Number(alert.target_value);
       const triggered =
         alert.kind === 'codal'
           ? Boolean(trace)
-          : Number.isFinite(value) &&
-            ((alert.comparator === 'gte' && value! >= target) ||
-              (alert.comparator === 'lte' && value! <= target));
+          : alert.kind === 'buy_zone'
+            ? Number.isFinite(value) && value! <= fairBase * 0.80
+            : alert.kind === 'sell_zone'
+              ? Number.isFinite(value) && value! >= fairHigh * 1.15
+              : Number.isFinite(value) &&
+                ((alert.comparator === 'gte' && value! >= target) ||
+                  (alert.comparator === 'lte' && value! <= target));
       if (!triggered || alert.last_trigger_key === key) continue;
 
       const deduplicationKey=`alert:${alert.id}:${key}`;

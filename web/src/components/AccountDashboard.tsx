@@ -433,7 +433,11 @@ function Alerts({ data, reload }: { data: any; reload: () => void }) {
                 ? "قیمت"
                 : a.kind === "pe"
                   ? "P/E"
-                  : "اطلاعیه کدال"}
+                  : a.kind === "codal"
+                    ? "اطلاعیه کدال"
+                    : a.kind === "buy_zone"
+                      ? "محدوده خرید ارزش‌گذاری"
+                      : "محدوده فروش ارزش‌گذاری"}
             </b>
             <span>
               {a.target_value
@@ -474,8 +478,8 @@ function AlertForm({ done, initial }: { done: () => void; initial?: any }) {
       body: JSON.stringify({
         symbol,
         kind,
-        ...(kind === "codal" ? {} : { comparator }),
-        ...(kind === "codal" ? {} : { targetValue: Number(target) }),
+        ...(["codal", "buy_zone", "sell_zone"].includes(kind) ? {} : { comparator }),
+        ...(["codal", "buy_zone", "sell_zone"].includes(kind) ? {} : { targetValue: Number(target) }),
       }),
     });
     done();
@@ -497,8 +501,10 @@ function AlertForm({ done, initial }: { done: () => void; initial?: any }) {
         <option value="price">قیمت</option>
         <option value="pe">P/E</option>
         <option value="codal">اطلاعیه کدال</option>
+        <option value="buy_zone">ورود به محدوده خرید ارزش‌گذاری</option>
+        <option value="sell_zone">عبور از محدوده فروش ارزش‌گذاری</option>
       </select>
-      {kind !== "codal" && (
+      {!['codal', 'buy_zone', 'sell_zone'].includes(kind) && (
         <>
           <select
             aria-label="شرط هشدار"
