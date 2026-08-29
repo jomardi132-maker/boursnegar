@@ -30,6 +30,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     report = raw.get("report_used") or {}
     title = str(report.get("title") or "")
     audited = "حسابرسی شده" in title and "حسابرسی نشده" not in title
+    selection_basis = report.get("selection_basis")
     confidence = 70.0 if audited else 55.0
     if raw.get("live_price_error"):
         confidence -= 10
@@ -180,7 +181,12 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             "periodEnd": report.get("period_end"),
             "periodLengthMonths": report.get("period_length_months"),
             "audited": audited,
+            "selectionBasis": selection_basis,
             "basisNote": (
+                "این تحلیل بر اساس جدیدترین دوره کامل و قابل‌اتکای صورت مالی تهیه شده است؛ ممکن است گزارش کوتاه‌مدت جدیدتری ناقص باشد و برای جلوگیری از نتیجه گمراه‌کننده مبنا قرار نگرفته باشد. گزارش حسابرسی‌نشده است و با انتشار صورت مالی بعدی باید بازبینی شود."
+                if selection_basis == "latest_complete_core_period" and not audited else
+                "این تحلیل بر اساس جدیدترین دوره کامل و قابل‌اتکای صورت مالی تهیه شده است؛ ممکن است گزارش کوتاه‌مدت جدیدتری ناقص باشد و برای جلوگیری از نتیجه گمراه‌کننده مبنا قرار نگرفته باشد. اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند."
+                if selection_basis == "latest_complete_core_period" else
                 "این تحلیل بر اساس آخرین صورت مالی موجود و قابل‌استخراج تهیه شده است؛ اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند. گزارش حسابرسی‌نشده است و با انتشار صورت مالی بعدی باید بازبینی شود."
                 if not audited else
                 "این تحلیل بر اساس آخرین صورت مالی حسابرسی‌شده موجود و قابل‌استخراج تهیه شده است؛ اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند."

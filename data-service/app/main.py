@@ -406,21 +406,35 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     annual_clause = "AND fp.length_months = 12" if report_mode == "audited" else ""
     rows = db.execute(text(f"""
       WITH period_groups AS (
-        SELECT fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,fp.scope,
+        SELECT split_part(d.source_disclosure_id, ':', 1) AS source_tracing_no,
+               fp.end_date,fp.end_date_jalali,
+               fp.length_months,fp.audited,fp.scope,
                bool_or(ff.fact_key='revenue' AND ff.normalized_value IS NOT NULL) AS has_revenue,
-               bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL) AS has_net_profit
+               bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL) AS has_net_profit,
+               count(DISTINCT ff.fact_key) FILTER (WHERE ff.fact_key IN
+                 ('revenue','net_profit','operating_cash_flow','total_assets',
+                  'total_liabilities','total_equity','eps_basic')
+                 AND ff.normalized_value IS NOT NULL) AS present_core
         FROM symbol_aliases sa
         JOIN instruments i ON i.id=sa.instrument_id
         JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
         JOIN financial_facts ff ON ff.period_id=fp.id
+        JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
+        JOIN disclosures d ON d.id=dv.disclosure_id
         WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
           AND ff.quality_status='VALID'
-        GROUP BY fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,fp.scope
+        GROUP BY split_part(d.source_disclosure_id, ':', 1),fp.end_date,
+                 fp.end_date_jalali,fp.length_months,fp.audited,fp.scope
         HAVING bool_or(ff.fact_key='revenue' AND ff.normalized_value IS NOT NULL)
            AND bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL)
       ), selected_group AS (
         SELECT * FROM period_groups
-        ORDER BY end_date DESC,
+        -- A newer short-period statement can contain only one statement type.
+        -- Prefer the newest period with the complete core set, while joining
+        -- income and balance facts only when they share the same Codal notice.
+        ORDER BY (present_core = 7) DESC,
+                 present_core DESC,
+                 end_date DESC,
                  CASE WHEN scope='consolidated' THEN 0 ELSE 1 END,
                  audited DESC
         LIMIT 1
@@ -434,12 +448,12 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
       FROM symbol_aliases sa
       JOIN instruments i ON i.id=sa.instrument_id
       JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
-      JOIN selected_group sg ON sg.end_date=fp.end_date
-        AND sg.length_months=fp.length_months AND sg.audited=fp.audited
-        AND sg.scope IS NOT DISTINCT FROM fp.scope
       JOIN financial_facts ff ON ff.period_id=fp.id
       JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
       JOIN disclosures d ON d.id=dv.disclosure_id
+      JOIN selected_group sg ON sg.source_tracing_no=split_part(d.source_disclosure_id, ':', 1)
+        AND sg.end_date=fp.end_date AND sg.length_months=fp.length_months
+        AND sg.audited=fp.audited AND sg.scope IS NOT DISTINCT FROM fp.scope
       LEFT JOIN financial_reports fr ON fr.company_id=(SELECT c.id FROM companies c WHERE c.symbol=:symbol LIMIT 1)
         AND fr.tracing_no=split_part(d.source_disclosure_id, ':', 1)
       WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
@@ -468,6 +482,14 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
         "_period_id": str(first["period_id"]), "_end_date": first["end_date"],
         "_end_date_jalali": first["end_date_jalali"],
         "_length_months": first["length_months"], "_audited": bool(first["audited"]),
+        "_selection_basis": (
+            "latest_complete_core_period"
+            if all(metrics[key] is not None for key in (
+                "revenue", "net_profit", "operating_cash_flow", "total_assets",
+                "total_liabilities", "total_equity", "eps_basic",
+            ))
+            else "latest_available_revenue_profit_period"
+        ),
     }
     return candidate, str(first["excel_url"] or ""), {
         "metrics": metrics,
@@ -951,6 +973,7 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
             "period_length_months": candidate.get("_length_months"),
             "detail_url": candidate.get("Url"),
             "excel_url": excel_url,
+            "selection_basis": candidate.get("_selection_basis"),
         },
         "live_price": live_data,
         "live_price_error": live_error,

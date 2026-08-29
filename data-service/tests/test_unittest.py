@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app.ingestion.market_history import model_family
 from app.analytics.period_comparison import build_period_comparison
 from app.analytics.ttm import build_ttm_metrics
-from app.services.codal_excel_parser import extract_period_end_jalali
+from app.services.codal_excel_parser import extract_period_end_jalali, parse_financial_statement
 
 
 class DataServiceContractTests(unittest.TestCase):
@@ -87,6 +87,22 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn('gregorian_date.today()', source)
         self.assertNotIn('datetime.date.today()', source)
         self.assertNotIn('"years": [1404, 1405]', source)
+
+    def test_utf8_persian_html_labels_are_not_decoded_as_mojibake(self):
+        html = """
+        <table>
+          <tr><td>درآمدهای عملیاتی</td><td>100</td></tr>
+          <tr><td>بهای تمام‌شده درآمدهای عملیاتی</td><td>(20)</td></tr>
+          <tr><td>سود (زیان) ناخالص</td><td>80</td></tr>
+          <tr><td>سود (زیان) عملیاتی</td><td>70</td></tr>
+          <tr><td>سود (زیان) خالص</td><td>50</td></tr>
+          <tr><td>سود (زیان) پایه هر سهم</td><td>10</td></tr>
+        </table>
+        """.encode("utf-8")
+        parsed = parse_financial_statement(html)
+        self.assertEqual(parsed["metrics"]["revenue"], 100)
+        self.assertEqual(parsed["metrics"]["net_profit"], 50)
+        self.assertIn("eps_basic", parsed["found_items"])
 
     def test_analysis_uses_provenance_cache_when_codal_is_throttled(self):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")

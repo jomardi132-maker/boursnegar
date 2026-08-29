@@ -14,6 +14,7 @@ pandas.read_html پردازش می‌شه، نه openpyxl.
 می‌مونه و صادقانه گزارش می‌شه، نه یه عدد ساختگی.
 """
 import re
+from io import StringIO
 import requests
 import pandas as pd
 
@@ -244,7 +245,17 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
     قاطی کردن ردیف‌هاشون عدد غلط می‌ده.
     """
     try:
-        tables = pd.read_html(html_bytes)
+        # Some Codal HTML reports are UTF-8, but pandas may interpret raw
+        # bytes using a legacy encoding and turn Persian labels into mojibake.
+        # Decode explicitly when possible; the bytes fallback keeps support
+        # for older/non-UTF-8 Excel framesets.
+        source = html_bytes
+        if isinstance(html_bytes, (bytes, bytearray)):
+            try:
+                source = StringIO(html_bytes.decode("utf-8"))
+            except UnicodeDecodeError:
+                source = html_bytes
+        tables = pd.read_html(source)
     except (ValueError, ImportError, IndexError) as e:
         raise CodalExcelParseError(f"هیچ جدولی در فایل پیدا نشد: {e}") from e
 
