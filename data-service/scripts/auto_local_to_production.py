@@ -124,6 +124,14 @@ def select_symbols(remote: list[dict[str, object]], local_rows: dict[str, dict[s
         candidates.append((selection_priority(symbol, info, remote_status), symbol))
     return [symbol for _, symbol in sorted(candidates)[:limit]]
 
+def select_explicit_symbols(path: Path, remote: list[dict[str, object]]) -> list[str]:
+    requested = [line.strip() for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+    active = {str(row['symbol']) for row in remote}
+    unknown = [symbol for symbol in requested if symbol not in active]
+    if unknown:
+        raise SystemExit(f'Explicit symbols are not active on Production: {", ".join(unknown)}')
+    return list(dict.fromkeys(requested))
+
 def aggregate_manifests(run_root, out, kind):
     out.mkdir(parents=True, exist_ok=True); errors=[]; record_count=0
     expected_source = 'codalpy/codal.ir' if kind == 'codalpy' else 'browser/codal.ir'
@@ -190,7 +198,7 @@ def aggregate_events(run_root, out):
 def symbol_run_root(run_root: Path, symbol: str) -> Path:
     """Reuse the newest checkpoint for a symbol across interrupted runs."""
     candidates = sorted(
-        (p / symbol for p in run_root.iterdir() if p.is_dir() and (p / symbol).is_dir()),
+        (p for p in run_root.iterdir() if p.is_dir() and (p / symbol).is_dir()),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -201,6 +209,7 @@ def main():
     p.add_argument('--db',default='artifacts/local-ingestion.sqlite3'); p.add_argument('--ssh-target',default='boursnegar')
     p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True)
     p.add_argument('--limit',type=int,default=10); p.add_argument('--run-root',default='artifacts/auto-sync')
+    p.add_argument('--symbols-file', help='newline-delimited active symbols to process instead of local-priority selection')
     p.add_argument('--apply',action='store_true'); p.add_argument('--allow-download',action='store_true')
     p.add_argument('--skip-local',action='store_true'); p.add_argument('--skip-production',action='store_true')
     p.add_argument('--skip-preimport', action='store_true', help='Skip importing already downloaded local artifacts before planning')
@@ -216,13 +225,14 @@ def main():
             run([PYTHON, 'data-service/scripts/recalculate_local_coverage.py', '--db', str(db)], timeout=300)
     remote=server_symbols(args.ssh_target)
     local_rows=local_symbol_rows(db)
-    selected=select_symbols(remote, local_rows, args.limit)
+    selected=select_explicit_symbols(Path(args.symbols_file).resolve(), remote) if args.symbols_file else select_symbols(remote, local_rows, args.limit)
     plan={'run_id':run_id,'server_symbols':len(remote),'selected_symbols':selected,'apply':args.apply,'allow_download':args.allow_download,'preimport_pending_dirs':0 if args.skip_preimport else preimport_pending,'preimported_artifact_dirs':imported_dirs}
     print(json.dumps({'plan':plan},ensure_ascii=False,indent=2))
     if not args.apply:
         print(json.dumps({'status':'dry-run','next':'add --apply; add --allow-download to fetch missing Local data'},ensure_ascii=False)); return
     if args.allow_download is False and not args.skip_local:
         raise SystemExit('Local completion may fetch data; pass --allow-download explicitly')
+    symbol_failures=[]
     if not args.skip_local:
         aggregation_roots=[]
         for symbol in selected:
@@ -232,7 +242,14 @@ def main():
             aggregation_roots.append(target)
             cmd=[PYTHON,'data-service/scripts/daily_local_ingestion.py','--symbol',symbol,'--from-jalali',args.from_jalali,'--to-jalali',args.to_jalali,
                  '--out',str(target),'--local-db',str(db),'--codalpy-first','--download-documents','--professional-documents','--defer-pdf']
-            run(cmd,timeout=1800)
+            try:
+                run(cmd,timeout=1800)
+            except subprocess.CalledProcessError as exc:
+                symbol_failures.append({'symbol': symbol, 'error': f'exit={exc.returncode}'})
+                print(json.dumps({'symbol_failure': symbol, 'error': f'exit={exc.returncode}'}, ensure_ascii=False), flush=True)
+            except subprocess.TimeoutExpired:
+                symbol_failures.append({'symbol': symbol, 'error': 'timeout'})
+                print(json.dumps({'symbol_failure': symbol, 'error': 'timeout'}, ensure_ascii=False), flush=True)
         run([PYTHON,'data-service/scripts/recalculate_local_coverage.py','--db',str(db)])
     # Ensure newly fetched Codalpy-first results enter the same local DB before export.
     if not args.skip_local:
@@ -273,6 +290,6 @@ def main():
         if '"inserted": 0' not in repeat.stdout: raise SystemExit(f'idempotency gate failed: {kind}')
     run(['ssh',args.ssh_target,f'rm -rf {remote_tmp}'],timeout=60)
     run(['ssh',args.ssh_target,'curl -fsS http://127.0.0.1:8001/health && curl -fsS http://127.0.0.1:3000/healthz && curl -fsS http://127.0.0.1:3000/readyz'],timeout=60)
-    print(json.dumps({'status':'production-synchronized','backup':remote_backup,'manifests':len(manifests),'records':sum(m['files'][0]['records'] for m in manifests)},ensure_ascii=False))
+    print(json.dumps({'status':'production-synchronized','backup':remote_backup,'manifests':len(manifests),'records':sum(m['files'][0]['records'] for m in manifests),'symbol_failures':symbol_failures},ensure_ascii=False))
 
 if __name__=='__main__': main()

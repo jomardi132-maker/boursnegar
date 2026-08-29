@@ -244,3 +244,11 @@ Health/smoke checks:
 - recovery کم‌پوشش برای ۵۰ نماد با local browser/Codal و checkpoint اجرا شد. خروجی Production با backup `/var/backups/boursnegar/20260830T102900Z-auto-local-to-production.dump` شامل ۳ manifest و ۱۰۲۶۸۴ رکورد بود؛ import اول ۵۰۰۸ fact استاندارد و بدون validation error داشت و replay idempotent نیز عبور کرد. health/ready هر دو سبز هستند.
 - پس از انتقال و refresh هر ۵۰ نماد بدون خطای endpoint تحلیل شدند. وضعیت فعلی ۵۰ ردیف: ۱۳ مورد coverage=100، ۳۰ مورد 85.71، سه مورد 71.43، یک مورد 42.86 و سه مورد 28.57؛ تصمیم‌ها ۶ SELL، یک HOLD و ۴۳ INSUFFICIENT_DATA هستند. شستا پس از داده تازه به 100٪ رسید.
 - این اعداد نشان می‌دهند pipeline و provenance سالم‌اند، اما کمبود شواهد بنیادی برای ۴۳ نماد هنوز واقعی است؛ پوشش ظاهری نباید به توصیه قطعی تبدیل شود. timeoutهای Codal در manifest همان نماد retained شده‌اند.
+
+## recovery دقیق نمادهای ناقص نمای اصلی - 2026-08-30
+
+- فهرست زنده نمای اصلی به ۳۷ نماد با پوشش کمتر از ۱۰۰٪ محدود شد و در `artifacts/homepage-partial-symbols-20260830.txt` ثبت شد. گزینه `--symbols-file` به `auto_local_to_production.py` اضافه شد تا انتخاب هدف صریح و با alias فعال Production اعتبارسنجی شود.
+- اجرای اول به‌علت timeout یک نماد متوقف می‌شد؛ pipeline اکنون خطای هر نماد را retained می‌کند و به نماد بعدی ادامه می‌دهد. همچنین reuse checkpoint مسیر دوبل نماد اصلاح شد.
+- اجرای دقیق ۳۷ نماد با backup `/var/backups/boursnegar/20260830T120829Z-auto-local-to-production.dump` تکمیل شد: ۳ manifest، ۲۳۱۳۱۱ رکورد، بدون validation error و بدون symbol failure. audit طول دوره پس از انتقال `mismatches=0` بود.
+- پس از refresh واقعی `latest_codal`، از ۵۰ ردیف نمای اصلی ۴۱ نماد coverage=100، هفت نماد coverage=85.71 و دو نماد coverage=28.57 دارند؛ همه ۵۰ endpoint بدون خطا پاسخ دادند. تصمیم‌ها ۶ SELL، یک HOLD و ۴۳ INSUFFICIENT_DATA است.
+- ۹ نماد ناقص باقی‌مانده عبارت‌اند از `شپنا، احیا، فزر، شبریز، سیسکو، ددانا، انرژی، فاراک، ونوین`. این موارد به‌دلیل کمبود fact/سند معتبر در مبنای تحلیل مسدودند، نه به‌دلیل مشکل صفحه یا API. باید فقط با سند معتبر بعدی یا artifact قابل‌اثبات تکمیل شوند.
