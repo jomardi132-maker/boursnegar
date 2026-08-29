@@ -48,6 +48,8 @@ describe('analysis UI contract', () => {
     expect(marketSource).toContain('محدوده خرید');
     expect(marketSource).toContain('بررسی مشروط');
     expect(marketSource).toContain('fundamental_strength');
+    expect(marketSource).toContain('برداشت سریع');
+    expect(marketSource).toContain('داده ناقص؛ فعلاً صبر برای تکمیل');
     expect(marketSource).toContain('بالاتر از میانگین ۲۰روزه');
     expect(marketSource).toContain('/s/${encodeURIComponent(row.symbol)}');
   });
