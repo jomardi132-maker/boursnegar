@@ -169,6 +169,14 @@ Health/smoke checks:
 
 ## موارد باز
 
+### بازیابی جریان نقد عملیاتی از artifactهای browser-Codal - 2026-08-29
+
+- علت ریشه‌ای `INSUFFICIENT_DATA` در این بخش، نبود داده خام نبود: 223 سند HTML/XLS/XLSX محلی عبارت جریان نقد عملیاتی داشتند، اما soft-hyphen و یک نام‌گذاری معتبر فارسی در parser شناسایی نمی‌شد.
+- parser اکنون soft-hyphen را normalize می‌کند و دو الگوی «جریان خالص ورود (خروج) نقد ... فعالیت‌های عملیاتی» را می‌شناسد. تست‌های data-service: 75 مورد، همگی پاس.
+- 48 بسته به‌صورت batch پردازش شد: 1,429 رکورد مالی، شامل 149 رکورد operating_cash_flow برای 44 نماد و 112 ترکیب نماد/دوره/دامنه/حسابرسی؛ 148 مورد IRR_million و 1 مورد IRR_billion. خطاهای 120 سند parse/document در manifest نگه‌داری شده و رکورد مبهم وارد نشده است.
+- Production با backup `/var/backups/boursnegar/20260829T130000Z-cashflow-parser-fix-before-import.dump`، manifest/checksum و advisory lock به‌روزرسانی شد: 1,414 رکورد جدید، اجرای تکراری 0، خطای validation صفر. سپس 43 نماد از 44 نماد دوباره با `latest_codal` تحلیل شدند؛ نماد آرمان به‌علت نبود گزارش واردشده با پاسخ `برای نماد ... گزارش واردشده‌ای موجود نیست` باقی ماند.
+- artifactهای ممیزی: `artifacts/cashflow-batches-20260829T121500Z/` و `artifacts/cashflow-parser-fix-20260829T124500Z/`. این بازیابی coverage را بهتر می‌کند اما به‌تنهایی ادعای تحلیل کامل همه نمادها نیست.
+
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
 3. comment automation: مسیر بدون نشست احراز هویت‌شده end-to-end هنوز معیار تکمیل نیست.
