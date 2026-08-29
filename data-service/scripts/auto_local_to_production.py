@@ -206,6 +206,7 @@ def main():
     p.add_argument('--skip-preimport', action='store_true', help='Skip importing already downloaded local artifacts before planning')
     args=p.parse_args(); db=Path(args.db).resolve(); run_id=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'); run_root=Path(args.run_root).resolve()/run_id
     run_base = Path(args.run_root).resolve()
+    run_base.mkdir(parents=True, exist_ok=True)
     already_imported = imported_artifact_paths(db) if run_base.exists() else set()
     preimport_pending = len([p for p in existing_local_artifacts(run_base) if str(p.resolve()) not in already_imported]) if run_base.exists() else 0
     imported_dirs = 0

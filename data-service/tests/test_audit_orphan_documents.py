@@ -46,6 +46,11 @@ class OrphanDocumentAuditTest(unittest.TestCase):
         extract = MODULE.parse_financial_statement.__globals__['_extract_keys_from_table']
         self.assertEqual(extract(frame, ['operating_cash_flow'])['operating_cash_flow'], 204436.0)
 
+    def test_period_length_comes_from_report_title_not_search_window(self):
+        extract_length = MODULE.parse_financial_statement.__globals__['extract_period_length_months']
+        self.assertEqual(extract_length('صورت‌های مالی میاندوره‌ای دوره ۶ ماهه منتهی به ۱۴۰۴/۰۹/۳۰'), 6)
+        self.assertEqual(extract_length('صورت‌های مالی سال مالی منتهی به ۱۴۰۴/۱۲/۲۹'), 12)
+
 
 if __name__ == '__main__':
     unittest.main()

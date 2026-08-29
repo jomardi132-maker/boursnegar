@@ -58,7 +58,7 @@ def main():
       end_date=jalali_to_gregorian(y,m,d)
       sy,sm,sd=[int(x) for x in record['from_jalali'].split('/')]
       start_date=jalali_to_gregorian(sy,sm,sd)
-      length=months_between(record['from_jalali'],record['period_end_jalali'])
+      length=int(record.get('period_length_months') or months_between(record['from_jalali'],record['period_end_jalali']))
       period=db.execute(text("""INSERT INTO financial_periods(issuer_id,period_type,start_date,end_date,start_date_jalali,end_date_jalali,length_months,fiscal_year,audited,scope,disclosure_version_id) VALUES(:issuer,'interim',:start_date,:end_date,:start,:period,:length,:year,:audited,:scope,:version) ON CONFLICT(issuer_id,end_date,length_months,audited,scope,disclosure_version_id) DO UPDATE SET end_date=excluded.end_date RETURNING id"""), {'issuer':issuer['issuer_id'],'start_date':start_date,'end_date':end_date,'start':record['from_jalali'],'period':record['period_end_jalali'],'length':length,'year':y,'audited':audited,'scope':scope,'version':version}).scalar_one()
       parser_name='codal_browser_excel' if record['source']=='browser/codal.ir' else 'codalpy'
       parser_version='v2' if record['source']=='browser/codal.ir' else '0.4.5'

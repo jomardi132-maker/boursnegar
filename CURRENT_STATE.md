@@ -235,3 +235,12 @@ Health/smoke checks:
 ## اقدام بعدی پیشنهادی
 
 اولویت عملی بعدی، ادامهٔ batchهای محدود local-first برای نمادهای `MISSING_COMPARABLE_PERIODS` و `MISSING_CORE_FACTS` است. supervisor اکنون فقط artifactهای نمادهای همان batch را aggregate می‌کند و از خواندن کل تاریخچه جلوگیری می‌شود. تا زمانی که tierها بهتر نشده‌اند، افزایش تعداد تصمیم‌های BUY/HOLD/SELL هدف درستی نیست.
+
+## اصلاح طول دوره و recovery کم پوشش - 2026-08-30
+
+- علت ریشه‌ای بخشی از خطای مقایسه چنددوره‌ای پیدا شد: importer طول دوره را از پنجره جست‌وجو محاسبه می‌کرد، نه از عنوان رسمی گزارش. parser اکنون الگوی «N ماهه» و عنوان سالانه را استخراج می‌کند و normalizer/importer همین مقدار را حمل می‌کنند؛ برای artifactهای قدیمی fallback قبلی حفظ شده است.
+- ابزار `data-service/scripts/repair_financial_period_lengths.py` با backup `/var/backups/boursnegar/20260830T190000Z-period-length-repair-v4-before.dump` اجرا شد. ۶۱۳۲ ردیف اصلاح یا ادغام شدند؛ اجرای audit بعدی `mismatches=0` بود. شمارش نهایی پس از repair: ۱۵۴۳۵ دوره، ۵۶۶۹۲ fact و ۲۸۷۸۹ fact معتبر.
+- یک bug اجرایی در `auto_local_to_production.py` نیز رفع شد: پوشه run قبل از checkpoint lookup ساخته می‌شود. تست‌های data-service پس از اصلاح: ۷۹ مورد، همگی پاس.
+- recovery کم‌پوشش برای ۵۰ نماد با local browser/Codal و checkpoint اجرا شد. خروجی Production با backup `/var/backups/boursnegar/20260830T102900Z-auto-local-to-production.dump` شامل ۳ manifest و ۱۰۲۶۸۴ رکورد بود؛ import اول ۵۰۰۸ fact استاندارد و بدون validation error داشت و replay idempotent نیز عبور کرد. health/ready هر دو سبز هستند.
+- پس از انتقال و refresh هر ۵۰ نماد بدون خطای endpoint تحلیل شدند. وضعیت فعلی ۵۰ ردیف: ۱۳ مورد coverage=100، ۳۰ مورد 85.71، سه مورد 71.43، یک مورد 42.86 و سه مورد 28.57؛ تصمیم‌ها ۶ SELL، یک HOLD و ۴۳ INSUFFICIENT_DATA هستند. شستا پس از داده تازه به 100٪ رسید.
+- این اعداد نشان می‌دهند pipeline و provenance سالم‌اند، اما کمبود شواهد بنیادی برای ۴۳ نماد هنوز واقعی است؛ پوشش ظاهری نباید به توصیه قطعی تبدیل شود. timeoutهای Codal در manifest همان نماد retained شده‌اند.

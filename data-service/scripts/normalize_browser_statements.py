@@ -7,7 +7,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
-from app.services.codal_excel_parser import parse_financial_statement, extract_period_end_jalali
+from app.services.codal_excel_parser import parse_financial_statement, extract_period_end_jalali, extract_period_length_months
 
 SOURCE = 'browser/codal.ir'
 SCHEMA = 'boursnegar-codalpy-jsonl-v1'
@@ -77,6 +77,7 @@ def main() -> None:
                 continue
             tracing, title = str(letter.get('TracingNo') or ''), str(letter.get('Title') or '')
             period = extract_period_end_jalali(title)
+            period_length_months = extract_period_length_months(title)
             if not symbol or not tracing:
                 errors.append({'file': bundle.name, 'line': line_no, 'error': 'symbol_or_tracing_missing'}); continue
             kind = output_type(title)
@@ -99,6 +100,7 @@ def main() -> None:
                     audited, scope = statement_metadata(title)
                     fact_unit = 'IRR' if fact_key == 'eps_basic' else unit
                     rows.append({'source': SOURCE, 'symbol': symbol, 'from_jalali': record.get('from_jalali'), 'to_jalali': record.get('to_jalali'),
+                                 'period_length_months': period_length_months,
                                  'retrieved_at': record.get('retrieved_at'), 'output_type': fact_output_type(fact_key, title), 'source_action_id': f'{tracing}:{fact_key}:{period}',
                                  'tracing_no': tracing, 'period_end_jalali': period, 'fact_key': fact_key, 'source_label': fact_key,
                                  'value': value, 'raw_value': value, 'unit': fact_unit or 'UNKNOWN',

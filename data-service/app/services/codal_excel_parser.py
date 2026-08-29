@@ -26,6 +26,7 @@ ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
 ASCII_DIGITS = "0123456789"
 _DIGIT_TRANS = str.maketrans(PERSIAN_DIGITS + ARABIC_INDIC_DIGITS, ASCII_DIGITS + ASCII_DIGITS)
 JALALI_DATE_RE = re.compile(r"(?<!\d)(14\d{2})[\-/](\d{1,2})[\-/](\d{1,2})(?!\d)")
+PERIOD_MONTHS_RE = re.compile(r"(?:دوره\s*)?([0-9۰-۹٠-٩]{1,2})\s*ماهه")
 
 # قلم‌های هدف: کلید داخلی -> لیستی از برچسب‌های محتمل فارسی (بعد از نرمال‌سازی، بدون فاصله)
 TARGET_ITEMS = {
@@ -73,6 +74,21 @@ def extract_period_end_jalali(title: str | None) -> str | None:
     if not (1400 <= year <= 1499 and 1 <= month <= 12 and 1 <= day <= 31):
         return None
     return f"{year:04d}/{month:02d}/{day:02d}"
+
+
+def extract_period_length_months(title: str | None) -> int | None:
+    """Extract the report's stated period length, independent of search dates."""
+    if not title:
+        return None
+    normalized = str(title).translate(_DIGIT_TRANS)
+    match = PERIOD_MONTHS_RE.search(normalized)
+    if match:
+        months = int(match.group(1))
+        if 1 <= months <= 60:
+            return months
+    if "سال مالی" in normalized or "سالانه" in normalized:
+        return 12
+    return None
 
 
 def _normalize_label(value) -> str:
