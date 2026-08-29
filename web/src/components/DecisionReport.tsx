@@ -71,18 +71,21 @@ const dateFa = (value: string | null | undefined) => value ? new Date(value).toL
 const periodLabel = (months: number) => months === 12 ? "۱۲ماهه" : months === 9 ? "۹ماهه" : months === 6 ? "۶ماهه" : months === 3 ? "۳ماهه" : `${months}ماهه`;
 
 export function DecisionReport({ report }: { report: AnalysisPayload }) {
-  const actionable = report.decision !== "INSUFFICIENT_DATA";
+  const conditionalReview = report.decision === "INSUFFICIENT_DATA" && report.valuation != null;
+  const actionable = report.decision !== "INSUFFICIENT_DATA" || conditionalReview;
+  const decisionLabel = conditionalReview ? "بررسی مشروط" : decisionFa[report.decision];
   const availableMetrics = Object.keys(metricLabels).filter((key) => report.keyMetrics?.[key] != null).length;
   return <section id="analysis" className="decision-report">
     <header className={`decision-hero decision-${report.decision.toLowerCase()}`}>
       <div><small>نتیجه موتور تحلیل نسخه‌دار</small><h2>{report.companyName || report.symbol}</h2><span>{report.symbol}</span><div className="report-badges"><em className={report.report?.audited ? "audited" : "unaudited"}>{report.report?.audited ? "گزارش حسابرسی‌شده" : "گزارش حسابرسی‌نشده"}</em><em>محاسبه {dateFa(report.calculatedAt)}</em></div></div>
-      <div className="decision-seal"><small>جمع‌بندی</small><strong>{decisionFa[report.decision]}</strong><em>{actionable ? `اطمینان ${number(report.confidence, "٪")}` : "بدون کسر اعتبار"}</em></div>
+      <div className="decision-seal"><small>جمع‌بندی</small><strong>{decisionLabel}</strong><em>{actionable ? `اطمینان ${number(report.confidence, "٪")}` : "بدون کسر اعتبار"}</em></div>
     </header>
     <div className="analysis-context"><span><b>مبنای تحلیل:</b> {report.report?.title || "آخرین داده‌های رسمی در دسترس"}{report.report?.periodEnd?` · دوره منتهی به ${report.report.periodEnd}`:""}{report.report?.publishedAt?` · منتشرشده در ${report.report.publishedAt}`:""}</span><span><b>تازگی محاسبه:</b> تا {dateFa(report.staleAfter)}</span></div>
     {report.criticalWarning&&<div className="critical-warning"><AlertTriangle/><span>{report.criticalWarning}</span></div>}
     {report.analysisState==="MARKET_FUNDAMENTAL_DIVERGENCE"&&<div className="report-basis-note"><TrendingUp/><span><b>واگرایی قیمت و بنیاد:</b> بازده ۹۰روزه {precisePercent(report.analysisContext?.price_return_90d_percent??null)} است؛ {(report.analysisContext?.financial_periods??0).toLocaleString("fa-IR")} دوره بنیادی و {(report.analysisContext?.monthly_disclosures??0).toLocaleString("fa-IR")} گزارش ماهانه شناسایی شده، اما داده ماهانه هنوز کامل وارد محاسبه نشده است. نتیجه قطعی صادر نمی‌شود.</span></div>}
     {report.analysisState==="TURNAROUND_CANDIDATE"&&<div className="report-basis-note"><TrendingUp/><span><b>نامزد چرخش سودآوری:</b> بهبود دوره‌ای مشاهده شده، اما برای صدور نتیجه قطعی باید در گزارش بعدی نیز تکرار شود.</span></div>}
     {report.analysisState==="CAPITAL_ACTION_DATA_GAP"&&<div className="report-basis-note"><AlertTriangle/><span><b>نیاز به تطبیق افزایش سرمایه:</b> تعداد سهام حدود {precisePercent(report.analysisContext?.shares_change_percent??null)} تغییر کرده، اما اقدام شرکتی متناظر در داده ساختاریافته موجود نیست؛ قیمت و EPS تا تکمیل تطبیق مبنای نتیجه قطعی نیستند.</span></div>}
+    {conditionalReview&&report.analysisState==="STANDARD"&&<div className="report-basis-note"><ShieldCheck/><span><b>بررسی مشروط:</b> داده‌های پایه و ارزش‌گذاری سناریویی موجود است، اما اطمینان یا کفایت شواهد برای صدور خرید، نگهداری یا فروش قطعی کافی نیست؛ محدوده‌ها برای بررسی اولیه نمایش داده شده‌اند.</span></div>}
     {report.monthlyActivity?.available&&<div className="report-basis-note"><TrendingUp/><span><b>روند گزارش ماهانه:</b> {report.monthlyActivity.monthlySales?.growthPercent!=null?`رشد مبلغ فروش ماه جاری نسبت به ماه مشابه سال قبل ${precisePercent(report.monthlyActivity.monthlySales.growthPercent)}`:`رشد تجمعی مبلغ فروش نسبت به دوره مشابه ${precisePercent(report.monthlyActivity.ytdSales?.growthPercent??null)}`}. منبع: {report.monthlyActivity.source||"گزارش فعالیت ماهانه کدال"}.</span></div>}
     <div className="evidence-strip">
       <article><ShieldCheck/><span><small>امتیاز سلامت</small><b>{number(report.healthScore, " از ۱۰۰")}</b></span></article>

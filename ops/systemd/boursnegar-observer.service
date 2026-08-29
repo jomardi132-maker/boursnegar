@@ -1,0 +1,9 @@
+[Unit]
+Description=Observe Boursnegar web, data, screener and disk health
+After=network-online.target boursnegar-data-service.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/boursnegar-observer
