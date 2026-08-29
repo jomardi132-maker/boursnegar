@@ -207,6 +207,8 @@ Health/smoke checks:
 - آزمون بدون نشست معتبر، `POST /api/comments` و `POST /api/alerts` و `GET /api/admin/comments` را به‌ترتیب با ۴۰۱ رد کرد. احراز هویت‌شدهٔ moderator/reward همچنان تنها گیت بیرونی باقی‌مانده است.
 - برای چهار نماد ناقص صفحه اصلی (`میدکو، کچاد، کگل، ومعادن`) در جمع‌آوری local-only کدال ۴ فایل و ۱۱۸ سند رسمی دریافت شد؛ نرمال‌سازی ۲۰۵ رکورد و ۱۸ خطای parse/سندِ غیرقابل استفاده ثبت کرد و import با ۸۹ رکورد جدید، ۸۵ fact معتبر و خطای validation صفر انجام شد. backup پیش از import در `/var/backups/boursnegar/20260829T210000Z-homepage-core-import-before.dump` است.
 - پس از refresh با `latest_codal`، هر چهار نماد در اسکرینر پوشش ۵۷٫۱۴٪، محدوده ارزش‌گذاری و وضعیت `DATA_REVIEW`/`INCOMPLETE_EVIDENCE` دارند. cash flow عملیاتی برای گزارش‌های واردشده ثبت شده، ولی ترازنامه/دوره مقایسه‌ای کامل هنوز برای تصمیم قطعی کافی نیست.
+- انتخاب‌گر گزارش اصلاح شد تا income statement و balance sheet جداگانه اما هم‌دوره را بر اساس تاریخ، طول دوره، scope و audit با هم merge کند؛ شرط revenue/net profit دیگر period ترازنامه را حذف نمی‌کند. پس از deploy، هر چهار نماد ۱۰/۱۰ سنجه اصلی، پوشش ۱۰۰٪ و تحلیل تازه دریافت کردند: میدکو و کچاد `SELL` مبتنی بر ارزش‌گذاری، کگل و ومعادن `CONDITIONAL_REVIEW`.
+- `report_used.detail_url` نیز به snapshot منتقل شد؛ برای میدکو، کچاد، کگل و ومعادن `sourceLineage.codalDocument` اکنون لینک مستقیم واقعی `codal.ir/Reports/Decision.aspx` است. backup سرویس قبل از این اصلاح `/var/backups/boursnegar/20260829T230000Z-provenance-report-used-main.py` است.
 
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
