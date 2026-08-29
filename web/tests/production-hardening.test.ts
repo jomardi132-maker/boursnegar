@@ -74,4 +74,13 @@ describe("production hardening contract", () => {
     expect(source).toContain("created_at >= now()-interval '10 minutes'");
     expect(source).toContain("duplicate:true");
   });
+  it("assesses comments before replying and rewards only constructive content", () => {
+    expect(source).toContain("function assessComment");
+    expect(source).toContain("actionKind !== 'safety_review'");
+    expect(source).toContain("comment_reward");
+    expect(source).toContain("پاسخ خودکار به نظر شما");
+  });
+  it("keeps the automation ledger writable by the application role", () => {
+    expect(fs.readFileSync(path.resolve("migrations/023_comment_automation_permissions.sql"), "utf8")).toContain("GRANT SELECT, INSERT");
+  });
 });

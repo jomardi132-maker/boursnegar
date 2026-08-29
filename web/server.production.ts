@@ -132,35 +132,74 @@ const analyzeSchema = z.object({
 });
 const commentSchema = z.object({ kind: z.enum(["site_feedback", "symbol_comment"]), symbol: z.string().max(32).optional(), body: z.string().trim().min(3).max(2000) });
 
-function commentQuality(body: string) {
-  const normalized = body.trim();
+type CommentAssessment = {
+  quality: number;
+  actionKind: 'feedback_logged' | 'task_candidate' | 'safety_review';
+  topic: 'bug' | 'suggestion' | 'question' | 'trading' | 'general';
+  reward: number;
+  replyText: string;
+};
+
+function assessComment(comment: { kind: string; symbol?: string | null; body: string }): CommentAssessment {
+  const normalized = comment.body.trim();
   const hasPersian = /[\u0600-\u06ff]/.test(normalized);
   const hasSubstance = normalized.length >= 40;
-  const looksSpam = /(https?:\/\/|وی‌پی‌ان|تبلیغ|کسب درآمد تضمینی)/i.test(normalized);
-  return Math.max(0, Math.min(100, (hasPersian ? 35 : 0) + (hasSubstance ? 45 : 15) - (looksSpam ? 70 : 0)));
+  const hasDetail = /[؟?؛;،,.:]/.test(normalized) || /\d/.test(normalized);
+  const looksSpam = /(https?:\/\/|وی‌?پی‌?ان|تبلیغ|کسب درآمد تضمینی|سیگنال قطعی|سود تضمینی)/i.test(normalized);
+  const topic: CommentAssessment['topic'] = /(رمز|احراز|باگ|خطا|خراب|نمایش نمی|باز نمی|مشکل)/i.test(normalized)
+    ? 'bug'
+    : /(پیشنهاد|بهبود|اضافه|امکان|قابلیت|بهتره|ای‌?کاش)/i.test(normalized)
+      ? 'suggestion'
+      : /(بخر|بفروش|خرید|فروش|ورود|حد ضرر|هدف|سیگنال|ارزش ورود)/i.test(normalized)
+        ? 'trading'
+        : /(چطور|چگونه|چرا|آیا|؟|\?)/.test(normalized)
+          ? 'question'
+          : 'general';
+  const quality = Math.max(0, Math.min(100,
+    (hasPersian ? 30 : 0) + (hasSubstance ? 35 : 15) + (hasDetail ? 20 : 0) + (topic !== 'general' ? 15 : 0) - (looksSpam ? 85 : 0),
+  ));
+  const actionKind: CommentAssessment['actionKind'] = looksSpam || quality < 40
+    ? 'safety_review'
+    : topic === 'bug' || topic === 'suggestion'
+      ? 'task_candidate'
+      : 'feedback_logged';
+  const reward = quality >= 80 && actionKind !== 'safety_review' ? 10 : 0;
+  const symbol = comment.symbol ? ` درباره ${comment.symbol}` : '';
+  const replyText = comment.kind === 'site_feedback'
+    ? topic === 'bug'
+      ? 'درود بر شما؛ گزارش خطای شما ثبت شد و برای بررسی فنی به تیم مربوط ارجاع شد. اگر امکان دارد، مسیر تکرار خطا و زمان رخداد را هم بنویسید.'
+      : topic === 'suggestion'
+        ? 'درود بر شما؛ پیشنهاد مشخص شما ثبت شد و برای اولویت‌بندی بهبودهای بورس‌نگار بررسی می‌شود. از اینکه تجربه کاربری را دقیق‌تر می‌کنید سپاسگزاریم.'
+        : topic === 'question'
+          ? 'درود بر شما؛ پرسش‌تان ثبت شد. پاسخ نهایی بر اساس داده و مستندات قابل بررسی ارائه می‌شود.'
+          : 'درود بر شما؛ از بازخوردتان سپاسگزاریم. نظر شما ثبت شد و برای بهبود بورس‌نگار بررسی می‌شود.'
+    : topic === 'trading'
+      ? `از مشارکت شما${symbol} سپاسگزاریم. این دیدگاه ثبت شد؛ تصمیم خرید یا فروش باید با داده به‌روز، مدیریت ریسک و افق سرمایه‌گذاری خودتان انجام شود و این پاسخ توصیه قطعی نیست.`
+      : topic === 'question'
+        ? `پرسش شما${symbol} ثبت شد. پاسخ تحلیلی فقط بر پایه داده‌های قابل استناد ارائه می‌شود و در نبود داده کافی، موضوع برای بررسی بیشتر علامت‌گذاری خواهد شد.`
+        : `از مشارکت شما${symbol} سپاسگزاریم. دیدگاه‌تان ثبت شد؛ لطفاً تحلیل‌ها را مستند و بدون توصیه قطعی سرمایه‌گذاری مطرح کنید.`;
+  return { quality, actionKind, topic, reward, replyText };
 }
 
 async function automateComment(comment: { id: string; userId: string; kind: string; symbol?: string | null; body: string }) {
-  const quality = commentQuality(comment.body);
-  const actionKind = /(رمز|احراز|باگ|خطا|پیشنهاد|بهبود|مشکل)/i.test(comment.body) ? 'task_candidate' : quality < 40 ? 'safety_review' : 'feedback_logged';
-  const reward = quality >= 80 ? 10 : 0;
+  const assessment = assessComment(comment);
+  const reward = assessment.reward;
   await withTransaction(async (client) => {
     const existing = await client.query(`SELECT 1 FROM comment_automation_actions WHERE comment_id=$1`, [comment.id]);
     if (existing.rowCount) return;
     const actor = await client.query(`SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id WHERE u.status='active' AND r.code IN ('admin','comment_moderator') AND u.id<>$1 ORDER BY CASE r.code WHEN 'comment_moderator' THEN 0 ELSE 1 END, u.created_at ASC LIMIT 1`, [comment.userId]);
     if (!actor.rows[0]) return;
-    const replyText = comment.kind === 'site_feedback'
-      ? 'درود بر شما؛ از بازخوردتان سپاسگزاریم. پیشنهاد شما ثبت شد و برای بهبود بورس‌نگار بررسی می‌شود.'
-      : 'از مشارکت شما در گفت‌وگو سپاسگزاریم. دیدگاه شما ثبت شد؛ لطفاً تحلیل‌ها را مستند و بدون توصیه قطعی سرمایه‌گذاری مطرح کنید.';
-    const reply = await client.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id`, [actor.rows[0].id, comment.kind, comment.symbol || null, comment.id, replyText]);
+    const reply = await client.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id`, [actor.rows[0].id, comment.kind, comment.symbol || null, comment.id, assessment.replyText]);
     if (reward > 0) {
       const balance = await client.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`, [comment.userId, reward]);
       if (balance.rows[0]) {
         await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5) ON CONFLICT DO NOTHING`, [comment.userId, reward, balance.rows[0].balance, comment.id, `comment-auto-reward:${comment.id}`]);
         await client.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, [comment.id, actor.rows[0].id, reward]);
+        await client.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) VALUES($1,'comment_reward',$2,$3,$4)`, [comment.userId, 'جایزه نظر سازنده', `به دلیل ثبت نظر سازنده، ${reward} اعتبار به حساب شما اضافه شد.`, comment.symbol ? `/s/${encodeURIComponent(comment.symbol)}#symbol-comments` : '#symbol-comments']);
       }
     }
-    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, quality, actionKind, reward, reply.rows[0].id]);
+    await client.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) VALUES($1,'comment_reply',$2,$3,$4)`, [comment.userId, 'پاسخ خودکار به نظر شما', assessment.replyText, comment.symbol ? `/s/${encodeURIComponent(comment.symbol)}#symbol-comments` : '#symbol-comments']);
+    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, assessment.quality, assessment.actionKind, assessment.reward, reply.rows[0].id]);
   });
 }
 
