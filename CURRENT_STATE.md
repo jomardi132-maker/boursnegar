@@ -41,6 +41,12 @@
 
 آخرین اعتبارسنجی لوکال: ۷۳ تست Python و ۶۳ تست وب موفق، lint، typecheck، build و `git diff --check` موفق. گیت‌های باقی‌مانده محدود به دریافت evidence معتبر برای نمادهای ناقص/غیرقابل‌ارزیابی، اجرای تست worker هشدار با `DATABASE_URL` واقعی و اجرای E2E دیدگاه/پاداش با نشست مجاز واقعی هستند؛ هیچ‌کدام با داده یا هویت ساختگی قابل بستن نیستند.
 
+### تاریخچه‌ی چنددوره‌ای و aliasهای فاصله‌دار، 2026-08-29
+
+پاسخ v2 اکنون چهار گروه مالی اخیرِ هم‌دامنه و هم‌وضعیت حسابرسی را، با درآمد، سود خالص، جریان نقد عملیاتی و رشد فقط در برابر دوره‌ی قبلیِ هم‌طول، به snapshot و گزارش کاربر منتقل می‌کند. در refresh سراسری ۶۶۲ از ۶۶۸ نماد پاسخ معتبر و دارای فیلد تاریخچه ثبت شد؛ شش مورد باقی‌مانده فقط به‌دلیل فاصله‌ی داخلی در alias رد شده بودند و پس از اصلاح validator هر شش مورد نیز پاسخ معتبر گرفتند. audit اصلی در `/var/backups/boursnegar/20260829T064125Z-financial-history-refresh.json` ثبت شده است.
+
+release فعال وب و داده هر دو `20260829T101500Z-financial-history` هستند؛ health واقعی وب `/healthz` و سرویس داده `/health` موفق‌اند. backupهای این انتشار شامل `/var/backups/boursnegar/20260829T101500Z-financial-history-data-before-financial-history.tar.gz` و `/var/backups/boursnegar/20260829T101500Z-financial-history-web-before-financial-history.tar.gz` و backup اصلاح alias `/var/backups/boursnegar/20260829T110000Z-data-before-spaced-alias-fix.tar.gz` هستند. PRهای ۳۹ و ۴۰ merge شده‌اند.
+
 ## خلاصه اجرایی
 
 Production فعال است و مسیر اجرایی واقعی همچنان Nginx -> PM2 `bourse-app` -> `127.0.0.1:3000` و FastAPI روی `127.0.0.1:8001` است. پس از بررسی read-only، یک پاک‌سازی محدود و transaction-guarded برای ۹ رکورد تکراری/بی‌وابستگی انجام شد؛ قبل از تغییر backup و rollback SQL ساخته شد و هیچ داده‌ای حذف نشد.
