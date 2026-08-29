@@ -203,6 +203,8 @@ Health/smoke checks:
 - برای نمادهایی که snapshot تحلیلی ندارند، اسکرینر اکنون آخرین دوره مالی و هفت fact اصلی معتبر را از Production محاسبه می‌کند؛ این مقدار فقط پوشش evidence را نشان می‌دهد و بدون snapshot تصمیم BUY/HOLD/SELL تولید نمی‌کند.
 - یک خطای cast و سپس یک خطای نام ستون در rollout شناسایی و اصلاح شد. release فعال `/var/www/boursnegar-releases/20260829T183000Z-fact-coverage` با backupهای فایل build در `/var/backups/boursnegar/20260829T193000Z-fact-coverage-hotfix-server.cjs` و `/var/backups/boursnegar/20260829T194500Z-fact-coverage-join-fix-server.cjs` قابل بازگشت است.
 - پاسخ زنده `GET /api/market/screener?sort=health` با موفقیت ۵۰ ردیف از مجموع ۶۹۵ ردیف را برگرداند. صفحه اصلی در مرورگر واقعی ۱۰ ردیف، پوشش ۴۳٪ تا ۸۶٪، بنیاد و وضعیت اقدام را نشان داد و خطای console ثبت نشد.
+- ممیزی فعلی Production: snapshotها شامل ۸ خرید، ۳۱ نگهداری، ۹۶ فروش و ۳٬۳۵۱ مورد `INSUFFICIENT_DATA` هستند؛ fact معتبر جریان نقد عملیاتی هنوز ۱۴۹ رکورد است. این اعداد نشان می‌دهند fallback نمایش بهتر شده، اما پوشش تحلیلی کامل نشده است.
+- آزمون بدون نشست معتبر، `POST /api/comments` و `POST /api/alerts` و `GET /api/admin/comments` را به‌ترتیب با ۴۰۱ رد کرد. احراز هویت‌شدهٔ moderator/reward همچنان تنها گیت بیرونی باقی‌مانده است.
 
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
