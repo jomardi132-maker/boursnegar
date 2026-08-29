@@ -190,6 +190,7 @@ Health/smoke checks:
 - worker اکنون snapshot نسخه v2 را می‌خواند و همچنان opt-in، محدودشده، دارای advisory lock، deduplication و سقف ارسال در هر اجراست. در Production اجرای safety با هر دو پرچم SMS خاموش، بدون ارسال پیامک و با خروج موفق انجام شد.
 - migration `021_valuation_alerts` روی دیتابیس با backup `/var/backups/boursnegar/20260829T160000Z-valuation-alerts-before-migration.dump` اعمال شد؛ constraintهای `alerts_kind_check` و `alerts_target_check` موجودند.
 - release فعال web: `/var/www/boursnegar-releases/20260829T160000Z-valuation-alerts`. health عمومی و screener عمومی پس از rollout موفق بودند.
+- ناسازگاری `schema_migrations` نیز رفع شد: migrationهای موجود 012، 013، 014، 015 مالی، 017 و 020 پس از بررسی idempotency با مالک دیتابیس ثبت شدند؛ `scripts/migrate.ts` روی همان release بعد از اصلاح بدون خطا و بدون migration جدید اجرا شد.
 
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
