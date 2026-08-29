@@ -211,6 +211,7 @@ Health/smoke checks:
 - `report_used.detail_url` نیز به snapshot منتقل شد؛ برای میدکو، کچاد، کگل و ومعادن `sourceLineage.codalDocument` اکنون لینک مستقیم واقعی `codal.ir/Reports/Decision.aspx` است. backup سرویس قبل از این اصلاح `/var/backups/boursnegar/20260829T230000Z-provenance-report-used-main.py` است.
 - batch دوم برای `همراه، خساپا، خبهمن، رمپنا` چهار فایل و ۱۲۲ سند رسمی دریافت کرد؛ نرمال‌سازی ۳۰۶ رکورد با ۳۱ خطای retained انجام شد و import Production با backup `/var/backups/boursnegar/20260830T003000Z-homepage-core-2-import-before.dump`، ۳۳ رکورد جدید/۳۳ fact و validation صفر داشت؛ اجرای تکراری `inserted=0` بود.
 - پس از refresh، هر چهار نماد پوشش ۱۰۰٪ دارند و لینک مستقیم کدال در source lineage ثبت شده است. خروجی تحلیلی فعلی: همراه و خبهمن `INSUFFICIENT_DATA` با هشدار واگرایی بازار/بنیاد، خساپا و رمپنا `SELL`؛ اسکرینر نیز پوشش ۱۰۰٪ را نشان می‌دهد، اما نبود مدل ارزش‌گذاری صنعت برای برخی نمادها صریحاً حفظ شده است.
+- برای گیت چنددوره‌ای، batch سال ۱۴۰۳ برای `شبندر، شستا، میدکو، ومعادن، کچاد، کگل` شامل ۱۶۷ سند و ۱۹۶ رکورد استاندارد بود؛ import با backup `/var/backups/boursnegar/20260830T033000Z-homepage-history-1403-import-before.dump` تعداد ۱۹۶ fact استاندارد و validation صفر داشت. به‌دلیل تفاوت واقعی scope/طول دوره، فقط تاریخچهٔ هم‌طول قابل مقایسه فعال می‌شود؛ مقایسهٔ نامعتبر ساخته نشد.
 
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
