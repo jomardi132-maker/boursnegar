@@ -216,6 +216,8 @@ Health/smoke checks:
 - فضای دیسک Production با حفظ release فعال `20260829T183000Z-fact-coverage` و rollbackهای نزدیک، فقط با حذف ۶ release قدیمی و دارای سابقه rollout از ۱۰۰٪ به ۹۲٪ رسید؛ health وب و data service پس از cleanup سبز ماند. کنترل اجرایی حافظه در `scripts/project-memory-check.sh` اضافه شد و در هر handoff قابل اجراست.
 - safety run واقعی `dist/alert-worker.cjs` با `ALERT_WORKER_ENABLED=false` و `SMS_ENABLED=false` با خروجی `alert-worker disabled` پایان یافت؛ در محیط Production `KAVENEGAR_API_KEY` وجود دارد اما sender خالی است و `DATABASE_URL` در web.env تنظیم نیست، بنابراین ارسال پیامک عمداً اجرا نشد. listing عمومی comment با ۲۰۰ و endpointهای alerts/admin با ۴۰۱ بدون نشست پاسخ دادند.
 - ابزار `scripts/project-memory-note.sh <slug>` به پروتکل اضافه شد؛ با timestamp یکتا فقط قالب یک یادداشت جدید را می‌سازد و بازنویسی حافظه قبلی را ممکن نمی‌کند. در محیط موقت ساخت فایل و کنترل `project-memory-check.sh` با موفقیت آزموده شد.
+- batch سوم برای partialهای نمای اصلی (`شپنا، وبملت، خودرو، شبندر، فولاد، شستا`) شامل ۱۷۴ سند، ۳۶۶ رکورد استاندارد و ۳۰ خطای retained بود؛ import با backup `/var/backups/boursnegar/20260830T120000Z-homepage-partial-import-before.dump` تعداد ۳۴۳ رکورد و ۳۵۲ fact جدید، validation صفر و replay بعدی inserted=0 داشت.
+- پس از refresh، وبملت، خودرو، شبندر و فولاد به پوشش ۱۰۰٪ رسیدند؛ شپنا و شستا به‌ترتیب با missing `operating_cash_flow` در coverage ۸۵٫۷۱٪ باقی ماندند. هر ۱۰ ردیف نمای پیش‌فرض coverage غیرخالی دارند؛ شستا مدل P/B proxy و لینک مستقیم کدال دارد و تصمیم قطعی آن همچنان مسدود است.
 
 1. پوشش داده: همچنان نباید ادعای «تحلیل کامل همه نمادها» کرد. معیار فعلی باید provenance، دوره، نوع fact، واحد و source باشد.
 2. رکوردهای Codalpy بدون نماد: فقط با artifact/manifest/source رسمی قابل اصلاح‌اند؛ انتساب حدسی ممنوع است.
