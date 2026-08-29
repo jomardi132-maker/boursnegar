@@ -28,7 +28,7 @@ export type AnalysisPayload = {
   criticalWarning: string | null;
   calculatedAt: string;
   staleAfter: string;
-  sourceLineage: { codalTracingNo?: string; codalDocument?: string; marketSource?: string };
+  sourceLineage: { codalTracingNo?: string; codalDocument?: string; codalExcel?: string; marketSource?: string };
   policyVersion: string;
   modelVersion: string;
 };
@@ -103,6 +103,6 @@ export function DecisionReport({ report }: { report: AnalysisPayload }) {
       return <article key={key} data-status={item.status}><small>{questionLabels[key]||key}</small><strong>{precisePercent(item.value)}</strong><p>{detail}</p><span>{item.status==="PASS"?"عبور از معیار":item.status==="FAIL"?"پایین‌تر از معیار":"داده ناکافی برای محاسبه"}</span></article>;
     })}</section>
     <div className="decision-details"><section><h3><TrendingUp/> دلایل اصلی</h3><ul>{report.reasons.map((reason)=><li key={reason}>{reason}</li>)}</ul></section><section><h3><AlertTriangle/> ریسک‌ها و محدودیت‌ها</h3><ul>{report.risks.map((risk)=><li key={risk}>{risk}</li>)}</ul></section></div>
-    <footer className="report-lineage"><span>سیاست: {report.policyVersion}</span><span>موتور: {report.modelVersion}</span><span>منبع بازار: {report.sourceLineage.marketSource||"نامشخص"}</span>{report.sourceLineage.codalDocument&&<a href={report.sourceLineage.codalDocument} target="_blank" rel="noreferrer">مشاهده سند کدال</a>}</footer>
+    <footer className="report-lineage"><span>سیاست: {report.policyVersion}</span><span>موتور: {report.modelVersion}</span><span>منبع بازار: {report.sourceLineage.marketSource||"نامشخص"}</span>{report.sourceLineage.codalDocument&&<a href={report.sourceLineage.codalDocument} target="_blank" rel="noreferrer">مشاهده اطلاعیه رسمی کدال</a>}{report.sourceLineage.codalExcel&&report.sourceLineage.codalExcel!==report.sourceLineage.codalDocument&&<a href={report.sourceLineage.codalExcel} target="_blank" rel="noreferrer">مشاهده فایل مالی</a>}</footer>
   </section>;
 }

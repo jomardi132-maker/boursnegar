@@ -35,6 +35,14 @@ def statement_metadata(title: str) -> tuple[bool, str]:
     scope = 'consolidated' if 'تلفیقی' in title else 'separate'
     return audited, scope
 
+def official_url(value: object, host: str) -> str | None:
+    value = str(value or '').strip()
+    if not value:
+        return None
+    if value.startswith('/'):
+        return f'https://{host}{value}'
+    return value if value.startswith('https://') else None
+
 def output_type(title: str) -> str:
     if 'فعالیت ماهانه' in title or 'عملکرد ماهانه' in title:
         return 'monthly_activity'
@@ -96,6 +104,8 @@ def main() -> None:
                                  'value': value, 'raw_value': value, 'unit': fact_unit or 'UNKNOWN',
                                  'payload': {'title': title, 'document': doc['path'], 'document_sha256': checksum,
                                              'letter_code': letter.get('LetterCode'), 'parser_found_items': parsed['found_items'],
+                                             'detail_url': official_url(letter.get('Url') or letter.get('URL') or letter.get('DetailUrl'), 'codal.ir'),
+                                             'excel_url': official_url(letter.get('ExcelUrl'), 'excel.codal.ir'),
                                              'audited': audited, 'scope': scope}})
     target = out / 'normalized.jsonl'; target.write_text(''.join(json.dumps(row, ensure_ascii=False, sort_keys=True) + '\n' for row in rows), encoding='utf8')
     manifest = {'schema': SCHEMA, 'source': SOURCE, 'files': [{'path': target.name, 'symbol': '*', 'records': len(rows), 'sha256': sha(target)}],

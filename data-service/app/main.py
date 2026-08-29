@@ -407,7 +407,9 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     rows = db.execute(text(f"""
       SELECT fp.id AS period_id,d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
              fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,
-             dv.metadata->>'excel_url' AS excel_url,ff.fact_key,ff.normalized_value,
+             coalesce(dv.metadata->>'excel_url',fr.excel_url) AS excel_url,
+             coalesce(dv.metadata->>'detail_url',fr.detail_url) AS detail_url,
+             ff.fact_key,ff.normalized_value,
              ff.quality_status,ff.normalized_unit
       FROM symbol_aliases sa
       JOIN instruments i ON i.id=sa.instrument_id
@@ -415,6 +417,8 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
       JOIN financial_facts ff ON ff.period_id=fp.id
       JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
       JOIN disclosures d ON d.id=dv.disclosure_id
+      LEFT JOIN financial_reports fr ON fr.company_id=(SELECT c.id FROM companies c WHERE c.symbol=:symbol LIMIT 1)
+        AND fr.tracing_no=split_part(d.source_disclosure_id, ':', 1)
       WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
         AND ff.quality_status='VALID'
         -- A newer interim or subsidiary statement may contain only balance-sheet
@@ -464,6 +468,7 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     candidate = {
         "Title": first["title"], "TracingNo": first["source_disclosure_id"],
         "PublishDateTime": first["published_date_jalali"], "ExcelUrl": first["excel_url"],
+        "Url": first["detail_url"],
         "HasExcel": bool(first["excel_url"]), "scope": first["scope"],
         "_period_id": str(first["period_id"]), "_end_date": first["end_date"],
         "_end_date_jalali": first["end_date_jalali"],
