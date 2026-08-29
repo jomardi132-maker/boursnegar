@@ -39,6 +39,13 @@ class OrphanDocumentAuditTest(unittest.TestCase):
         frame = pd.DataFrame([['درآمد عملیاتی', '۱۲۳']], columns=columns)
         self.assertEqual(MODULE.parse_financial_statement.__globals__['_value_column_period'](frame), '1404/12/29')
 
+    def test_cash_flow_label_with_soft_hyphen_is_extracted(self):
+        frame = pd.DataFrame([
+            ['جریان\u00ad خالص \u200cورود\u00ad (خروج) نقد حاصل از فعالیت\u200cهای عملیاتی', '۲۰۴,۴۳۶'],
+        ])
+        extract = MODULE.parse_financial_statement.__globals__['_extract_keys_from_table']
+        self.assertEqual(extract(frame, ['operating_cash_flow'])['operating_cash_flow'], 204436.0)
+
 
 if __name__ == '__main__':
     unittest.main()

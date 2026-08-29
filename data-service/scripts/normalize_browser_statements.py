@@ -48,10 +48,18 @@ def fact_output_type(fact_key: str, title: str) -> str:
     return output_type(title)
 
 def main() -> None:
-    p = argparse.ArgumentParser(); p.add_argument('--capture', required=True); p.add_argument('--out', required=True); args = p.parse_args()
+    p = argparse.ArgumentParser()
+    p.add_argument('--capture', required=True)
+    p.add_argument('--out', required=True)
+    p.add_argument('--bundle', help='Process one JSONL bundle within the capture root')
+    args = p.parse_args()
     root, out = Path(args.capture), Path(args.out); out.mkdir(parents=True, exist_ok=True)
     rows, errors, source_files = [], [], set()
-    for bundle in sorted(root.rglob('*.jsonl')):
+    bundles = [root / args.bundle] if args.bundle else sorted(root.rglob('*.jsonl'))
+    for bundle in bundles:
+        if not bundle.exists():
+            errors.append({'file': str(bundle), 'error': 'bundle_missing'})
+            continue
         for line_no, line in enumerate(bundle.read_text(encoding='utf8').splitlines(), 1):
             try: record = json.loads(line)
             except json.JSONDecodeError as exc:
