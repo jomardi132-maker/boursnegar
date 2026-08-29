@@ -287,6 +287,7 @@ export function installPlatformRoutes(app: express.Express) {
       };
       const disclosures = [...disclosureRows.rows, ...legacyDisclosureRows.rows]
         .filter((row, index, all) => all.findIndex((item) => String(item.source_disclosure_id) === String(row.source_disclosure_id)) === index)
+        .map((row) => ({ ...row, detail_url: row.detail_url || `https://codal.ir/ReportList.aspx?search&Symbol=${encodeURIComponent(stock.symbol)}` }))
         .slice(0, 16);
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, rahavardReports:rahavard.rows, snapshot: snapshot.rows[0] ?? null });
