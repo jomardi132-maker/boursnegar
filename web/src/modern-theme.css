@@ -59,6 +59,7 @@ body{background:#07110e!important;color:#eaf7ef!important;background-image:linea
 .comment-form textarea{background:#07110e;color:#eaf7ef;border-color:#315448}
 .comment-list article{border-color:#29483e}
 .comment-list article p{color:#dbece3}
+.comment-list article.comment-reply{background:#153329;border:1px solid #3c705c;border-right:3px solid #72e7ad;color:#eaf7ef}.comment-list article.comment-reply p{color:#f2fff7}.comment-list article.comment-reply .comment-meta small,.comment-list article.comment-reply .comment-meta time{color:#b6d6c6}.comment-list article.comment-reply .comment-meta b{color:#f2fff7}.comment-list article.comment-reply .comment-actions button{color:#8ff0bd}
 @media(max-width:760px){.market-summary,.leader-grid{grid-template-columns:1fr}.screener-table{display:block;overflow-x:auto;white-space:nowrap;direction:ltr}.screener-table table{direction:rtl}}
 
 .fundamental-dashboard{max-width:1280px;margin:0 auto;padding:32px 24px 74px;color:#eaf7ef}

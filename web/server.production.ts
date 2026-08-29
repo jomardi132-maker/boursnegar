@@ -329,7 +329,15 @@ app.get("/api/comments", asyncRoute(async (req, res) => {
 app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*60_000), asyncRoute(async (req,res)=>{
   const p=z.object({ ...commentSchema.shape, parentId:z.string().uuid().nullable().optional() }).safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
   if (p.data.parentId) { const parent=await pool.query(`SELECT id,kind,symbol,status FROM comments WHERE id=$1`,[p.data.parentId]); const row=parent.rows[0]; if(!row || row.status!=='published' || row.kind!==p.data.kind || (row.symbol||null)!==(p.data.symbol||null)) return res.status(400).json({success:false,error:"پیام مرجع معتبر نیست."}); }
-  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id,parent_id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
+  const duplicateKey = [req.authUser!.id, p.data.kind, p.data.symbol || "", p.data.parentId || "", p.data.body].join("\u001f");
+  const row=await withTransaction(async c=>{
+    await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`,[duplicateKey]);
+    const recent=await c.query(`SELECT id,parent_id,created_at FROM comments WHERE user_id=$1 AND kind=$2 AND symbol IS NOT DISTINCT FROM $3 AND parent_id IS NOT DISTINCT FROM $4 AND body=$5 AND created_at >= now()-interval '10 minutes' ORDER BY created_at DESC LIMIT 1`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
+    if(recent.rows[0]) return {rows:recent.rows,duplicate:true};
+    const inserted=await c.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id,parent_id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
+    return {rows:inserted.rows,duplicate:false};
+  });
+  if(row.duplicate) return res.status(200).json({success:true,comment:row.rows[0],duplicate:true});
   await automateComment({id: row.rows[0].id, userId: req.authUser!.id, kind: p.data.kind, symbol: p.data.symbol || null, body: p.data.body});
   if(p.data.parentId){await pool.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) SELECT c.user_id,'comment_reply','پاسخ تازه به نظر شما',$1,$2 FROM comments c WHERE c.id=$3 AND c.user_id<>$4`,[p.data.body.slice(0,180),p.data.symbol?`/s/${encodeURIComponent(p.data.symbol)}#symbol-comments`:'#symbol-comments',p.data.parentId,req.authUser!.id]);}
   res.status(201).json({success:true,comment:row.rows[0]});

@@ -69,4 +69,9 @@ describe("production hardening contract", () => {
     expect(source).toContain('req.path.endsWith(".map")');
     expect(source).toContain('return res.status(404).end()');
   });
+  it("deduplicates concurrent identical comments", () => {
+    expect(source).toContain("pg_advisory_xact_lock");
+    expect(source).toContain("created_at >= now()-interval '10 minutes'");
+    expect(source).toContain("duplicate:true");
+  });
 });
