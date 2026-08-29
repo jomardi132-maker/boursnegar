@@ -58,5 +58,15 @@ describe("production hardening contract", () => {
     expect(source).toContain("og:title");
     expect(source).toContain('req.path.match(/^\\/s\\/');
     expect(source).toContain('rel="canonical"');
+    expect(source).toContain('"@type": "Dataset"');
+    expect(source).toContain('replace(/<link rel="canonical"');
+  });
+  it("adds an explicit browser capability policy", () => {
+    expect(source).toContain("Permissions-Policy");
+    expect(source).toContain("camera=(), microphone=(), geolocation=(), payment=()");
+  });
+  it("does not publish production source maps", () => {
+    expect(source).toContain('req.path.endsWith(".map")');
+    expect(source).toContain('return res.status(404).end()');
   });
 });

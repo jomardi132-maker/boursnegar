@@ -57,6 +57,10 @@ app.use(
     crossOriginEmbedderPolicy: false,
   }),
 );
+app.use((_req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  next();
+});
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 app.use(cookieParser());
@@ -1011,6 +1015,10 @@ async function start() {
       ).middlewares,
     );
   else {
+    app.use((req, res, next) => {
+      if (req.path.endsWith(".map")) return res.status(404).end();
+      next();
+    });
     app.use(express.static(distPath, { index: false, maxAge: "1h" }));
     app.get("*", asyncRoute(async (req, res) => {
       const match = req.path.match(/^\/s\/([^/]+)\/?$/);
@@ -1028,10 +1036,24 @@ async function start() {
       const title = `${stock.symbol} | ${stock.legal_name} — بورس‌نگار`;
       const description = `قیمت، نمودار، اطلاعیه‌های کدال و تحلیل بنیادی ${stock.symbol}، ${stock.legal_name} در صنعت ${stock.industry || "بازار سرمایه"}`;
       const canonical = `https://boursnegar.ir/s/${encodeURIComponent(stock.symbol)}`;
+      const dataset = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        name: `داده بازار و کدال ${stock.symbol}`,
+        description,
+        url: canonical,
+        creator: { "@type": "Organization", name: "بورس‌نگار" },
+        inLanguage: "fa-IR",
+        variableMeasured: ["قیمت پایانی", "حجم معاملات", "اطلاعیه‌های کدال"],
+      }).replace(/</g, "\\u003c");
       const html = fs.readFileSync(path.join(distPath, "index.html"), "utf8")
         .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
         .replace(/<meta name="description" content="[^"]*"\/>/, `<meta name="description" content="${escapeHtml(description)}"/>`)
-        .replace("</head>", `<link rel="canonical" href="${canonical}"/><meta property="og:type" content="website"/><meta property="og:title" content="${escapeHtml(title)}"/><meta property="og:description" content="${escapeHtml(description)}"/><meta property="og:url" content="${canonical}"/></head>`);
+        .replace(/<link rel="canonical" href="[^"]*"\/>/, `<link rel="canonical" href="${canonical}"/>`)
+        .replace(/<meta property="og:title" content="[^"]*"\/>/, `<meta property="og:title" content="${escapeHtml(title)}"/>`)
+        .replace(/<meta property="og:description" content="[^"]*"\/>/, `<meta property="og:description" content="${escapeHtml(description)}"/>`)
+        .replace(/<meta property="og:url" content="[^"]*"\/>/, `<meta property="og:url" content="${canonical}"/>`)
+        .replace("</head>", `<script type="application/ld+json">${dataset}</script></head>`);
       res.type("html").send(html);
     }));
   }
