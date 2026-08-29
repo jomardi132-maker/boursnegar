@@ -19,7 +19,13 @@ describe('alert worker safety', () => {
   });
 
   it('uses only real upstream snapshots', () => {
-    expect(source).toContain('/api/analyze/');
+    expect(source).toContain('/api/v2/analyze');
     expect(source).not.toContain('Math.random');
+  });
+
+  it('supports valuation zones without invented user targets', () => {
+    expect(source).toContain("'buy_zone' | 'sell_zone'");
+    expect(source).toContain('fairBase * 0.80');
+    expect(source).toContain('fairHigh * 1.15');
   });
 });
