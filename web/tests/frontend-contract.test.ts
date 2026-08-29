@@ -52,6 +52,7 @@ describe('analysis UI contract', () => {
     expect(marketSource).toContain('داده ناقص؛ فعلاً صبر برای تکمیل');
     expect(marketSource).toContain('محدوده خرید ارزش‌گذاری');
     expect(marketSource).toContain('technical_state');
+    expect(fs.readFileSync(path.resolve('src/components/StockPage.tsx'), 'utf8')).toContain('سنجه‌های غایب');
     expect(marketSource).toContain('بالاتر از میانگین ۲۰روزه');
     expect(marketSource).toContain('/s/${encodeURIComponent(row.symbol)}');
   });
