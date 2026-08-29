@@ -10,7 +10,9 @@ from scripts.auto_local_to_production import (
     base_symbol,
     existing_local_artifacts,
     import_existing_local_artifacts,
+    select_explicit_symbols,
     select_symbols,
+    symbol_run_root,
 )
 
 
@@ -62,6 +64,19 @@ class AutoLocalToProductionTest(unittest.TestCase):
         self.assertEqual(base_symbol('کربن3'), 'کربن')
         self.assertEqual(base_symbol('نماد۱۲'), 'نماد')
         self.assertEqual(base_symbol('ما'), 'ما')
+
+    def test_explicit_selection_validates_active_symbols_and_deduplicates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'symbols.txt'
+            path.write_text('فملی\nفملی\nشپنا\n', encoding='utf-8')
+            remote = [{'symbol': 'فملی'}, {'symbol': 'شپنا'}]
+            self.assertEqual(select_explicit_symbols(path, remote), ['فملی', 'شپنا'])
+
+    def test_checkpoint_root_does_not_duplicate_symbol_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'run-1' / 'شپنا').mkdir(parents=True)
+            self.assertEqual(symbol_run_root(root, 'شپنا'), root / 'run-1')
 
     def test_existing_local_artifacts_skips_aggregate_outputs(self):
         with tempfile.TemporaryDirectory() as temp:
