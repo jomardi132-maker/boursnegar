@@ -140,6 +140,12 @@ export function installPlatformRoutes(app: express.Express) {
             nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric AS fair_value_high,
             nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80 AS buy_zone_high,
             nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15 AS sell_zone_low,
+            CASE
+              WHEN l.price >= moving.ma20 AND moving.ma20 >= moving.ma50 THEN 'UPTREND'
+              WHEN l.price < moving.ma20 AND moving.ma20 < moving.ma50 THEN 'DOWNTREND'
+              WHEN moving.ma20 IS NULL OR moving.ma50 IS NULL THEN 'NO_TREND_DATA'
+              ELSE 'MIXED'
+            END AS technical_state,
             snap.quality_summary->>'analysisState' AS analysis_state,
             nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,
             nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
