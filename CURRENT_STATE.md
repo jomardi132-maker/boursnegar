@@ -260,3 +260,10 @@ Health/smoke checks:
 - پس از refresh هر ۵۰ تحلیل `latest_codal` بدون خطای endpoint بازتولید شدند. پوشش: ۴۴ ردیف ۱۰۰٪، چهار ردیف ۸۵٫۷۱٪ و دو ردیف ۲۸٫۵۷٪. موارد ناقص فعلی: `شبریز، ددانا، وگردش، انرژی، فاراک، ونوین`.
 - تصمیم‌های صفحه اصلی: ۶ `SELL`، یک `HOLD` و ۴۳ `INSUFFICIENT_DATA`. در ۴۳ مورد، واگرایی بازار/بنیاد یا نبود cash-flow هم‌دوره مانع نتیجه قطعی است؛ این رفتار مورد انتظار سیاست evidence-only است.
 - تست‌ها پس از اصلاح: data-service تعداد ۸۱ و web تعداد ۶۴ موفق؛ build وب موفق؛ `project-memory-check.sh` و `git diff --check` موفق و worktree clean است. رندر زنده قبلی desktop/mobile بدون console error و overflow ثبت شده و تغییر فعلی فقط سرویس داده است.
+
+## محدوده ترکیبی ارزش‌گذاری و روند - 2026-08-30
+
+- screener اکنون علاوه بر محدوده بنیادی، ATR ساده‌شده از دامنه high-low بیست روز اخیر را محاسبه می‌کند. در روند صعودی، `buy_zone_high` از کمینه حاشیه امن ارزش‌گذاری و حمایت `MA20-ATR20` و `sell_zone_low` از بیشینه سناریوی فروش و `MA20+ATR20` ساخته می‌شود؛ در نبود روند کافی، مبنای ارزش‌گذاری حفظ می‌شود.
+- API فیلدهای `valuation_buy_zone_high`، `valuation_sell_zone_low` و `zone_basis` را نیز نگه می‌دارد تا عدد ترکیبی قابل audit باشد. UI صفحه اصلی عنوان و tooltip فارسی دارد و برداشت سریع صریحاً ترکیب ارزش‌گذاری و حمایت روند را توضیح می‌دهد.
+- build وب در release فعال با backup `/var/backups/boursnegar/20260830T170000Z-combined-zones-before-dist.tgz` rollout شد. health/ready هر دو سبز و پاسخ زنده screener دارای `zone_basis` و محدوده‌های جدید است؛ صفحه اصلی HTML زنده نیز عنوان جدید را برمی‌گرداند.
+- تست وب: ۶۴ تست، typecheck و build موفق. این تغییر محدوده‌های هشدار SMS را عمداً تغییر نمی‌دهد؛ worker همچنان از snapshot ارزش‌گذاری معتبر، opt-in و deduplication استفاده می‌کند.

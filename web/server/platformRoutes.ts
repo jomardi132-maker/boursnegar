@@ -108,7 +108,7 @@ export function installPlatformRoutes(app: express.Express) {
       const result=await pool.query(`
         WITH market_dates AS (SELECT max(trading_date) AS latest,(SELECT trading_date FROM (SELECT DISTINCT trading_date FROM daily_prices WHERE quality_status='VALID' ORDER BY trading_date DESC LIMIT 1 OFFSET 49) d) AS cutoff FROM daily_prices WHERE quality_status='VALID'),
         latest AS (SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date=d.latest ORDER BY p.instrument_id,p.retrieved_at DESC),
-        moving AS (SELECT instrument_id,avg(price) FILTER (WHERE rn<=20) AS ma20,avg(price) FILTER (WHERE rn<=50) AS ma50 FROM (SELECT p.instrument_id,coalesce(p.adjusted_close,p.close) AS price,row_number() OVER (PARTITION BY p.instrument_id ORDER BY p.trading_date DESC) AS rn FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date>=d.cutoff) recent GROUP BY instrument_id),
+        moving AS (SELECT instrument_id,avg(price) FILTER (WHERE rn<=20) AS ma20,avg(price) FILTER (WHERE rn<=50) AS ma50,avg(CASE WHEN high IS NOT NULL AND low IS NOT NULL AND high>low THEN high-low END) FILTER (WHERE rn<=20) AS atr20 FROM (SELECT p.instrument_id,coalesce(p.adjusted_close,p.close) AS price,p.high,p.low,row_number() OVER (PARTITION BY p.instrument_id ORDER BY p.trading_date DESC) AS rn FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date>=d.cutoff) recent GROUP BY instrument_id),
         latest_financial_period AS (SELECT DISTINCT ON (fp.issuer_id) fp.issuer_id,fp.id FROM financial_periods fp ORDER BY fp.issuer_id,fp.end_date DESC,fp.audited DESC,fp.id DESC),
         fact_coverage AS (SELECT lfp.issuer_id,round((count(DISTINCT ff.fact_key) FILTER (WHERE ff.fact_key IN ('revenue','net_profit','operating_cash_flow','total_assets','total_liabilities','total_equity','eps_basic')))::numeric / 7 * 100,2) AS coverage FROM latest_financial_period lfp JOIN financial_facts ff ON ff.period_id=lfp.id AND ff.quality_status='VALID' GROUP BY lfp.issuer_id),
         universe AS (
@@ -142,8 +142,24 @@ export function installPlatformRoutes(app: express.Express) {
             nullif(snap.quality_summary->'valuation'->>'fairValueLow','')::numeric AS fair_value_low,
             nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric AS fair_value_base,
             nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric AS fair_value_high,
-            nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80 AS buy_zone_high,
-            nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15 AS sell_zone_low,
+            nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80 AS valuation_buy_zone_high,
+            nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15 AS valuation_sell_zone_low,
+            CASE
+              WHEN nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric IS NULL THEN NULL
+              WHEN moving.ma20 IS NOT NULL AND moving.ma50 IS NOT NULL AND moving.ma20>=moving.ma50
+                THEN LEAST(nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80,
+                           GREATEST(moving.ma20-COALESCE(moving.atr20,moving.ma20*0.03),0))
+              ELSE nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80
+            END AS buy_zone_high,
+            CASE
+              WHEN nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric IS NULL THEN NULL
+              WHEN moving.ma20 IS NOT NULL AND moving.ma50 IS NOT NULL AND moving.ma20>=moving.ma50
+                THEN GREATEST(nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15,
+                              moving.ma20+COALESCE(moving.atr20,moving.ma20*0.03))
+              ELSE nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15
+            END AS sell_zone_low,
+            CASE WHEN moving.ma20 IS NOT NULL AND moving.ma50 IS NOT NULL AND moving.ma20>=moving.ma50
+              THEN 'VALUATION_AND_TREND_SUPPORT' ELSE 'VALUATION_ONLY' END AS zone_basis,
             CASE
               WHEN l.price >= moving.ma20 AND moving.ma20 >= moving.ma50 THEN 'UPTREND'
               WHEN l.price < moving.ma20 AND moving.ma20 < moving.ma50 THEN 'DOWNTREND'
