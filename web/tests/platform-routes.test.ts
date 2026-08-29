@@ -36,6 +36,7 @@ describe("platform routes security contract", () => {
     expect(source).toContain("buy_zone_high");
     expect(source).toContain("technical_state");
     expect(source).toContain("DOWNTREND");
+    expect(source).toContain("https://codal.ir/ReportList.aspx?search&Symbol=");
     expect(source).toContain("sell_zone_low");
     expect(source).toContain("fairValueBase");
   });
