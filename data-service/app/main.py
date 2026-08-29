@@ -645,7 +645,11 @@ def _stored_financial_history(db: Session, symbol: str, candidate: dict) -> list
         }
         history.append(item)
     for index, item in enumerate(history):
-        previous = history[index + 1] if index + 1 < len(history) else None
+        previous = next(
+            (older for older in history[index + 1:]
+             if older["periodLengthMonths"] == item["periodLengthMonths"]),
+            None,
+        )
         for value_key, growth_key in (("revenue", "revenueGrowthPercent"), ("netProfit", "netProfitGrowthPercent")):
             current = item[value_key]
             prior = previous[value_key] if previous else None
