@@ -37,3 +37,11 @@ def test_all_runtime_python_files_compile():
     for directory in (root / "app", root / "scripts"):
         for path in directory.rglob("*.py"):
             compile(path.read_text(encoding="utf-8"), str(path), "exec")
+
+
+def test_legacy_codal_import_has_no_automatic_timer():
+    root = Path(__file__).parents[2]
+    assert not (root / "ops/systemd/boursnegar-codal-financials.timer").exists()
+    service = (root / "ops/systemd/boursnegar-codal-financials.service").read_text(encoding="utf-8")
+    assert "manual local-artifact" in service
+    assert "manifest/checksum/backup-gated" in service
