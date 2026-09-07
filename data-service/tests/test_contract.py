@@ -24,3 +24,10 @@ def test_no_ai_runtime_dependency():
     source = "\n".join(p.read_text(encoding="utf-8") for p in Path(__file__).parents[1].joinpath("app").rglob("*.py"))
     assert "gemini" not in source.lower()
     assert "anthropic" not in source.lower()
+
+
+def test_all_runtime_python_files_compile():
+    root = Path(__file__).parents[1]
+    for directory in (root / "app", root / "scripts"):
+        for path in directory.rglob("*.py"):
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
