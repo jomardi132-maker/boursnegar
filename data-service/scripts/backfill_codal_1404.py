@@ -298,7 +298,14 @@ if __name__ == "__main__":
     parser.add_argument("--to-date")
     parser.add_argument("--provider-fallback", action="store_true",
                         help="After direct Codal failure, use configured BrsApi provider fallback.")
+    parser.add_argument(
+        "--acknowledge-historical-batch",
+        action="store_true",
+        help="Required safety acknowledgement for this legacy database-writing backfill.",
+    )
     args = parser.parse_args()
+    if not args.acknowledge_historical_batch:
+        parser.error("refusing legacy database-writing backfill without --acknowledge-historical-batch")
     result = run_global(not args.no_resume, args.from_date, args.to_date, args.provider_fallback) if args.global_pages else run(
         args.max_pages, not args.no_resume, set(args.symbols or []), args.from_date, args.to_date,
         args.provider_fallback
