@@ -67,7 +67,7 @@ idempotent و health/readiness نیاز دارد.
 
 1. backtest بیست‌جلسه‌ای: 13 نمونهٔ واقعی از حداقل 30؛ فعلاً به تصمیم کاربر deferred است.
 2. `339` صندوق بدون NAV معتبر: فقط با evidence رسمی تازه و تطبیق issuer/period/source/unit؛ صف NAV-only بسته است.
-3. FCFE/DCF: فولاد OCF، CapEx و net borrowing هم‌دوره دارد، اما cost of equity و terminal growth مستند کل Production صفرند؛ تا ورود نرخ رسمی `INSUFFICIENT_DATA` بماند.
+3. FCFE/DCF: هشت نماد OCF، CapEx و net borrowing هم‌دوره دارند، اما cost of equity و terminal growth مستند کل Production صفرند؛ تا ورود نرخ رسمی `INSUFFICIENT_DATA` بماند. انتخاب بعدی باید دقیقاً به کلید دورهٔ جاری Production join شود؛ latest محلی کافی نیست.
 4. زنجیرهٔ collector تا promotion زمان‌بندی‌شده هنوز عمداً جدا و backup-gated است.
 5. جدول خام `codalpy_records` بزرگ است، اما تا تدوین retention مبتنی بر provenance حذف یا فشرده نمی‌شود.
 

@@ -20,7 +20,7 @@
 ## گیت‌های باز
 
 - [ ] endpoint مستقیم Excel در دریافت مجدد با `ERR_BLOCKED_BY_CLIENT` مواجه می‌شود؛ artifactهای قبلیِ browser/codal.ir و checksum آن‌ها معتبر و نگهداری شده‌اند.
-- [ ] FCFE/DCF تا وجود همهٔ مؤلفه‌ها و نرخ‌های هم‌دوره و مستند، `INSUFFICIENT_DATA` بماند. baseline فعلی: از ۱۵۲۴ نماد، OCF=`567`، CapEx=`1` و net borrowing=`1`؛ فولاد این سه گیت را هم‌دوره PASS کرده اما cost of equity و terminal growth کل Production هر دو `0` هستند، پس FCFE-ready همچنان صفر است. recovery بعدی فقط از اسناد رسمی موجود با هر دو مؤلفهٔ CapEx و هر دو مؤلفهٔ net borrowing و بدون تکرار OCF انجام شود.
+- [ ] FCFE/DCF تا وجود همهٔ مؤلفه‌ها و نرخ‌های هم‌دوره و مستند، `INSUFFICIENT_DATA` بماند. baseline فعلی: از ۱۵۲۴ نماد، OCF=`567`، CapEx=`8` و net borrowing=`8`؛ هشت نماد این سه گیت را هم‌دوره PASS کرده‌اند اما cost of equity و terminal growth کل Production هر دو `0` هستند، پس FCFE-ready همچنان صفر است. ادامهٔ recovery فقط با join دقیق به دورهٔ `rn=1` Production و action تازه مجاز است.
 
 ## انجام‌شده و خارج از صف
 
