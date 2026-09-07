@@ -319,6 +319,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
                 if live
                 else None
             ),
+            "valuationInputs": raw.get("valuation_input_lineage") or [],
         },
     }
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

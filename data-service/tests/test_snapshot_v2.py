@@ -4,6 +4,16 @@ from app.analytics.snapshot_v2 import build_snapshot_payload
 
 
 class SnapshotV2Tests(unittest.TestCase):
+    def test_valuation_input_provenance_is_exposed(self):
+        lineage = [{"inputKey": "nav_per_share", "source": "browser/codal.ir"}]
+        payload = build_snapshot_payload({
+            "symbol": "صندوق",
+            "live_price": {"market_category": "صندوق سرمایه‌گذاری قابل معامله"},
+            "financial_metrics": {},
+            "valuation_input_lineage": lineage,
+        }, "audited")
+        self.assertEqual(payload["sourceLineage"]["valuationInputs"], lineage)
+
     def test_fund_uses_explicit_nav_gate_instead_of_company_valuation(self):
         payload = build_snapshot_payload({
             "symbol": "صندوق",

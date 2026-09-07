@@ -15,6 +15,7 @@ from app.services import tsetmc_service, codal_service, codal_excel_parser, rati
 from app.analytics.snapshot_v2 import build_snapshot_payload
 from app.analytics.period_comparison import build_period_comparison, period_label_from_title
 from app.analytics.ttm import FLOW_FACT_KEYS, build_ttm_metrics
+from app.analytics.valuation_inputs import validated_valuation_inputs
 from app.ingestion.market_history import model_family
 
 # ساخت جدول‌ها در صورت عدم وجود (برای MVP کافیه؛ بعداً می‌تونیم Alembic اضافه کنیم)
@@ -547,6 +548,25 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     }
 
 
+def _stored_valuation_inputs(db: Session, period_id: str) -> tuple[dict, list[dict]]:
+    rows = db.execute(text("""
+      WITH selected AS (
+        SELECT issuer_id,end_date,length_months,audited,scope
+        FROM financial_periods WHERE id=:period_id
+      )
+      SELECT vi.input_key,vi.value,vi.normalized_unit,vi.source,
+             vi.source_disclosure_id,vi.content_checksum
+      FROM valuation_inputs vi
+      JOIN financial_periods fp ON fp.id=vi.period_id
+      JOIN selected s ON s.issuer_id=fp.issuer_id AND s.end_date=fp.end_date
+        AND s.length_months=fp.length_months AND s.audited=fp.audited
+        AND s.scope IS NOT DISTINCT FROM fp.scope
+      WHERE vi.quality_status='VALID'
+      ORDER BY vi.input_key,vi.created_at,vi.id
+    """), {"period_id": period_id}).mappings().all()
+    return validated_valuation_inputs(rows)
+
+
 def _stored_period_comparison(db: Session, symbol: str, candidate: dict, parsed: dict):
     """Compare the selected persisted period with the closest earlier same-length period."""
     if not candidate.get("_end_date") or not candidate.get("_length_months"):
@@ -982,6 +1002,9 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     if not local_report:
         raise HTTPException(status_code=404, detail=f"برای نماد «{symbol}» گزارش واردشده‌ای موجود نیست.")
     candidate, excel_url, parsed = local_report
+    stored_valuation_inputs, valuation_input_lineage = _stored_valuation_inputs(
+        db, candidate["_period_id"]
+    )
 
     comparison, comparison_unavailable_reason = _stored_period_comparison(db, symbol, candidate, parsed)
     financial_history = _stored_financial_history(db, symbol, candidate)
@@ -1037,6 +1060,26 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
     analysis_context["monthly_signals_available"] = monthly_signals["available"]
     analysis_context["monthlySignals"] = monthly_signals
 
+    metric_units = parsed.get("metric_units", {})
+    valuation_inputs = dict(stored_valuation_inputs)
+    if metric_units.get("nav_per_share") == "IRR":
+        valuation_inputs.setdefault("nav_per_share", parsed["metrics"].get("nav_per_share"))
+    cashflow_keys = ("operating_cash_flow", "capital_expenditure", "net_borrowing")
+    if all(
+        parsed["metrics"].get(key) is not None and metric_units.get(key) == "IRR_million"
+        for key in cashflow_keys
+    ):
+        valuation_inputs.setdefault(
+            "fcfe",
+            parsed["metrics"]["operating_cash_flow"]
+            - abs(parsed["metrics"]["capital_expenditure"])
+            + parsed["metrics"]["net_borrowing"],
+        )
+    if metric_units.get("net_profit") == "IRR_million":
+        valuation_inputs["net_income"] = parsed["metrics"].get("net_profit")
+    if metric_units.get("total_equity") == "IRR_million":
+        valuation_inputs["book_equity"] = parsed["metrics"].get("total_equity")
+
     return {
         "success": True,
         "symbol": symbol,
@@ -1054,21 +1097,9 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
         "live_price": live_data,
         "live_price_error": live_error,
         "financial_metrics": parsed["metrics"],
-        "financial_metrics_units": parsed.get("metric_units", {}),
-        # Keep intrinsic inputs explicit and provenance-gated.  At present
-        # official per-unit NAV is the only intrinsic input promoted from
-        # Codal facts; DCF/FCFE assumptions remain absent until sourced.
-        "valuation_inputs": {
-            "nav_per_share": parsed["metrics"].get("nav_per_share"),
-            "fcfe": (
-                parsed["metrics"].get("operating_cash_flow")
-                - abs(parsed["metrics"].get("capital_expenditure"))
-                + parsed["metrics"].get("net_borrowing")
-                if parsed["metrics"].get("operating_cash_flow") is not None
-                and parsed["metrics"].get("capital_expenditure") is not None
-                and parsed["metrics"].get("net_borrowing") is not None else None
-            ),
-        },
+        "financial_metrics_units": metric_units,
+        "valuation_inputs": valuation_inputs,
+        "valuation_input_lineage": valuation_input_lineage,
         "financial_metrics_found": parsed["found_items"],
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,
