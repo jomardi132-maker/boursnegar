@@ -7,9 +7,9 @@ from pathlib import Path
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    'audit_orphans', ROOT / 'data-service' / 'scripts' / 'audit_orphan_financial_documents.py'
+    'audit_orphans', ROOT / 'scripts' / 'audit_orphan_financial_documents.py'
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

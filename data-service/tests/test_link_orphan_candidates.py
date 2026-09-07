@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    'link_orphans', ROOT / 'data-service' / 'scripts' / 'link_orphan_candidates.py'
+    'link_orphans', ROOT / 'scripts' / 'link_orphan_candidates.py'
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
