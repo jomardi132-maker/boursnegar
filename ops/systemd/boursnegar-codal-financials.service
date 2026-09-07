@@ -1,5 +1,5 @@
 [Unit]
-Description=Boursnegar local-artifact Codalpy importer (no Codal network access)
+Description=Boursnegar manual local-artifact Codalpy replay (no Codal network access)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -12,3 +12,7 @@ Environment=PYTHONPATH=.
 ExecStart=/var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest /var/lib/boursnegar/codalpy/manifest.json --symbol * --batch-size 500
 TimeoutStartSec=6h
 Nice=10
+
+# Intentionally no timer/install target: Production imports must enter through
+# the manifest/checksum/backup-gated promotion workflow. This unit is retained
+# only for explicit diagnostic replay of the legacy canonical manifest.
