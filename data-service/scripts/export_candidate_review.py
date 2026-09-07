@@ -14,5 +14,10 @@ def main():
     out=Path(a.out); out.parent.mkdir(parents=True,exist_ok=True)
     with out.open('w',newline='',encoding='utf-8-sig') as h:
         w=csv.writer(h); w.writerow(('مسیر','نماد','دوره','وضعیت','scope','تعداد fact','کلید یکتا','شواهد اتصال')); w.writerows(rows)
-    print(f'rows={sum(1 for _ in db.execute("select 1 from orphan_fact_candidates where status in (\'READY_FOR_LINKAGE\',\'NEEDS_DISAMBIGUATION\',\'READY_FOR_NORMALIZATION\') group by path"))} out={out}')
+    review_count = sum(1 for _ in db.execute(
+        "SELECT 1 FROM orphan_fact_candidates "
+        "WHERE status IN ('READY_FOR_LINKAGE','NEEDS_DISAMBIGUATION','READY_FOR_NORMALIZATION') "
+        "GROUP BY path"
+    ))
+    print(f'rows={review_count} out={out}')
 if __name__=='__main__': main()
