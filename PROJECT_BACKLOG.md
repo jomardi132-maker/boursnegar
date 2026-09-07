@@ -26,6 +26,7 @@
 - [x] سلامت release، سرویس‌ها و تست‌های ثبت‌شده در آخرین audit.
 - [x] policyهای مدل صنعت و quarantine واحد ناسازگار NAV با backup و rollback.
 - [x] حذف/اصلاح صف‌های تکراری و نگهداری artifact، checkpoint و provenance.
+- [x] loader ورودی‌های intrinsic به endpoint وصل شد: فقط `VALID`، همان هویت دوره، واحد canonical، provenance کامل و یک منبع بدون تعارض پذیرفته می‌شود؛ lineage در snapshot قابل ممیزی است.
 
 ## قانون نگهداری
 

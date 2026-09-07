@@ -3245,3 +3245,12 @@ Health/smoke checks:
 - `git gc` استاندارد اجرا شد: ۵۱٬۵۶۰ loose object با حجم گزارش‌شدهٔ `858.66 MiB` به دو pack تبدیل شدند؛ `.git` به حدود `1.1 GB` رسید، `garbage=0` شد و working tree تمیز ماند. history و reflog اخیر حفظ شدند و force-push/history rewrite انجام نشد.
 - دو `.chrome-profile` رهاشده با مجموع حدود `12.4 MB` از retryهای شکست‌خوردهٔ تادیکو/تاراز/تاتمس، پس از اثبات نبود process فعال و خالی‌بودن normalized outputs، به Trash منتقل شدند. checkpoint و manifest خطاها حفظ شدند؛ profileها از Trash قابل بازیابی‌اند.
 - artifactهای مالی `856 MB` و پروفایل canonical Chrome `389 MB` حذف نشدند. فضای filesystem سالم است: `43 GB` مصرف از `110 GB` (`41%`).
+
+## 2026-09-07 - اتصال provenance-gated ورودی‌های intrinsic
+
+- مسیرهای residual income، FCFE و DCF که پیش‌تر ورودی‌های persisted جدول `valuation_inputs` را دریافت نمی‌کردند، به دورهٔ انتخاب‌شده متصل شدند. پذیرش فقط برای `quality_status='VALID'`، هویت کامل issuer/end/length/audit/scope، واحد canonical، source/disclosure/checksum کامل و دقیقاً یک منبع بدون تعارض انجام می‌شود.
+- FCFE مشتق‌شده فقط وقتی ساخته می‌شود که OCF، CapEx و net borrowing هر سه در همان گزارش با واحد `IRR_million` موجود باشند؛ نرخ‌های `cost_of_equity`، `wacc` و `terminal_growth` از macro default استنتاج نمی‌شوند. lineage ورودی‌های پذیرفته‌شده در `sourceLineage.valuationInputs` منتشر می‌شود.
+- suite کامل data-service برابر `160/160` و CI رسمی PR `#69` برای data-service و web سبز بود؛ merge commit `80c5f3796` است.
+- پیش از deploy، backup فایل‌محور `/var/backups/boursnegar/20260907T083500-0400-valuation-input-loader-before.tar.gz` با SHA-256 `d262353ad320c2672475326a7af8361c4b90d15ddf4812c888c8053ce02b9bf1` ساخته و پس از deploy دوباره validate شد.
+- release فعال data-service برابر `/var/www/boursnegar-data-releases/20260907T123202Z-main-80c5f3796` و rollback برابر `/var/www/boursnegar-data-releases/20260907T0850Z-main-4a2f286e` است. staging compile، ۳۵ تست مرتبط، health و readiness موفق بود؛ سرویس نهایی `active/running`، `NRestarts=0` و دیسک سرور `69%` است.
+- verification read-only روی چهار NAV معتبر نشان داد دورهٔ جاری «امتیاز» مقدار `12762 IRR` از action `1572614` و «امین شهر» مقدار `14038 IRR` از اصلاحیهٔ `1573834` را با checksum کامل پذیرفت. NAVهای معتبر قدیمی‌تر «آتیمس» و «آتیه ملت» به دورهٔ مالی جدیدتر سرایت نکردند و خروجی خالی ماند؛ رکورد `REJECTED` نیز وارد مدل نشد.
