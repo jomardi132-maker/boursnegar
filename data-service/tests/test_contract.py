@@ -1,4 +1,13 @@
 from pathlib import Path
+import re
+
+
+def test_every_python_cli_is_registered():
+    scripts = Path(__file__).parents[1] / "scripts"
+    registry = scripts.joinpath("README.md").read_text(encoding="utf-8")
+    registered = set(re.findall(r"`([a-z0-9_]+\.py)`", registry))
+    actual = {path.name for path in scripts.glob("*.py")}
+    assert registered == actual
 
 
 def test_fastapi_has_analysis_route():

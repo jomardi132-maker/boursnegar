@@ -4,6 +4,8 @@
 `CURRENT_STATE.md` را نخوان. فقط این فایل، `PROJECT_BACKLOG.md` و آخرین entry
 از `CURRENT_STATE.md` مرجع هستند.
 
+نقش و وضعیت همهٔ CLIهای Python در `data-service/scripts/README.md` ثبت شده است.
+
 ## وضعیت تثبیت‌شده در 2026-09-07
 
 - Production در `/healthz` سالم و در `/readyz` آماده است؛ PM2 برنامهٔ وب آنلاین است.
