@@ -12,9 +12,9 @@
 - [x] تطبیق raw NAV با جدول legacy انجام شد؛ چهار رکورد valid و رکورد superseded اصلی `REJECTED` است و backup/rollback migration نگهداری شده.
 - [x] گیت واحد NAV با artifactهای موجود حل شد؛ چهار `nav_per_share` در مسیر استاندارد Production با `IRR/VALID` ثبت و با replay `inserted=0` تثبیت شدند.
 - [x] پنج Excel رسمی در artifactهای محلی موجود و SHA-256 آن‌ها در manifest ثبت است؛ خطای `ERR_BLOCKED_BY_CLIENT` فقط برای دریافت مجدد endpoint فعلی باقی است، نه برای provenance این batch.
-- [ ] از میان ۴۱۹ صندوق فعال، موارد `REVIEW` را فقط با evidence رسمی NAV/units و تطبیق یکتای issuer/period/source بررسی کن؛ ممیزی فعلی ۱۰۵۱ مورد REVIEW کلی را نشان می‌دهد و به‌تنهایی مجوز promotion نیست.
+- [ ] از میان ۴۱۹ صندوق فعال، ۸۰ صندوق NAV معتبر و ۷۵ صندوق NAV+units معتبرِ هم‌دوره دارند. پنج NAV-only باقی‌مانده «دیبا»، «سپر»، «هم ارز»، «پایدار» و «پتروصبا» هستند؛ فقط با evidence رسمی تازه و تطبیق یکتای issuer/period/source/unit بررسی شوند. ۳۳۹ صندوق بدون NAV معتبرند و شمار REVIEW کلی به‌تنهایی مجوز promotion نیست.
 - [x] اولویت evidence اولیه ۱۲ صندوق با Chrome بررسی شد؛ هر ۱۲ مورد `NO_NOTICES` و بدون evidence قابل promotion بودند و artifact/checkpoint آن‌ها حفظ شد.
-- [ ] تکمیل تاریخچهٔ analytical snapshot برای ارزیابی ۲۰ جلسه‌ای؛ بازسازی تاریخی با دادهٔ امروز ممنوع.
+- [ ] تکمیل تاریخچهٔ analytical snapshot برای ارزیابی ۲۰ جلسه‌ای؛ طبق تصمیم کاربر فعلاً بازار و timerهای روزانه deferred هستند و بازسازی تاریخی با دادهٔ امروز ممنوع است.
 
 ## گیت‌های باز
 
