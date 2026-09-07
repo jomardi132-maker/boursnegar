@@ -88,6 +88,26 @@ ORDER BY a.symbol
 """)
 
 
+CURRENT_PERIOD_KEYS_SQL = text("""
+WITH aliases AS (
+  SELECT instrument_id, min(symbol) AS symbol FROM symbol_aliases
+  WHERE valid_to IS NULL GROUP BY instrument_id
+), period_keys AS (
+  SELECT issuer_id,end_date,end_date_jalali,length_months,audited,scope,
+    dense_rank() OVER (PARTITION BY issuer_id ORDER BY end_date DESC,audited DESC) rn
+  FROM financial_periods
+  GROUP BY issuer_id,end_date,end_date_jalali,length_months,audited,scope
+)
+SELECT a.symbol,pk.issuer_id,pk.end_date,pk.end_date_jalali,
+  pk.length_months,pk.audited,pk.scope
+FROM aliases a
+JOIN instruments ins ON ins.id=a.instrument_id
+JOIN period_keys pk ON pk.issuer_id=ins.issuer_id AND pk.rn=1
+WHERE ins.active AND (:symbol='' OR a.symbol=:symbol)
+ORDER BY a.symbol,pk.end_date,pk.audited DESC,pk.scope
+""")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', required=True)
@@ -95,6 +115,9 @@ def main() -> None:
     args = parser.parse_args()
     with engine.begin() as connection:
         rows = [dict(row) for row in connection.execute(SQL, {'symbol': args.symbol}).mappings()]
+        current_period_keys = [dict(row) for row in connection.execute(
+            CURRENT_PERIOD_KEYS_SQL, {'symbol': args.symbol}
+        ).mappings()]
     # PASS means that the explicit same-period FCFE path is evidence-ready.
     # OCF alone is not FCFE, and rates are never inferred from macro defaults.
     gates = (
@@ -107,7 +130,11 @@ def main() -> None:
         row['status'] = 'PASS' if passed == len(gates) else 'REVIEW'
         row['passed_gates'] = passed
     result = {'method':'same_period_fcfe_input_gate_audit','gates':list(gates),
+              'current_period_key_fields':['symbol','issuer_id','end_date','end_date_jalali',
+                                           'length_months','audited','scope'],
+              'current_period_keys':current_period_keys,
               'rows':rows,'summary':{'symbols':len(rows),
+              'current_period_keys':len(current_period_keys),
               'pass':sum(r['status']=='PASS' for r in rows),
               'review':sum(r['status']=='REVIEW' for r in rows)}}
     output = Path(args.output)
