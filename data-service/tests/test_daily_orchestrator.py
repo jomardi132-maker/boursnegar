@@ -45,11 +45,17 @@ class DailyOrchestratorTests(unittest.TestCase):
             run_dir = Path(directory) / "runs"
             argv = ["daily_orchestrator.py", "--run-dir", str(run_dir),
                     "--lock-file", str(Path(directory) / "lock")]
-            with patch("sys.argv", argv):
+            completed = daily_orchestrator.subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="collection complete\n", stderr=""
+            )
+            with patch("sys.argv", argv), patch.object(
+                daily_orchestrator.subprocess, "run", return_value=completed
+            ) as run:
                 self.assertEqual(daily_orchestrator.main(), 0)
             report = json.loads((run_dir / "latest.json").read_text(encoding="utf-8"))
             self.assertFalse(report["production_write"])
             self.assertIn("--no-import", report["commands"][0])
+            self.assertIn("--no-import", run.call_args.args[0])
 
 
 if __name__ == "__main__":
