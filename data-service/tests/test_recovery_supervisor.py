@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+import subprocess
 from unittest.mock import patch
 
 from scripts.daily_local_ingestion import run, symbols_requiring_browser_fallback
@@ -9,6 +10,17 @@ from scripts.run_all_incomplete import cleanup_profile
 
 
 class RecoverySupervisorTest(unittest.TestCase):
+    def test_all_symbol_supervisor_requires_explicit_historical_acknowledgement(self):
+        script = Path(__file__).parents[1] / 'scripts' / 'run_all_incomplete.py'
+        result = subprocess.run(
+            [sys.executable, str(script), '--to-jalali', '1404/12/29'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('--acknowledge-historical-batch', result.stderr)
+
     def test_codalpy_failure_keeps_all_symbols_for_browser_fallback(self):
         symbols = ['فملی', 'شپنا']
         checkpoint = {'completed': {'فملی|1404/01/01|1404/12/29|income_statement': {'records': 10}}}

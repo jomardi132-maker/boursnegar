@@ -159,6 +159,11 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertIn("fetch_direct_letters_page", importer)
         self.assertNotIn("fetch_letters_page(symbol, page)", importer)
 
+    def test_historical_codal_backfill_requires_explicit_acknowledgement(self):
+        importer = self.root.joinpath("scripts", "backfill_codal_1404.py").read_text(encoding="utf-8")
+        self.assertIn("--acknowledge-historical-batch", importer)
+        self.assertIn("parser.error", importer)
+
     def test_codal_period_requires_explicit_valid_persian_date(self):
         self.assertEqual(
             extract_period_end_jalali("صورت‌های مالی دوره ۶ ماهه منتهی به ۱۴۰۴/۰۶/۳۱"),

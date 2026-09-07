@@ -53,8 +53,9 @@ idempotent و health/readiness نیاز دارد.
 
 ### متوقف از اجرای روزمره
 
-- `run_all_incomplete.py`: batch تاریخی پرهزینه؛ فقط برای مطالعه نگه‌داری شود.
-- `backfill_codal_1404.py`, `backfill_market_1404.py`: backfillهای تاریخی، نه کار روزانه.
+- `run_all_incomplete.py`: batch تاریخی پرهزینه؛ بدون `--acknowledge-historical-batch` اجرا نمی‌شود.
+- `backfill_codal_1404.py`: backfill تاریخی و database-writing؛ بدون `--acknowledge-historical-batch` اجرا نمی‌شود.
+- `backfill_market_1404.py`: backfill تاریخی، نه کار روزانه؛ طبق تصمیم فعلی خارج از محدوده است.
 - `daily_local_ingestion.py` به‌صورت مستقیم: فقط از orchestrator یا اجرای تشخیصی محدود.
 - recoveryهای نام‌دار قدیمی: بدون evidence تازه resume نشوند.
 

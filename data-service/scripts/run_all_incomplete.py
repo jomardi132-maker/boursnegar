@@ -30,7 +30,9 @@ def run(cmd,log,timeout):
             except ProcessLookupError: pass
             return 124
 def main():
-    p=argparse.ArgumentParser(); p.add_argument('--ssh-target',default='boursnegar'); p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True); p.add_argument('--out',default='artifacts/all-symbols'); p.add_argument('--batch-size',type=int,default=20); p.add_argument('--codalpy-timeout',type=int,default=300); p.add_argument('--max-batches',type=int,default=0); p.add_argument('--max-consecutive-failures',type=int,default=10); p.add_argument('--failure-cooldown',type=int,default=60); args=p.parse_args()
+    p=argparse.ArgumentParser(); p.add_argument('--ssh-target',default='boursnegar'); p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True); p.add_argument('--out',default='artifacts/all-symbols'); p.add_argument('--batch-size',type=int,default=20); p.add_argument('--codalpy-timeout',type=int,default=300); p.add_argument('--max-batches',type=int,default=0); p.add_argument('--max-consecutive-failures',type=int,default=10); p.add_argument('--failure-cooldown',type=int,default=60); p.add_argument('--acknowledge-historical-batch', action='store_true', help='Required safety acknowledgement for this expensive legacy batch.'); args=p.parse_args()
+    if not args.acknowledge_historical_batch:
+        p.error('refusing expensive legacy batch without --acknowledge-historical-batch')
     root=ROOT/args.out; root.mkdir(parents=True,exist_ok=True)
     existing=[int(p.name.split('-')[1]) for p in root.glob('batch-*') if p.name.split('-')[-1].isdigit()]
     batch_no=max(existing,default=0); consecutive_failures=0
