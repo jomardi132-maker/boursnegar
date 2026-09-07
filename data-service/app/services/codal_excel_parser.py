@@ -96,6 +96,33 @@ TARGET_ITEMS = {
     ],
 }
 
+# FCFE components must be built only from explicit rows in one cash-flow
+# table.  In Codal's current template, capital purchases are split between
+# tangible and intangible assets, while borrowing is split between proceeds
+# and principal repayments.  Interest and loans granted to third parties are
+# deliberately excluded.
+CAPEX_TANGIBLE_LABELS = {
+    "پرداختهاینقدیبرایخریدداراییهایثابتمشهود",
+    "پرداختهاینقدیبابتخریدداراییهایثابتمشهود",
+    "وجوهپرداختیبابتتحصیلداراییهایثابتمشهود",
+}
+CAPEX_INTANGIBLE_LABELS = {
+    "پرداختهاینقدیبرایخریدداراییهاینامشهود",
+    "پرداختهاینقدیبرایخریدداراییهایثابتنامشهود",
+    "پرداختهاینقدیبابتخریدداراییهاینامشهود",
+    "پرداختهاینقدیبابتخریدداراییهایثابتنامشهود",
+    "وجوهپرداختیبابتتحصیلداراییهاینامشهود",
+    "وجوهپرداختیبابتتحصیلداراییهایثابتنامشهود",
+}
+BORROWING_PROCEEDS_LABELS = {
+    "دریافتهاینقدیحاصلازتسهیلات",
+    "دریافتهاینقدیحاصلازتسهیلات(غیرعملیاتی)",
+}
+BORROWING_PRINCIPAL_LABELS = {
+    "پرداختهاینقدیبابتاصلتسهیلات",
+    "پرداختهاینقدیبابتاصلتسهیلات(غیرعملیاتی)",
+}
+
 
 class CodalExcelDownloadError(Exception):
     pass
@@ -252,6 +279,41 @@ def _extract_keys_from_table(df, keys) -> dict:
                     if value is not None:
                         local[key] = value
     return local
+
+
+def _extract_fcfe_components_from_table(df) -> dict:
+    """Extract complete FCFE components from explicit rows of one table."""
+    tangible = {}
+    intangible = {}
+    proceeds = {}
+    principal = {}
+    for _, row in df.iterrows():
+        for index in range(max(0, len(row) - 1)):
+            label = _normalize_label(row.iloc[index])
+            if not label:
+                continue
+            value = parse_persian_number(row.iloc[index + 1])
+            if value is None:
+                continue
+            if label in CAPEX_TANGIBLE_LABELS:
+                tangible[label] = value
+            elif label in CAPEX_INTANGIBLE_LABELS:
+                intangible[label] = value
+            elif label in BORROWING_PROCEEDS_LABELS:
+                proceeds[label] = value
+            elif label in BORROWING_PRINCIPAL_LABELS:
+                principal[label] = value
+
+    result = {}
+    # Requiring both asset classes prevents an omitted row from being silently
+    # treated as zero.  Explicit zero cells remain valid evidence.
+    if tangible and intangible:
+        result["capital_expenditure"] = sum(tangible.values()) + sum(intangible.values())
+    # Net borrowing excludes interest and lending to third parties.  Both
+    # proceeds and principal repayment rows must be present, including zeros.
+    if proceeds and principal:
+        result["net_borrowing"] = sum(proceeds.values()) + sum(principal.values())
+    return result
 
 
 def _value_column_period(df) -> str | None:
@@ -423,6 +485,24 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
     if is_table_idx is not None:
         source_tables["income_statement_table_index"] = is_table_idx
         source_periods["income_statement"] = _value_column_period(tables[is_table_idx])
+
+    # Preserve the existing first-cash-flow-table policy and derive FCFE
+    # components only from that same table.  This avoids mixing consolidated,
+    # separate, current-period, or comparative statements.
+    for i, df in enumerate(tables):
+        if df.shape[1] < 2:
+            continue
+        operating = _extract_keys_from_table(df, ["operating_cash_flow"])
+        if "operating_cash_flow" not in operating:
+            continue
+        result["operating_cash_flow"] = operating["operating_cash_flow"]
+        found_items.add("operating_cash_flow")
+        for key, value in _extract_fcfe_components_from_table(df).items():
+            result[key] = value
+            found_items.add(key)
+        source_tables["cash_flow_table_index"] = i
+        source_periods["cash_flow"] = _value_column_period(df)
+        break
 
     # اقلامی که هنوز پیدا نشدن (مثل جریان نقد عملیاتی) رو با جست‌وجوی
     # سراسری (بدون چک اتحاد حسابداری، چون تنها یک قلمه) امتحان می‌کنیم
