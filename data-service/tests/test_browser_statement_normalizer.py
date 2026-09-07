@@ -47,6 +47,29 @@ class BrowserStatementNormalizerTests(unittest.TestCase):
         self.assertNotIn("بازپرداختتسهیلات", labels)
         self.assertIn("دریافت(پرداخت)تسهیلات", labels)
 
+    def test_fcfe_components_require_complete_explicit_rows_in_one_table(self):
+        frame = pd.DataFrame([
+            ["خالص جریان‌های وجه نقد حاصل از فعالیت‌های عملیاتی", "5,000"],
+            ["پرداخت‌های نقدی برای خرید دارایی‌های ثابت مشهود", "(600)"],
+            ["پرداخت‌های نقدی برای خرید دارایی‌های ثابت نامشهود", "(50)"],
+            ["دریافت‌های نقدی حاصل از تسهیلات", "1,200"],
+            ["پرداخت‌های نقدی بابت اصل تسهیلات", "(300)"],
+            ["پرداخت‌های نقدی بابت سود تسهیلات", "(70)"],
+            ["پرداخت‌های نقدی بابت تسهیلات اعطایی به دیگران", "(90)"],
+        ])
+        values = MODULE.parse_financial_statement.__globals__["_extract_fcfe_components_from_table"](frame)
+        self.assertEqual(values["capital_expenditure"], -650)
+        self.assertEqual(values["net_borrowing"], 900)
+
+    def test_fcfe_components_do_not_assume_missing_rows_are_zero(self):
+        incomplete = pd.DataFrame([
+            ["پرداخت‌های نقدی برای خرید دارایی‌های ثابت مشهود", "(600)"],
+            ["دریافت‌های نقدی حاصل از تسهیلات", "1,200"],
+        ])
+        values = MODULE.parse_financial_statement.__globals__["_extract_fcfe_components_from_table"](incomplete)
+        self.assertNotIn("capital_expenditure", values)
+        self.assertNotIn("net_borrowing", values)
+
     def test_official_url_rejects_untrusted_or_non_https_values(self):
         self.assertEqual(MODULE.official_url('/Reports/Decision.aspx?id=1', 'codal.ir'), 'https://codal.ir/Reports/Decision.aspx?id=1')
         self.assertEqual(MODULE.official_url('https://codal.ir/Reports/Decision.aspx?id=1', 'codal.ir'), 'https://codal.ir/Reports/Decision.aspx?id=1')
