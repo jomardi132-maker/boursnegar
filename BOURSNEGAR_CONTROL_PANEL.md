@@ -14,7 +14,7 @@
 - artifactهای محلی evidence هستند و زیر `data-service/artifacts/` نگهداری می‌شوند؛ Git آن‌ها را track نمی‌کند.
 - سه timer کاربر فعال‌اند: collector محلی، coverage audit و backup-retention check.
 - timer ساعتی legacy در Production غیرفعال است؛ import همان manifest ثابت فقط از promotion صریح و backup-gated مجاز است.
-- alert worker سرور artifact معتبر دارد و timer آن بدون خطا اجرا می‌شود؛ feature و SMS همچنان عمداً خاموش‌اند.
+- alert worker سرور artifact معتبر دارد، اما timer آن تا زمان فعال‌شدن feature/SMS و وجود alert واقعی غیرفعال است؛ service برای فعال‌سازی آینده حفظ شده است.
 - migration registry با schema واقعی همگام است: `027_valuation_inputs`، `028_industry_model_policies` و `029_reconcile_nav_valuation_inputs` ثبت‌اند.
 - فقط آخرین coverage/retention cycle در مسیر فعال می‌ماند؛ cycleهای دستی تکراری 2026-09-06 زیر `data-service/artifacts/archive/repeated-manual-cycles-20260906/` نگهداری می‌شوند.
 
