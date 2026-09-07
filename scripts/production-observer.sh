@@ -6,6 +6,18 @@ readonly origin="${BOURSNEGAR_ORIGIN:-http://127.0.0.1:3000}"
 
 fail() { printf 'BOURSNEGAR_OBSERVER=FAIL %s\n' "$*" >&2; exit 1; }
 
+failed_units="$(systemctl --failed --no-legend --plain 2>/dev/null | awk '$1 ~ /^boursnegar-/ {print $1}')"
+if [[ -n "$failed_units" ]]; then
+  fail "failed units: $(tr '\n' ',' <<<"$failed_units" | sed 's/,$//')"
+fi
+
+alert_worker="not-scheduled"
+if systemctl is-active --quiet boursnegar-alert-worker.timer 2>/dev/null; then
+  test -s /var/www/boursnegar-current/dist/alert-worker.cjs || fail "missing alert worker artifact"
+  test "$(systemctl show boursnegar-alert-worker.service -p Result --value)" = success || fail "alert worker last result"
+  alert_worker="ready"
+fi
+
 ready="$(curl --max-time 10 --fail --silent "$origin/readyz")" || fail "web readiness"
 python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status")=="ready" and d.get("mail")=="ready"' <<<"$ready" || fail "web readiness payload"
 
@@ -31,4 +43,4 @@ if (( used >= disk_warn_percent )); then
   fail "disk usage ${used}% >= ${disk_warn_percent}%"
 fi
 
-printf 'BOURSNEGAR_OBSERVER=PASS disk=%s%% rows=50 %s\n' "$used" "$coverage_summary"
+printf 'BOURSNEGAR_OBSERVER=PASS disk=%s%% failed_units=0 alert_worker=%s rows=50 %s\n' "$used" "$alert_worker" "$coverage_summary"
