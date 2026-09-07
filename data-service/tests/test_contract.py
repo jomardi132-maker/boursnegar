@@ -45,3 +45,17 @@ def test_legacy_codal_import_has_no_automatic_timer():
     service = (root / "ops/systemd/boursnegar-codal-financials.service").read_text(encoding="utf-8")
     assert "manual local-artifact" in service
     assert "manifest/checksum/backup-gated" in service
+
+
+def test_production_observer_enforces_timer_policy():
+    root = Path(__file__).parents[2]
+    observer = (root / "scripts/production-observer.sh").read_text(encoding="utf-8")
+    for timer in (
+        "boursnegar-market-daily.timer",
+        "boursnegar-market-intraday.timer",
+        "boursnegar-snapshot-refresh.timer",
+        "boursnegar-backup-retention.timer",
+    ):
+        assert timer in observer
+    assert "retired zero-delta timer active" in observer
+    assert "disabled alert worker timer active" in observer
