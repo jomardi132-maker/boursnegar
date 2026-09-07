@@ -9,9 +9,11 @@
 - `auto_local_to_production.py` — orchestrator امن local-to-Production؛ پیش‌فرض dry-run و write فقط پس از manifest/checksum/backup/replay.
 - `browser_codal_fetch.py` — جمع‌آوری محلی با Chrome و checkpoint.
 - `build_local_codal_db.py` — ساخت mirror محلی از artifactهای موجود.
+- `boursnegar_daily_supervisor.py` — اجرای محدود زنجیره و تولید report قابل ممیزی؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `codalpy_local_fetch.py` — collector محلی artifact-only.
 - `codalpy_remote_import.py` — importer استاندارد، بدون client شبکه و idempotent.
 - `daily_local_ingestion.py` — pipeline محدود Codalpy و fallback مرورگر؛ اجرای انبوه نیست.
+- `daily_codal_monitor.py` — collector محدود و checkpointed؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `daily_orchestrator.py` — coordinator محدود؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `ingestion_console.py` — کنسول اپراتوری canonical.
 - `normalize_browser_industry.py` — normalization صنعت از artifact مرورگر.
@@ -74,8 +76,6 @@
 - `backfill_codal_1404.py` — backfill تاریخی DB-writing؛ نیازمند `--acknowledge-historical-batch`.
 - `run_all_incomplete.py` — supervisor انبوه تاریخی؛ نیازمند `--acknowledge-historical-batch`.
 - `ingest_codalpy.py` — CLI تشخیصی قدیمی؛ persistence آن opt-in و مسیر canonical نیست.
-- `boursnegar_daily_supervisor.py` — wrapper گزارش‌ساز؛ coordinator canonical، `daily_orchestrator.py` است.
-- `daily_codal_monitor.py` — wrapper collector؛ timer روزانه فعلاً خارج از محدوده است.
 
 ## قانون حذف
 

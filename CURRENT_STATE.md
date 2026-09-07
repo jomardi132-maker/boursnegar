@@ -3238,3 +3238,10 @@ Health/smoke checks:
 - auditor FCFE اصلاح شد تا `PASS` فقط با OCF، CapEx، net borrowing، cost of equity و terminal growth معتبر و متصل به همان دوره صادر شود؛ نرخ macro جای نرخ تنزیل استفاده نمی‌شود.
 - اجرای read-only نسخهٔ اصلاح‌شده روی Production: `symbols=1524`، `pass=0`، `review=1524`. شمار گیت‌های موجود: shares=`1465`، OCF=`567`، equity=`672`، sustainable profit=`804` و unit=`922`؛ CapEx، net borrowing، cost of equity و terminal growth هر چهار `0` هستند.
 - mirror canonical محلی و JSON/JSONLهای artifact موجود نیز هیچ رکوردی برای این چهار قلم ندارند. بنابراین promotion یا recovery تکراری مجاز نیست و FCFE/DCF تا ورود evidence رسمی تازه `INSUFFICIENT_DATA` می‌ماند.
+
+## 2026-09-07 - کاهش سربار لوکال بدون حذف evidence
+
+- workspace پیش از maintenance حدود `3.9 GB` بود: `.git` حدود `1.7 GB`، artifactها `869 MB` و پروفایل canonical Chrome حدود `389 MB`. سلامت object database با `git fsck --full --no-reflogs` بررسی شد؛ فساد وجود نداشت و objectهای dangling اخیر عمداً prune نشدند.
+- `git gc` استاندارد اجرا شد: ۵۱٬۵۶۰ loose object با حجم گزارش‌شدهٔ `858.66 MiB` به دو pack تبدیل شدند؛ `.git` به حدود `1.1 GB` رسید، `garbage=0` شد و working tree تمیز ماند. history و reflog اخیر حفظ شدند و force-push/history rewrite انجام نشد.
+- دو `.chrome-profile` رهاشده با مجموع حدود `12.4 MB` از retryهای شکست‌خوردهٔ تادیکو/تاراز/تاتمس، پس از اثبات نبود process فعال و خالی‌بودن normalized outputs، به Trash منتقل شدند. checkpoint و manifest خطاها حفظ شدند؛ profileها از Trash قابل بازیابی‌اند.
+- artifactهای مالی `856 MB` و پروفایل canonical Chrome `389 MB` حذف نشدند. فضای filesystem سالم است: `43 GB` مصرف از `110 GB` (`41%`).
