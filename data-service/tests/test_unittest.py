@@ -187,6 +187,8 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertNotIn("from codalpy", source)
         self.assertIn("pg_try_advisory_xact_lock", source)
         self.assertIn("ON CONFLICT(source,source_action_id) DO UPDATE SET", source)
+        self.assertIn("default='*'", source)
+        self.assertIn("_record_selected(record,args.symbol)", source)
 
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")

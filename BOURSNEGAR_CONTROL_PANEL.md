@@ -19,6 +19,8 @@
 - alert worker سرور artifact معتبر دارد، اما timer آن تا زمان فعال‌شدن feature/SMS و وجود alert واقعی غیرفعال است؛ service برای فعال‌سازی آینده حفظ شده است.
 - migration registry با schema واقعی همگام است: `027_valuation_inputs`، `028_industry_model_policies` و `029_reconcile_nav_valuation_inputs` ثبت‌اند.
 - فقط آخرین coverage/retention cycle در مسیر فعال می‌ماند؛ cycleهای دستی تکراری 2026-09-06 زیر `data-service/artifacts/archive/repeated-manual-cycles-20260906/` نگهداری می‌شوند.
+- readiness صندوق‌ها: `419` فعال، `80` دارای NAV معتبر و `75` دارای NAV+units معتبرِ هم‌دوره؛ پنج NAV-only باقی‌مانده «دیبا»، «سپر»، «هم ارز»، «پایدار» و «پتروصبا» هستند.
+- طبق تصمیم فعلی کاربر، بازار، backtest و پایش/کار روی timerهای روزانه تا پایان سایر کارها خارج از محدوده‌اند؛ وضعیت ثبت‌شدهٔ آن‌ها فقط سابقه است و اقدام بعدی محسوب نمی‌شود.
 
 ## تنها workflow روزانه
 
@@ -63,8 +65,8 @@ idempotent و health/readiness نیاز دارد.
 
 ## گیت‌های باز واقعی
 
-1. backtest بیست‌جلسه‌ای: 13 نمونهٔ واقعی از حداقل 30؛ فقط با گذشت جلسات معتبر کامل می‌شود.
-2. موارد REVIEW صندوق‌ها: فقط با evidence رسمی و تطبیق issuer/period/source/unit.
+1. backtest بیست‌جلسه‌ای: 13 نمونهٔ واقعی از حداقل 30؛ فعلاً به تصمیم کاربر deferred است.
+2. پنج صندوق NAV-only: فقط با evidence رسمی تازه و تطبیق issuer/period/source/unit.
 3. FCFE/DCF: تا وجود OCF، CapEx، net borrowing و نرخ‌های هم‌دوره `INSUFFICIENT_DATA` بماند.
 4. زنجیرهٔ collector تا promotion زمان‌بندی‌شده هنوز عمداً جدا و backup-gated است.
 5. جدول خام `codalpy_records` بزرگ است، اما تا تدوین retention مبتنی بر provenance حذف یا فشرده نمی‌شود.

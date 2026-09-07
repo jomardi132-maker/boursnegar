@@ -36,8 +36,10 @@ def _standard_records(path):
   if previous is None or _record_preference(record) > _record_preference(previous):
    records[key] = record
  return list(records.values())
+def _record_selected(record, symbol):
+ return symbol == '*' or record.get('symbol') == symbol
 def main():
- p=argparse.ArgumentParser(); p.add_argument('--manifest',required=True); p.add_argument('--batch-size',type=int,default=500); p.add_argument('--symbol',default='دکوثر'); args=p.parse_args()
+ p=argparse.ArgumentParser(); p.add_argument('--manifest',required=True); p.add_argument('--batch-size',type=int,default=500); p.add_argument('--symbol',default='*',help='Import all symbols by default, or exactly one requested symbol.'); args=p.parse_args()
  manifest_path=Path(args.manifest); manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
  manifest_source=manifest.get('source')
  if manifest.get('schema') not in (SCHEMA,NOTICE_SCHEMA) or manifest_source not in SOURCES: raise SystemExit('manifest schema/source validation failed')
@@ -50,6 +52,7 @@ def main():
     if not path.exists() or sha256(path)!=item.get('sha256'): invalid.append({'file':str(path),'error':'checksum'}); continue
     for line in path.read_text(encoding='utf8').splitlines():
      record=json.loads(line); required=('source','symbol','tracing_no','notice_type','raw_payload')
+     if not _record_selected(record,args.symbol): continue
      if any(k not in record for k in required) or record['source']!=manifest_source: invalid.append({'file':str(path),'error':'record schema'}); continue
      inserted += db.execute(text("""INSERT INTO codal_notice_events(source,symbol,tracing_no,title,notice_type,published_at_jalali,period_end_jalali,raw_payload,content_checksum) VALUES(:source,:symbol,:tracing_no,:title,:notice_type,:published_at_jalali,:period_end_jalali,CAST(:raw_payload AS jsonb),:content_checksum) ON CONFLICT(source,symbol,tracing_no) DO NOTHING"""),{**record,'raw_payload':json.dumps(record['raw_payload'],ensure_ascii=False)}).rowcount
   print(json.dumps({'symbol':args.symbol,'files':len(files),'inserted':inserted,'standard_facts':0,'validation_errors':invalid},ensure_ascii=False)); return
@@ -63,6 +66,7 @@ def main():
    expected=item.get('sha256')
    if not path.exists() or sha256(path) != expected: invalid.append({'file':str(path),'error':'checksum'}); continue
    for record in _standard_records(path):
+    if not _record_selected(record,args.symbol): continue
     if record.get('source_action_id') is not None:
      required=('source','symbol','from_jalali','to_jalali','output_type','source_action_id','source_label','value','payload')
      if any(k not in record for k in required) or record['source'] != manifest_source: invalid.append({'file':str(path),'error':'record schema'}); continue
