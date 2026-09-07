@@ -7,6 +7,12 @@ def test_fastapi_has_analysis_route():
     assert "report_mode" in source
 
 
+def test_v2_request_uses_the_public_camel_case_field_directly():
+    source = Path(__file__).parents[1].joinpath("app", "main.py").read_text(encoding="utf-8")
+    assert 'reportMode: str = "audited"' in source
+    assert 'alias="reportMode"' not in source
+
+
 def test_financial_report_selection_stays_within_one_disclosure():
     source = Path(__file__).parents[1].joinpath("app", "main.py").read_text(encoding="utf-8")
     assert "fp.disclosure_version_id" in source

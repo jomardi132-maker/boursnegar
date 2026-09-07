@@ -26,7 +26,7 @@ _DATE_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "012345
 
 class AnalysisV2Request(BaseModel):
     query: str = Field(min_length=1, max_length=32)
-    report_mode: str = Field(default="audited", alias="reportMode")
+    reportMode: str = "audited"
 
 
 def _safe_tracing_no(letter: dict) -> str:
@@ -1092,14 +1092,14 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
 
 @app.post("/api/v2/analyze")
 def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
-    if request.report_mode not in {"audited", "latest_codal"}:
+    if request.reportMode not in {"audited", "latest_codal"}:
         raise HTTPException(status_code=400, detail="reportMode نامعتبر است.")
     symbol = request.query.strip().removeprefix("نماد ").strip()
     # Some valid TSETMC aliases contain an internal ASCII space (for example
     # «آ س پ»). Preserve the exact stored alias while rejecting punctuation.
     if not re.fullmatch(r"[\u0600-\u06FFa-zA-Z0-9‌_ -]{1,32}", symbol):
         raise HTTPException(status_code=400, detail="نماد نامعتبر است.")
-    raw = analyze_symbol(symbol, request.report_mode, db)
+    raw = analyze_symbol(symbol, request.reportMode, db)
     settings = dict(db.execute(text("""
       SELECT key,value FROM system_settings
       WHERE key IN ('bank_deposit_rate_percent','inflation_rate_percent')
@@ -1110,7 +1110,7 @@ def analyze_v2(request: AnalysisV2Request, db: Session = Depends(get_db)):
         "inflationRate": float(settings["inflation_rate_percent"])
         if settings.get("inflation_rate_percent") is not None else None,
     }
-    payload = build_snapshot_payload(raw, request.report_mode)
+    payload = build_snapshot_payload(raw, request.reportMode)
     payload["analysisId"] = _persist_v2_snapshot(db, raw, payload)
     # Persist the snapshot before returning so the public symbol endpoint can
     # immediately observe successful analysis requests.
