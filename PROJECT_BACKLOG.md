@@ -4,7 +4,8 @@
 
 ## فعال
 
-- [x] schedule کاربر برای collector محلی Codal فعال و idempotent است؛ اجرای واقعی محدود با Chrome هم موفق شد. freshness دادهٔ Production تأیید شده، اما اثبات پایش زمان‌بندی‌شدهٔ کامل local-to-production هنوز باز است.
+- [x] collector محلی Codal فعال، canonical و idempotent است؛ اجرای واقعی محدود با Chrome و manifest validation موفق بوده است.
+- [ ] promotion روزانهٔ local-to-production عمداً خودکار نیست: فقط وقتی manifest غیرخالی و تازه وجود دارد باید workflow مستقل manifest/checksum/backup/import/replay/refresh اجرا شود. آخرین normalized artifact صفر بایت بود و مجوز import نداد.
 - [x] مسیرهای پیش‌فرض monitor با artifact registry canonical هم‌راستا شد و dry-run default معتبر است.
 - [x] defaultهای orchestrator و unit systemd نیز با همان artifact root canonical هم‌راستا شدند؛ dry-run و تست‌های مسیر موفق‌اند.
 - [x] صف NAV curated شد: چهار سند یکتا با تطبیق issuer/period/source/unit و checksum رسمی؛ برای «امین شهر» اصلاحیهٔ `1573834` جایگزین `1573540` شد.
