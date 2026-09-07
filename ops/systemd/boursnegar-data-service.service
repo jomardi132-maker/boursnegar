@@ -1,0 +1,17 @@
+[Unit]
+Description=Boursnegar FastAPI Data Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+Environment="PATH=/var/www/boursnegar-runtimes/data-venv/bin"
+ExecStart=/var/www/boursnegar-runtimes/data-venv/bin/python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/www/boursnegar-data-current/service.log
+StandardError=append:/var/www/boursnegar-data-current/service.log
+
+[Install]
+WantedBy=multi-user.target

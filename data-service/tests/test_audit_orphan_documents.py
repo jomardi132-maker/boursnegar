@@ -16,6 +16,14 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OrphanDocumentAuditTest(unittest.TestCase):
+    def test_missing_artifact_is_an_auditable_status(self):
+        self.assertEqual(MODULE.artifact_status('/tmp/not-present.xls'), 'MISSING_ARTIFACT')
+
+        with tempfile.TemporaryDirectory() as folder:
+            existing = Path(folder) / 'present.xls'
+            existing.write_bytes(b'not-a-document')
+            self.assertIsNone(MODULE.artifact_status(existing))
+
     def test_period_candidates_are_normalized_and_validated(self):
         content = 'دوره ۱۴۰۴/۰۶/۳۱ و 1403-12-29 و 1399/12/29'.encode()
         self.assertEqual(MODULE.period_candidates(content), ['1403/12/29', '1404/06/31'])
@@ -45,6 +53,22 @@ class OrphanDocumentAuditTest(unittest.TestCase):
         ])
         extract = MODULE.parse_financial_statement.__globals__['_extract_keys_from_table']
         self.assertEqual(extract(frame, ['operating_cash_flow'])['operating_cash_flow'], 204436.0)
+
+    def test_insurance_statement_revenue_alias_is_extracted(self):
+        frame = pd.DataFrame([['درآمدهای بیمه‌ای', '۱۲۳۴'], ['سود (زیان) خالص', '۵۶۷']])
+        extract = MODULE.parse_financial_statement.__globals__['_extract_keys_from_table']
+        self.assertEqual(extract(frame, ['revenue', 'net_profit']), {
+            'revenue': 1234.0,
+            'net_profit': 567.0,
+        })
+
+    def test_investment_statement_total_operating_revenue_is_extracted(self):
+        frame = pd.DataFrame([['جمع درآمدهای عملیاتی', '۹۸۷'], ['سود (زیان) خالص', '۱۲۳']])
+        extract = MODULE.parse_financial_statement.__globals__['_extract_keys_from_table']
+        self.assertEqual(extract(frame, ['revenue', 'net_profit']), {
+            'revenue': 987.0,
+            'net_profit': 123.0,
+        })
 
     def test_period_length_comes_from_report_title_not_search_window(self):
         extract_length = MODULE.parse_financial_statement.__globals__['extract_period_length_months']

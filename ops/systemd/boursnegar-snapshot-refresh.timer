@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily targeted Boursnegar snapshot refresh
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Tehran
+RandomizedDelaySec=20min
+Persistent=true
+Unit=boursnegar-snapshot-refresh.service
+
+[Install]
+WantedBy=timers.target

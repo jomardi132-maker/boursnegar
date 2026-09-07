@@ -20,6 +20,41 @@ PILOT_INDUSTRIES = {
     "شرکت های چند رشته ای صنعتی": "holding",
 }
 
+# These are authoritative operating-industry labels for which the valuation
+# layer has an explicit conservative policy scenario (`general-v1`). Keep the
+# list finite: an unknown or malformed label must remain unclassified.
+GENERAL_INDUSTRIES = {
+    "خودرو و ساخت قطعات",
+    "قند و شکر",
+    "زراعت و خدمات وابسته",
+    "رایانه و فعالیت های وابسته به آن",
+    "حمل و نقل، انبارداری و ارتباطات",
+    "ماشین آلات و دستگاه های برقی",
+    "ماشین آلات و تجهیزات",
+    "عرضه برق، گاز، بخار و آب گرم",
+    "ساخت محصولات فلزی",
+    "محصولات کاغذی",
+    "منسوجات",
+    "سایر محصولات کانی غیرفلزی",
+    "اطلاعات و ارتباطات",
+    "تجارت عمده فروشی به جز وسایل نقلیه موتوری",
+    "تولید محصولات کامپیوتری الکترونیکی و نوری",
+    "حمل و نقل آبی",
+    "خدمات فنی و مهندسی",
+    "خرده فروشی، به استثنای وسایل نقلیه موتوری",
+    "دباغی، پرداخت چرم و ساخت انواع پاپوش",
+    "ساخت دستگاه ها و وسایل ارتباطی",
+    "فعالیت مهندسی، تجزیه، تحلیل و آزمایش فنی",
+    "فعالیت های فرهنگی و ورزشی",
+    "فعالیت های هنری، سرگرمی و خلاقانه",
+    "محصولات چوبی",
+    "مخابرات",
+    "هتل و رستوران",
+    "پیمانکاری صنعتی",
+}
+
+ETF_INDUSTRY_MARKER = "صندوق سرمایه گذاری قابل معامله"
+
 
 def normalize_persian(value: str | None) -> str:
     return " ".join(
@@ -38,16 +73,22 @@ def model_family(industry: str | None) -> str:
     mapped = PILOT_INDUSTRIES.get(normalized)
     if mapped:
         return mapped
-    if not normalized or "صندوق سرمایه گذاری قابل معامله" in normalized:
+    if ETF_INDUSTRY_MARKER in normalized:
+        return "fund"
+    if not normalized:
         return "unclassified"
-    if any(token in normalized for token in ("بانک", "اعتباری", "بیمه", "سرمایه گذاری", "واسطه گری مالی")):
+    if any(token in normalized for token in ("بانک", "اعتباری", "بیمه", "سرمایه گذاری", "واسطه گری", "نهادهای مالی واسط")):
         return "financial"
+    if normalized == "استخراج سایر معادن":
+        return "metals"
     if any(token in normalized for token in ("املاک", "انبوه سازی", "ساختمان")):
         return "real_estate"
     if any(token in normalized for token in ("نفت", "گاز", "پتروشیمی", "شیمیایی", "کک", "پلاستیک", "لاستیک")):
         return "petrochemical"
     if any(token in normalized for token in ("فلز", "کانه", "معدن", "زغال", "سیمان", "کانی", "سرامیک", "کاشی")):
         return "metals"
+    if normalized in GENERAL_INDUSTRIES:
+        return "general"
     # Do not manufacture a valuation model for an industry that has not been
     # explicitly mapped. Callers must surface INSUFFICIENT_DATA instead.
     return "unclassified"

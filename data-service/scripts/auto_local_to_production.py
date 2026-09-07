@@ -18,6 +18,20 @@ def run(cmd, *, cwd=ROOT, timeout=600, capture=False):
     return subprocess.run(cmd, cwd=cwd, check=True, timeout=timeout,
                           text=True, capture_output=capture, encoding='utf-8', errors='replace')
 
+def stream_remote_backup(target: str, destination: Path):
+    """Keep the pre-import rollback dump off a full Production filesystem."""
+    print(json.dumps({'step': f'ssh {target} pg_dump -> {destination}'}, ensure_ascii=False), flush=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with destination.open('wb') as handle:
+            subprocess.run(
+                ['ssh', target, 'sudo -u postgres pg_dump -Fc -d boursnegar_db'],
+                cwd=ROOT, check=True, timeout=900, stdout=handle,
+            )
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
 def sha256(path):
     h=hashlib.sha256()
     with path.open('rb') as f:
@@ -39,6 +53,17 @@ def existing_local_artifacts(artifact_root: Path) -> list[Path]:
             continue
         artifact_dirs.append(directory)
     return artifact_dirs
+
+def attempted_symbols(artifact_root: Path) -> set[str]:
+    """Return symbols with a checkpointed attempt; explicit queues may retry them."""
+    attempted = set()
+    if not artifact_root.exists():
+        return attempted
+    for run in artifact_root.iterdir():
+        if not run.is_dir() or run.name == 'aggregate':
+            continue
+        attempted.update(child.name for child in run.iterdir() if child.is_dir() and child.name not in {'aggregate'})
+    return attempted
 
 def imported_artifact_paths(db: Path) -> set[str]:
     con = sqlite3.connect(db)
@@ -102,19 +127,42 @@ _DERIVED_SYMBOL_RE = re.compile(r'[\d۰-۹]+$')
 def base_symbol(symbol: str) -> str:
     return _DERIVED_SYMBOL_RE.sub('', symbol).strip()
 
+def symbol_failure_exit_code(symbol_failures: list[dict]) -> int:
+    """Keep successful imports usable, but make partial local runs fail visibly."""
+    return 2 if symbol_failures else 0
+
+def is_derived_symbol(symbol: str) -> bool:
+    return base_symbol(symbol) != symbol
+
 def selection_priority(symbol: str, info: dict[str, object], remote_status: str) -> tuple[int, int, int, str]:
     status_rank = {'comparable': 0, 'incomplete': 1}.get(str(info.get('status') or remote_status), 2)
-    derived_rank = 1 if base_symbol(symbol) != symbol else 0
+    derived_rank = 1 if is_derived_symbol(symbol) else 0
     periods = int(info.get('period_count') or 0)
     facts = int(info.get('standard_count') or 0)
     notices = int(info.get('notice_count') or 0)
     return (status_rank, derived_rank, -periods, -facts - notices, symbol)
 
-def select_symbols(remote: list[dict[str, object]], local_rows: dict[str, dict[str, object]], limit: int) -> list[str]:
+def is_fund_row(row: dict[str, object]) -> bool:
+    """Keep ETF/fund instruments out of the company-statement recovery queue."""
+    text = " ".join(str(row.get(key) or "") for key in (
+        "market_category", "industry", "industry_title", "company_industry"
+    )).replace("\u200c", " ")
+    return "صندوق سرمایه گذاری قابل معامله" in " ".join(text.split())
+
+def select_symbols(remote: list[dict[str, object]], local_rows: dict[str, dict[str, object]], limit: int, attempted: set[str] | None = None) -> list[str]:
+    attempted = attempted or set()
     candidates = []
     for row in remote:
         symbol = str(row.get('symbol') or '')
         if not symbol:
+            continue
+        if is_fund_row(row):
+            continue
+        # Suffix instruments have separate ISINs and often no company-level
+        # Codal statements; retry them only through an explicit symbol file.
+        if is_derived_symbol(symbol):
+            continue
+        if symbol in attempted:
             continue
         info = local_rows.get(symbol, {})
         local_status = str(info.get('status') or '')
@@ -206,13 +254,14 @@ def symbol_run_root(run_root: Path, symbol: str) -> Path:
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--db',default='artifacts/local-ingestion.sqlite3'); p.add_argument('--ssh-target',default='boursnegar')
+    p.add_argument('--db',default='data-service/artifacts/local-ingestion.sqlite3'); p.add_argument('--ssh-target',default='boursnegar')
     p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True)
     p.add_argument('--limit',type=int,default=10); p.add_argument('--run-root',default='artifacts/auto-sync')
     p.add_argument('--symbols-file', help='newline-delimited active symbols to process instead of local-priority selection')
     p.add_argument('--apply',action='store_true'); p.add_argument('--allow-download',action='store_true')
     p.add_argument('--skip-local',action='store_true'); p.add_argument('--skip-production',action='store_true')
     p.add_argument('--skip-preimport', action='store_true', help='Skip importing already downloaded local artifacts before planning')
+    p.add_argument('--backup-path', help='Write the pre-import rollback dump to this local path instead of Production backups')
     args=p.parse_args(); db=Path(args.db).resolve(); run_id=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'); run_root=Path(args.run_root).resolve()/run_id
     run_base = Path(args.run_root).resolve()
     run_base.mkdir(parents=True, exist_ok=True)
@@ -225,8 +274,9 @@ def main():
             run([PYTHON, 'data-service/scripts/recalculate_local_coverage.py', '--db', str(db)], timeout=300)
     remote=server_symbols(args.ssh_target)
     local_rows=local_symbol_rows(db)
-    selected=select_explicit_symbols(Path(args.symbols_file).resolve(), remote) if args.symbols_file else select_symbols(remote, local_rows, args.limit)
-    plan={'run_id':run_id,'server_symbols':len(remote),'selected_symbols':selected,'apply':args.apply,'allow_download':args.allow_download,'preimport_pending_dirs':0 if args.skip_preimport else preimport_pending,'preimported_artifact_dirs':imported_dirs}
+    attempted = attempted_symbols(run_base)
+    selected=select_explicit_symbols(Path(args.symbols_file).resolve(), remote) if args.symbols_file else select_symbols(remote, local_rows, args.limit, attempted)
+    plan={'run_id':run_id,'server_symbols':len(remote),'selected_symbols':selected,'attempted_symbols':len(attempted),'apply':args.apply,'allow_download':args.allow_download,'preimport_pending_dirs':0 if args.skip_preimport else preimport_pending,'preimported_artifact_dirs':imported_dirs}
     print(json.dumps({'plan':plan},ensure_ascii=False,indent=2))
     if not args.apply:
         print(json.dumps({'status':'dry-run','next':'add --apply; add --allow-download to fetch missing Local data'},ensure_ascii=False)); return
@@ -268,11 +318,25 @@ def main():
     events_manifest=aggregate_events(aggregate_root,run_root/'aggregate/events')
     if events_manifest['files'][0]['records']: manifests.append(events_manifest)
     if not manifests:
-        print(json.dumps({'status':'no-new-normalized-records','run_root':str(run_root)},ensure_ascii=False)); return
+        status = {'status':'no-new-normalized-records','run_root':str(run_root),'symbol_failures':symbol_failures}
+        print(json.dumps(status,ensure_ascii=False))
+        if symbol_failures:
+            raise SystemExit(symbol_failure_exit_code(symbol_failures))
+        return
     if args.skip_production:
-        print(json.dumps({'status':'local-complete-production-skipped','manifests':[str(run_root/'aggregate'/manifest_kind(m)/'manifest.json') for m in manifests]},ensure_ascii=False)); return
-    stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'); remote_backup=f'/var/backups/boursnegar/{stamp}-auto-local-to-production.dump'
-    run(['ssh',args.ssh_target,f"sudo -u postgres pg_dump -Fc -d boursnegar_db | sudo tee {shlex.quote(remote_backup)} >/dev/null"],timeout=900)
+        status = {'status':'local-complete-production-skipped','manifests':[str(run_root/'aggregate'/manifest_kind(m)/'manifest.json') for m in manifests],'symbol_failures':symbol_failures}
+        print(json.dumps(status,ensure_ascii=False))
+        if symbol_failures:
+            raise SystemExit(symbol_failure_exit_code(symbol_failures))
+        return
+    stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    if args.backup_path:
+        backup_path=Path(args.backup_path).expanduser().resolve()
+        stream_remote_backup(args.ssh_target, backup_path)
+        remote_backup=str(backup_path)
+    else:
+        remote_backup=f'/var/backups/boursnegar/{stamp}-auto-local-to-production.dump'
+        run(['ssh',args.ssh_target,f"sudo -u postgres pg_dump -Fc -d boursnegar_db | sudo tee {shlex.quote(remote_backup)} >/dev/null"],timeout=900)
     remote_tmp=f'/tmp/boursnegar-auto-sync-{run_id}'
     run(['ssh',args.ssh_target,f'install -d -m 0700 {remote_tmp}'],timeout=60)
     for manifest in manifests:
@@ -283,13 +347,18 @@ def main():
     run(['ssh',args.ssh_target,f'sudo install -d -m 0750 {remote_dir}'],timeout=60)
     for manifest in manifests:
         kind=manifest_kind(manifest)
-        run(['ssh',args.ssh_target,f'sudo install -m 0640 {remote_tmp}/{kind}.jsonl {remote_dir}/{kind}.jsonl; sudo install -m 0640 {remote_tmp}/{kind}-manifest.json {remote_dir}/{kind}-manifest.json'],timeout=60)
+        # /tmp and the data release share the Production filesystem; move avoids
+        # needing enough free space for a second full JSONL copy.
+        run(['ssh',args.ssh_target,f'sudo mv {remote_tmp}/{kind}.jsonl {remote_dir}/{kind}.jsonl; sudo mv {remote_tmp}/{kind}-manifest.json {remote_dir}/{kind}-manifest.json; sudo chmod 0640 {remote_dir}/{kind}.jsonl {remote_dir}/{kind}-manifest.json'],timeout=60)
         remote_manifest=f'{remote_dir}/{kind}-manifest.json'
-        run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. venv/bin/python scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800)
-        repeat=run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. venv/bin/python scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800,capture=True)
+        run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. /var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800)
+        repeat=run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. /var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800,capture=True)
         if '"inserted": 0' not in repeat.stdout: raise SystemExit(f'idempotency gate failed: {kind}')
     run(['ssh',args.ssh_target,f'rm -rf {remote_tmp}'],timeout=60)
     run(['ssh',args.ssh_target,'curl -fsS http://127.0.0.1:8001/health && curl -fsS http://127.0.0.1:3000/healthz && curl -fsS http://127.0.0.1:3000/readyz'],timeout=60)
-    print(json.dumps({'status':'production-synchronized','backup':remote_backup,'manifests':len(manifests),'records':sum(m['files'][0]['records'] for m in manifests),'symbol_failures':symbol_failures},ensure_ascii=False))
+    status = {'status':'production-synchronized','backup':remote_backup,'manifests':len(manifests),'records':sum(m['files'][0]['records'] for m in manifests),'symbol_failures':symbol_failures}
+    print(json.dumps(status,ensure_ascii=False))
+    if symbol_failures:
+        raise SystemExit(symbol_failure_exit_code(symbol_failures))
 
 if __name__=='__main__': main()

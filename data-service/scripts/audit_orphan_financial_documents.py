@@ -45,6 +45,11 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def artifact_status(path: str | Path) -> str | None:
+    """Return a status only when the ledger path is unavailable."""
+    return 'MISSING_ARTIFACT' if not Path(path).exists() else None
+
+
 def batch_symbol(path: Path) -> tuple[str | None, str | None]:
     symbols: set[str] = set()
     for bundle in path.parent.glob('*.jsonl'):
@@ -118,6 +123,25 @@ def main() -> None:
         path = Path(raw_path)
         if not path.is_absolute():
             path = (ROOT / path).resolve()
+        missing_status = artifact_status(path)
+        if missing_status:
+            # Keep the ledger evidence, but do not let one pruned artifact hide
+            # parser results for every other document in the audit.
+            missing_error = f"artifact_missing:{path}"
+            db.execute(
+                '''INSERT OR REPLACE INTO artifact_parse_results
+                   (path,checksum,inferred_symbol,symbol_evidence,period_candidates,found_items,
+                    tables_scanned,status,error,parsed_at,selected_period,period_evidence,metrics_json)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (raw_path, ledger_sha or 'UNAVAILABLE', None, 'artifact_missing',
+                 '[]', '[]', 0, 'MISSING_ARTIFACT', missing_error, now,
+                 None, None, None),
+            )
+            counts[missing_status] = counts.get(missing_status, 0) + 1
+            if index % 50 == 0:
+                db.commit()
+                print(json.dumps({'processed': index, 'total': len(rows), 'statuses': counts}, ensure_ascii=False), flush=True)
+            continue
         symbol, evidence = batch_symbol(path)
         content = path.read_bytes()
         checksum = sha256(path)

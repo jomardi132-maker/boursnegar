@@ -20,6 +20,7 @@ SOURCE = "tsetmc-closing-price-api"
 PIPELINE = "market-daily-eod-v1"
 TEHRAN = ZoneInfo("Asia/Tehran")
 MARKET_WEEKDAYS = {0, 1, 2, 5, 6}  # Monday-Wednesday and Saturday-Sunday
+MIN_CATALOG_MAPPING_RATIO = 0.80
 
 
 def valid_quote(row: dict) -> bool:
@@ -29,6 +30,13 @@ def valid_quote(row: dict) -> bool:
         and float(row.get("pc") or 0) > 0
         and float(row.get("py") or 0) > 0
     )
+
+
+def catalog_coverage_ok(mapped: int, total_quotes: int, minimum_quotes: int) -> bool:
+    """Accept a validated provider superset with a bounded mapping gate."""
+    if mapped < minimum_quotes or total_quotes <= 0:
+        return False
+    return (mapped / total_quotes) >= MIN_CATALOG_MAPPING_RATIO
 
 
 def market_fingerprint(rows: list[dict]) -> str:
@@ -137,8 +145,11 @@ def main() -> None:
                     quote.get("tvol"), quote.get("tval"), quote.get("tno"), quote.get("mv"), quote.get("z"),
                     args.source, retrieved_at,
                 ))
-            if len(values) < args.minimum_quotes or missing > max(100, len(quotes) // 10):
-                raise RuntimeError(f"catalog coverage failed: values={len(values)}, missing={missing}")
+            if not catalog_coverage_ok(len(values), len(quotes), args.minimum_quotes):
+                ratio = len(values) / len(quotes) if quotes else 0
+                raise RuntimeError(
+                    f"catalog coverage failed: values={len(values)}, missing={missing}, ratio={ratio:.4f}"
+                )
             raw = connection.connection.driver_connection
             with raw.cursor() as cursor:
                 execute_values(cursor, """
@@ -159,7 +170,8 @@ def main() -> None:
               UPDATE ingestion_runs SET status='PASSED',finished_at=now(),
                 metrics=CAST(:metrics AS jsonb) WHERE id=:id
             """), {"id": run_id, "metrics": json.dumps({"quotes": len(quotes), "traded": traded,
-                                                           "prices": len(values), "missing": missing})})
+                                                           "prices": len(values), "missing": missing,
+                                                           "mapping_coverage": round(len(values) / len(quotes), 4)})})
         print(json.dumps({"status": "passed", "runId": run_id, "date": str(trading_date),
                           "prices": len(values), "missing": missing}))
     except Exception as error:

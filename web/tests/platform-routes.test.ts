@@ -29,6 +29,11 @@ describe("platform routes security contract", () => {
     expect(source).toContain("LIMIT 50 OFFSET $9");
     expect(source).not.toContain("RSI_FAKE");
   });
+  it("quarantines implausible legacy valuation ratios before public display", () => {
+    expect(source).toContain('const limits: Record<string, number> = { roe: 1000, pe: 10000 }');
+    expect(source).toContain('sanitized.decision = "INSUFFICIENT_DATA"');
+    expect(source).toContain('sanitized.ratio_quality = "INVALID"');
+  });
   it("exposes evidence state and scenario zones instead of one generic label", () => {
     expect(source).toContain("CONDITIONAL_REVIEW");
     expect(source).toContain("NOT_EVALUABLE");

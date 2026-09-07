@@ -1,0 +1,11 @@
+[Unit]
+Description=Boursnegar bounded local Codal monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/king/Projects/boursnegar
+ExecStart=/home/king/Projects/boursnegar/data-service/venv/bin/python data-service/scripts/daily_orchestrator.py --batch-size 3 --local-db /home/king/Projects/boursnegar/data-service/artifacts/local-ingestion.sqlite3 --artifact-root /home/king/Projects/boursnegar/data-service/artifacts/daily-codal --run-dir /home/king/Projects/boursnegar/data-service/artifacts/daily-orchestrator
+Nice=10
+TimeoutStartSec=2h

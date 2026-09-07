@@ -34,6 +34,15 @@ class MarketHistoryTests(unittest.TestCase):
         self.assertEqual(model_family("سیمان، آهک و گچ"), "cement")
         self.assertEqual(model_family("مواد و محصولات دارویی"), "pharmaceutical")
         self.assertEqual(model_family("شرکت‌های چند رشته‌ای صنعتی"), "holding")
+        self.assertEqual(model_family("صندوق سرمایه‌گذاری قابل معامله"), "fund")
+        self.assertEqual(model_family("خودرو و ساخت قطعات"), "general")
+        self.assertEqual(model_family("رایانه و فعالیت‌های وابسته به آن"), "general")
+        self.assertEqual(model_family("صنعت ناشناخته"), "unclassified")
+
+    def test_maps_official_operating_and_intermediary_industries(self):
+        self.assertEqual(model_family("اطلاعات و ارتباطات"), "general")
+        self.assertEqual(model_family("استخراج سایر معادن"), "metals")
+        self.assertEqual(model_family("سایر واسطه‌گری‌های مالی"), "financial")
 
     def test_converts_first_day_of_1404(self):
         self.assertEqual(jalali_iso(date(2025, 3, 21)), "1404-01-01")

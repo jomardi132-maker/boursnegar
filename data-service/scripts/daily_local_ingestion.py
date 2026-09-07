@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Local Codalpy-first ingestion with browser fallback and artifact import."""
 from __future__ import annotations
-import argparse, json, os, signal, subprocess, sys
+import argparse, fcntl, json, os, signal, subprocess, sys
+import unicodedata
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]; PYTHON=sys.executable
@@ -30,8 +31,38 @@ def run(cmd,dry=False,timeout=None):
         raise subprocess.CalledProcessError(rc, cmd)
     return True
 
+def symbols_requiring_browser_fallback(symbols, checkpoint, ranges, codalpy_succeeded):
+    """Keep every symbol eligible for browser fallback after an API failure."""
+    if not codalpy_succeeded:
+        return list(symbols)
+    done = checkpoint.get('completed', {})
+    return [
+        symbol for symbol in symbols
+        if any(
+            not done.get(f'{symbol}|{start}|{end}|{output_type}')
+            or not done[f'{symbol}|{start}|{end}|{output_type}'].get('records', 0)
+            for start, end in ranges
+            for output_type in ('income_statement', 'balance_sheet', 'monthly_activity')
+        )
+    ]
+
+def validate_symbols(symbols):
+    """Reject visually-confusable formatting characters before any fetch."""
+    invalid = []
+    for symbol in symbols:
+        if '\u0640' in symbol or any(unicodedata.category(ch) == 'Cf' for ch in symbol):
+            invalid.append(symbol)
+    if invalid:
+        raise SystemExit(json.dumps({'status':'INVALID_SYMBOL_INPUT', 'symbols':invalid,
+                                     'reason':'tatweel_or_format_control_character'}, ensure_ascii=False))
+
 def main():
-    p=argparse.ArgumentParser(); p.add_argument('--symbol',action='append',required=True); p.add_argument('--to-jalali',required=True); p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--out',default='artifacts/daily-local'); p.add_argument('--ssh-target',default='boursnegar'); p.add_argument('--remote-root',default='/var/lib/boursnegar/codalpy/daily'); p.add_argument('--chrome-port',type=int,default=9240); p.add_argument('--profile',default='.chrome-codal-profile'); p.add_argument('--import',dest='do_import',action='store_true'); p.add_argument('--download-documents',action='store_true'); p.add_argument('--download-all-documents',action='store_true'); p.add_argument('--professional-documents',action='store_true'); p.add_argument('--excel-only',action='store_true'); p.add_argument('--html-only',action='store_true'); p.add_argument('--defer-pdf',action='store_true'); p.add_argument('--precheck',action='store_true'); p.add_argument('--local-db',default='artifacts/local-ingestion.sqlite3'); p.add_argument('--codalpy-first',action='store_true'); p.add_argument('--codalpy-retries',type=int,default=2); p.add_argument('--dry-run',action='store_true'); a=p.parse_args()
+    p=argparse.ArgumentParser(); p.add_argument('--symbol',action='append',required=True); p.add_argument('--to-jalali',required=True); p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--out',default='data-service/artifacts/daily-local'); p.add_argument('--ssh-target',default='boursnegar'); p.add_argument('--remote-root',default='/var/lib/boursnegar/codalpy/daily'); p.add_argument('--chrome-port',type=int,default=9240); p.add_argument('--profile',default='.chrome-codal-profile'); p.add_argument('--import',dest='do_import',action='store_true'); p.add_argument('--download-documents',action='store_true'); p.add_argument('--download-all-documents',action='store_true'); p.add_argument('--professional-documents',action='store_true'); p.add_argument('--excel-only',action='store_true'); p.add_argument('--html-only',action='store_true'); p.add_argument('--defer-pdf',action='store_true'); p.add_argument('--precheck',action='store_true'); p.add_argument('--local-db',default='data-service/artifacts/local-ingestion.sqlite3'); p.add_argument('--codalpy-first',action='store_true'); p.add_argument('--codalpy-retries',type=int,default=2); p.add_argument('--no-browser-fallback',action='store_true',help='record Codalpy gaps without launching Chrome'); p.add_argument('--lock-file',default=str(ROOT/'data-service/artifacts/.local-ingestion.lock')); p.add_argument('--dry-run',action='store_true'); a=p.parse_args()
+    lock_path=Path(a.lock_file); lock_path.parent.mkdir(parents=True,exist_ok=True)
+    lock=lock_path.open('w',encoding='utf-8')
+    try: fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError: print(json.dumps({'status':'ALREADY_RUNNING','lock_file':str(lock_path)},ensure_ascii=False)); return 3
+    validate_symbols(a.symbol)
     if a.precheck:
         from scripts.ingestion_console import discover_remote
         eligible={r['symbol'] for r in discover_remote(a.ssh_target,lambda _:None) if r['symbol'] in a.symbol and r['status']!='complete'}; a.symbol=[s for s in a.symbol if s in eligible]
@@ -42,10 +73,18 @@ def main():
     if a.codalpy_first:
         codalpy_python=ROOT/'.venv-codalpy/bin/python'
         if not codalpy_python.exists(): raise SystemExit('local Codalpy environment is missing: .venv-codalpy')
-        run([str(codalpy_python),'data-service/scripts/codalpy_local_fetch.py',*[x for s in a.symbol for x in ('--symbol',s)],'--out',str(codal),'--checkpoint',str(codal/'checkpoint.json'),'--today',a.to_jalali,'--retries',str(a.codalpy_retries)],a.dry_run,90)
-        cp=json.loads((codal/'checkpoint.json').read_text()) if (codal/'checkpoint.json').exists() else {}; done=cp.get('completed',{}); from app.ingestion.codalpy_pipeline import ranges
-        a.symbol=[s for s in a.symbol if any(not done.get(f'{s}|{x}|{y}|{k}') or not done[f'{s}|{x}|{y}|{k}'].get('records',0) for x,y in ranges(a.to_jalali) for k in ('income_statement','balance_sheet','monthly_activity'))]
-        print(json.dumps({'codalpy':'completed','browser_fallback_symbols':a.symbol},ensure_ascii=False),flush=True)
+        codalpy_succeeded = True
+        try:
+            codalpy_succeeded = bool(run([str(codalpy_python),'data-service/scripts/codalpy_local_fetch.py',*[x for s in a.symbol for x in ('--symbol',s)],'--out',str(codal),'--checkpoint',str(codal/'checkpoint.json'),'--today',a.to_jalali,'--retries',str(a.codalpy_retries)],a.dry_run,90))
+        except (subprocess.CalledProcessError, OSError) as exc:
+            codalpy_succeeded = False
+            print(json.dumps({'codalpy':'failed','fallback':'browser','error':str(exc)[:500]},ensure_ascii=False),flush=True)
+        cp=json.loads((codal/'checkpoint.json').read_text()) if (codal/'checkpoint.json').exists() else {}; from app.ingestion.codalpy_pipeline import ranges
+        a.symbol=symbols_requiring_browser_fallback(a.symbol, cp, ranges(a.to_jalali), codalpy_succeeded)
+        if a.no_browser_fallback:
+            print(json.dumps({'browser_fallback':'disabled','deferred_symbols':a.symbol},ensure_ascii=False),flush=True)
+            a.symbol=[]
+        print(json.dumps({'codalpy':'completed' if codalpy_succeeded else 'failed','browser_fallback_symbols':a.symbol},ensure_ascii=False),flush=True)
     if a.symbol:
         cmd=[PYTHON,'data-service/scripts/browser_codal_fetch.py']
         for symbol in a.symbol: cmd.extend(['--symbol',symbol])
@@ -59,7 +98,7 @@ def main():
     folders=[(name,directory) for name,directory in (('codalpy',codal),('normalized',norm),('events',events)) if (directory/'manifest.json').exists()]
     run(['ssh',a.ssh_target,'mkdir -p '+a.remote_root+'/'+out.name]); remote=f'{a.ssh_target}:{a.remote_root}/{out.name}'
     for name,directory in folders:
-        run(['scp','-r',str(directory),remote]); manifest=f'{a.remote_root}/{out.name}/{name}/manifest.json'; run(['ssh',a.ssh_target,'cd /var/www/boursnegar-data-current && PYTHONPATH=. /var/www/boursnegar-data-current/venv/bin/python scripts/codalpy_remote_import.py --manifest '+manifest+' --symbol "*" --batch-size 500'])
+        run(['scp','-r',str(directory),remote]); manifest=f'{a.remote_root}/{out.name}/{name}/manifest.json'; run(['ssh',a.ssh_target,'cd /var/www/boursnegar-data-current && PYTHONPATH=. /var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest '+manifest+' --symbol "*" --batch-size 500'])
     print(json.dumps({'status':'imported','manifests':[n for n,_ in folders],'browser_errors':browser_had_errors},ensure_ascii=False))
     if browser_had_errors: raise SystemExit(2)
 

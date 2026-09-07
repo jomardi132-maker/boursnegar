@@ -12,6 +12,7 @@ async function main() {
     const version = file.replace(/\.sql$/, '');
     if ((await pool.query(`SELECT 1 FROM schema_migrations WHERE version=$1`, [version])).rowCount) continue;
     await pool.query(fs.readFileSync(path.join('migrations', file), 'utf8'));
+    await pool.query(`INSERT INTO schema_migrations(version) VALUES($1) ON CONFLICT DO NOTHING`, [version]);
     console.log(`applied ${version}`);
   }
   await pool.end();

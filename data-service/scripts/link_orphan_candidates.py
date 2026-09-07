@@ -70,6 +70,20 @@ def report_title(folder: Path, tracing: str) -> str | None:
     return None
 
 
+def resolved_report_title(path: Path, symbol: str, tracing: str) -> str | None:
+    """Resolve a title from the capture index or the same document bundle."""
+    title = report_title(path.parent, tracing)
+    if title:
+        return title
+    if path.exists():
+        title = document_title(path)
+    if not title:
+        companion = path.with_name(f'{symbol}-{tracing}-html.html')
+        if companion.exists():
+            title = document_title(companion)
+    return title
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--db', required=True)
@@ -83,13 +97,13 @@ def main() -> None:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN {column} TEXT')
     filename_links = 0
     for raw_path, in db.execute("""SELECT path FROM artifact_parse_results
-        WHERE (inferred_symbol IS NULL OR linked_tracing_no IS NULL)
-          AND (path LIKE '%-excel.xls' OR path LIKE '%-html.html')"""):
+        WHERE path LIKE '%-excel.xls' OR path LIKE '%-html.html'"""):
         match = re.search(r'/([^/]+)-(\d+)-(?:excel\.xls|html\.html)$', raw_path)
         if not match:
             continue
         symbol, tracing = match.group(1), match.group(2)
-        title = report_title(Path(raw_path).parent, tracing)
+        document_path = Path(raw_path)
+        title = resolved_report_title(document_path, symbol, tracing)
         scope = 'consolidated' if title and 'تلفیقی' in title else ('separate' if title else None)
         db.execute('UPDATE artifact_parse_results SET inferred_symbol=?,linked_tracing_no=?,linkage_evidence=? WHERE path=?',
                    (symbol, tracing, json.dumps({'rule': 'symbol_and_tracing_in_filename'}, ensure_ascii=False), raw_path))
@@ -118,9 +132,23 @@ def main() -> None:
         path = Path(raw_path)
         if not path.is_absolute():
             path = ROOT / path
+        # The local ledger can outlive a cleaned staging directory. Keep the
+        # audit resumable: a missing artifact is not linkage evidence.
+        if not path.exists():
+            missing += 1
+            db.execute(
+                'UPDATE artifact_parse_results SET linkage_evidence=? WHERE path=?',
+                (json.dumps({'rule': 'artifact_missing_after_staging_cleanup'}, ensure_ascii=False), raw_path),
+            )
+            db.execute(
+                'UPDATE orphan_fact_candidates SET tracing_no=NULL,linkage_evidence=? '
+                'WHERE path=? AND status NOT IN (\'PROMOTED_LOCAL\',\'DUPLICATE_EXISTING\')',
+                (json.dumps({'rule': 'artifact_missing_after_staging_cleanup'}, ensure_ascii=False), raw_path),
+            )
+            continue
         if existing_tracing:
             linked += 1
-            title = report_title(path.parent, existing_tracing)
+            title = resolved_report_title(path, symbol, existing_tracing)
             scope = 'consolidated' if title and 'تلفیقی' in title else ('separate' if title else None)
             db.execute('UPDATE artifact_parse_results SET report_title=?,report_scope=? WHERE path=?', (title, scope, raw_path))
             db.execute('UPDATE orphan_fact_candidates SET report_scope=? WHERE path=?', (scope, raw_path))

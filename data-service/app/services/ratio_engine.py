@@ -26,6 +26,23 @@ def _pct(ratio):
     return round(ratio * 100, 2)
 
 
+def _validated_ratio(name: str, value: float | None, anomalies: list[str]) -> float | None:
+    """Reject finite values whose magnitude is not decision-grade."""
+    limits = {
+        "roe_percent": 1000,
+        "roa_percent": 1000,
+        "gross_margin_percent": 1000,
+        "operating_margin_percent": 1000,
+        "net_margin_percent": 1000,
+        "debt_ratio_percent": 1000,
+        "cash_to_profit_ratio_percent": 10000,
+    }
+    if value is not None and name in limits and abs(value) > limits[name]:
+        anomalies.append(f"{name}:abs>{limits[name]}")
+        return None
+    return value
+
+
 def compute_ratios(financial_metrics: dict, live_pe_ratio: float | None = None) -> dict:
     """
     ورودی:
@@ -48,19 +65,20 @@ def compute_ratios(financial_metrics: dict, live_pe_ratio: float | None = None) 
     total_equity = m.get("total_equity")
     operating_cash_flow = m.get("operating_cash_flow")
 
-    gross_margin = _pct(_safe_div(gross_profit, revenue))
-    operating_margin = _pct(_safe_div(operating_profit, revenue))
-    net_margin = _pct(_safe_div(net_profit, revenue))
+    anomalies: list[str] = []
+    gross_margin = _validated_ratio("gross_margin_percent", _pct(_safe_div(gross_profit, revenue)), anomalies)
+    operating_margin = _validated_ratio("operating_margin_percent", _pct(_safe_div(operating_profit, revenue)), anomalies)
+    net_margin = _validated_ratio("net_margin_percent", _pct(_safe_div(net_profit, revenue)), anomalies)
 
-    roe = _pct(_safe_div(net_profit, total_equity))
-    roa = _pct(_safe_div(net_profit, total_assets))
+    roe = _validated_ratio("roe_percent", _pct(_safe_div(net_profit, total_equity)), anomalies)
+    roa = _validated_ratio("roa_percent", _pct(_safe_div(net_profit, total_assets)), anomalies)
 
-    debt_ratio = _pct(_safe_div(total_liabilities, total_assets))
+    debt_ratio = _validated_ratio("debt_ratio_percent", _pct(_safe_div(total_liabilities, total_assets)), anomalies)
     debt_to_equity = _safe_div(total_liabilities, total_equity)
     if debt_to_equity is not None:
         debt_to_equity = round(debt_to_equity, 2)
 
-    cash_to_profit_ratio = _pct(_safe_div(operating_cash_flow, net_profit))
+    cash_to_profit_ratio = _validated_ratio("cash_to_profit_ratio_percent", _pct(_safe_div(operating_cash_flow, net_profit)), anomalies)
 
     earnings_yield = None
     if live_pe_ratio and live_pe_ratio > 0:
@@ -77,6 +95,8 @@ def compute_ratios(financial_metrics: dict, live_pe_ratio: float | None = None) 
         "cash_to_profit_ratio_percent": cash_to_profit_ratio,
         "pe_ratio": live_pe_ratio,
         "earnings_yield_percent": earnings_yield,
+        "ratio_quality": "INVALID" if anomalies else "VALID",
+        "ratio_anomalies": anomalies,
     }
 
 

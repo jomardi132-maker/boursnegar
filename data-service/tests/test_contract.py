@@ -14,6 +14,12 @@ def test_financial_report_selection_stays_within_one_disclosure():
     assert "present_core = 7" in source
 
 
+def test_audited_selection_allows_valid_interim_reports():
+    source = Path(__file__).parents[1].joinpath("app", "main.py").read_text(encoding="utf-8")
+    assert 'audited_clause = "AND fp.audited" if report_mode == "audited" else ""' in source
+    assert 'annual_clause = "AND fp.length_months = 12"' not in source
+
+
 def test_no_ai_runtime_dependency():
     source = "\n".join(p.read_text(encoding="utf-8") for p in Path(__file__).parents[1].joinpath("app").rglob("*.py"))
     assert "gemini" not in source.lower()

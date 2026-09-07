@@ -2,8 +2,8 @@
 from __future__ import annotations
 import argparse, hashlib, json, re
 from pathlib import Path
-import pandas as pd
 from normalize_browser_statements import detect_unit, statement_metadata
+from app.services.codal_excel_parser import parse_financial_statement, extract_period_length_months, derive_period_start_jalali
 
 MAP = {
     'درآمدهایعملیاتی':'revenue','درآمدهايعملياتي':'revenue',
@@ -27,35 +27,49 @@ def num(v):
     return s if re.fullmatch(r'-?\d+(?:\.\d+)?',s) else None
 def main():
     p=argparse.ArgumentParser(); p.add_argument('--capture',required=True); p.add_argument('--out',required=True); a=p.parse_args()
-    root=Path(a.capture); out=Path(a.out); out.mkdir(parents=True,exist_ok=True); rows=[]; errors=[]
+    root=Path(a.capture); out=Path(a.out); out.mkdir(parents=True,exist_ok=True); rows=[]; errors=[]; seen_source_actions=set()
     for jf in root.rglob('*.jsonl'):
         for line in jf.read_text(encoding='utf8').splitlines():
             x=json.loads(line); letter=x.get('letter',{}); title=fix(letter.get('Title',''))
             dates=re.findall(r'14\d{2}/\d{2}/\d{2}',title.translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹','0123456789')))
             typ='balance_sheet' if ('وضعیت مالی' in title or 'وضعيت مالي' in title) else ('income_statement' if 'صورت' in title and 'مالی' in title else None)
             if not typ or not dates: continue
-            html=next((d.get('path') for d in x.get('documents',[]) if d.get('kind') in ('html','excel')),None)
-            if not html: continue
-            document=jf.parent/html
-            if not document.exists(): continue
-            content=document.read_bytes(); unit=detect_unit(content); audited,scope=statement_metadata(title)
-            try: tables=pd.read_html(document)
-            except IndexError:
-                # Some Codal HTML documents contain malformed/empty tables. Keep the
-                # raw notice and event, but do not invent facts or fail the whole batch.
+            tracing=str(letter.get('TracingNo')); symbol=x.get('symbol') or letter.get('Symbol')
+            # Codal symbol searches can include subsidiary statements. Their
+            # parenthetical company/group name must not be attributed to the
+            # listed symbol being normalized.
+            if re.search(r'\((?:شرکت|گروه)\s', title):
                 continue
-            except Exception as exc: errors.append({'symbol':x.get('symbol'),'tracing_no':letter.get('TracingNo'),'error':str(exc)}); continue
-            for table in tables:
-                for _,record in table.iterrows():
-                    if len(record.index) == 0:
+            # Prefer one Excel-compatible statement when available. If Excel
+            # was unavailable, process every HTML sheet captured from the
+            # official page; the browser fetcher records the hidden balance
+            # sheet as `html-sheet`.
+            documents=[d for d in x.get('documents',[]) if d.get('kind') == 'excel']
+            if not documents:
+                documents=[d for d in x.get('documents',[]) if str(d.get('kind','')).startswith('html')]
+            audited,scope=statement_metadata(title)
+            period_length_months=extract_period_length_months(title)
+            period_start=derive_period_start_jalali(dates[0], period_length_months)
+            for document_meta in documents:
+                html=document_meta.get('path')
+                if not html: continue
+                document=jf.parent/html
+                if not document.exists(): continue
+                content=document.read_bytes(); unit=detect_unit(content)
+                try:
+                    parsed = parse_financial_statement(content)
+                except Exception as exc:
+                    errors.append({'symbol':x.get('symbol'),'tracing_no':letter.get('TracingNo'),'document':html,'error':str(exc)})
+                    continue
+                for fact, value in parsed['metrics'].items():
+                    if value is None:
                         continue
-                    label=fix(str(record.iloc[0])); fact=MAP.get(key(label))
-                    if not fact: continue
-                    value=next((num(v) for v in record.iloc[1:].tolist() if num(v) is not None),None)
-                    if value is None: continue
-                    tracing=str(letter.get('TracingNo')); symbol=x.get('symbol') or letter.get('Symbol')
                     fact_type='balance_sheet' if fact in ('total_assets','total_liabilities','total_equity') else 'income_statement'
-                    rows.append({'source':'browser/codal.ir','symbol':symbol,'from_jalali':x.get('from_jalali'),'to_jalali':x.get('to_jalali'),'retrieved_at':x.get('retrieved_at'),'output_type':fact_type,'source_action_id':f'{tracing}:{fact_type}:{fact}','tracing_no':tracing,'period_end_jalali':dates[0],'fact_key':fact,'source_label':label,'value':value,'raw_value':value,'unit':unit or 'UNKNOWN','payload':{'title':title,'document':html,'label':label,'audited':audited,'scope':scope}})
+                    source_action_id=f'{tracing}:{fact_type}:{fact}'
+                    if source_action_id in seen_source_actions:
+                        continue
+                    seen_source_actions.add(source_action_id)
+                    rows.append({'source':'browser/codal.ir','symbol':symbol,'from_jalali':period_start or x.get('from_jalali'),'to_jalali':dates[0],'period_length_months':period_length_months,'retrieved_at':x.get('retrieved_at'),'output_type':fact_type,'source_action_id':source_action_id,'tracing_no':tracing,'period_end_jalali':dates[0],'fact_key':fact,'source_label':fact,'value':value,'raw_value':value,'unit':unit or 'UNKNOWN','payload':{'title':title,'document':html,'label':fact,'audited':audited,'scope':scope,'capture_range':{'from':x.get('from_jalali'),'to':x.get('to_jalali')}}})
     path=out/'normalized.jsonl'; path.write_text(''.join(json.dumps(r,ensure_ascii=False,sort_keys=True)+'\n' for r in rows),encoding='utf8')
     manifest={'schema':'boursnegar-codalpy-jsonl-v1','source':'browser/codal.ir','files':[{'path':'normalized.jsonl','symbol':'*','records':len(rows),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}],'errors':errors}
     (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf8'); print(json.dumps({'records':len(rows),'errors':len(errors)},ensure_ascii=False))

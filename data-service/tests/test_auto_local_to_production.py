@@ -12,11 +12,39 @@ from scripts.auto_local_to_production import (
     import_existing_local_artifacts,
     select_explicit_symbols,
     select_symbols,
+    is_fund_row,
+    attempted_symbols,
     symbol_run_root,
+    symbol_failure_exit_code,
 )
 
 
 class AutoLocalToProductionTest(unittest.TestCase):
+    def test_symbol_failure_is_nonzero_without_discarding_successful_imports(self):
+        self.assertEqual(symbol_failure_exit_code([]), 0)
+        self.assertEqual(symbol_failure_exit_code([{'symbol': 'ثبهساز'}]), 2)
+
+    def test_automatic_selection_defers_etf_until_fund_model_exists(self):
+        self.assertTrue(is_fund_row({'market_category': 'صندوق سرمایه‌گذاری قابل معامله'}))
+        remote = [
+            {'symbol': 'اکتان', 'status': 'incomplete', 'market_category': 'صندوق سرمایه‌گذاری قابل معامله'},
+            {'symbol': 'فملی', 'status': 'incomplete', 'market_category': 'فلزات اساسی'},
+        ]
+        local = {s['symbol']: {'status': 'incomplete', 'standard_count': 0, 'period_count': 0, 'notice_count': 0} for s in remote}
+        self.assertEqual(select_symbols(remote, local, 10), ['فملی'])
+
+    def test_automatic_selection_skips_checkpointed_symbols(self):
+        remote = [{'symbol': 'فملی', 'status': 'incomplete'}, {'symbol': 'شپنا', 'status': 'incomplete'}]
+        local = {s['symbol']: {'status': 'incomplete', 'standard_count': 0, 'period_count': 0, 'notice_count': 0} for s in remote}
+        self.assertEqual(select_symbols(remote, local, 10, {'فملی'}), ['شپنا'])
+
+    def test_attempted_symbols_reads_checkpoint_run_directories(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'run-1' / 'فملی').mkdir(parents=True)
+            (root / 'aggregate' / 'codalpy').mkdir(parents=True)
+            self.assertEqual(attempted_symbols(root), {'فملی'})
+
     def test_aggregation_streams_valid_records_into_manifest(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -58,7 +86,7 @@ class AutoLocalToProductionTest(unittest.TestCase):
             'کامل': {'status': 'complete', 'standard_count': 7, 'period_count': 2, 'notice_count': 5},
         }
 
-        self.assertEqual(select_symbols(remote, local, 4), ['زکوثر', 'بنیرو', 'کربن', 'کربن3'])
+        self.assertEqual(select_symbols(remote, local, 4), ['زکوثر', 'بنیرو', 'کربن'])
 
     def test_base_symbol_handles_persian_and_ascii_digits(self):
         self.assertEqual(base_symbol('کربن3'), 'کربن')

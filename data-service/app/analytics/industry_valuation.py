@@ -37,6 +37,9 @@ MODEL_SPECS = {
     # market consensus, and still requires real financial inputs.
     "general": ModelSpec("normalized_pe", 5.0, 0.25, 0.25),
     "financial": ModelSpec("price_to_book", 0.9, 0.25, 0.20),
+    # Fund NAV is the primary basis; without an official NAV input the model
+    # remains gated instead of applying an operating-company multiple.
+    "fund": ModelSpec("nav", 1.0),
 }
 
 
@@ -46,6 +49,55 @@ def _number(value):
         return result if result == result else None
     except (TypeError, ValueError):
         return None
+
+
+def _per_share(value, shares):
+    value = _number(value)
+    shares = _number(shares)
+    if value is None or shares is None or value <= 0 or shares <= 0:
+        return None
+    return value * 1_000_000 / shares
+
+
+def _intrinsic_method(raw: dict, family: str):
+    """Use an intrinsic model only when all required, unit-normalized inputs exist."""
+    inputs = raw.get("valuation_inputs") or {}
+    shares = raw.get("live_price", {}).get("total_shares")
+    if family in {"fund", "holding", "real_estate"}:
+        nav = _number(inputs.get("nav_per_share"))
+        if nav is not None and nav > 0:
+            return "nav", nav, {"basisSource": "official_nav_per_share", "navPerShare": nav}
+    if family in {"bank", "financial"}:
+        net_income = _per_share(inputs.get("net_income"), shares)
+        book = _per_share(inputs.get("book_equity"), shares)
+        cost = _number(inputs.get("cost_of_equity"))
+        terminal_growth = _number(inputs.get("terminal_growth"))
+        if net_income and book and cost and terminal_growth is not None and cost > terminal_growth:
+            residual = max(0.0, net_income - book * cost / 100)
+            value = book + residual / ((cost - terminal_growth) / 100)
+            return "residual_income", value, {
+                "basisSource": "matched_residual_income_inputs",
+                "costOfEquity": cost,
+                "terminalGrowth": terminal_growth,
+            }
+    fcf = _per_share(inputs.get("fcfe"), shares)
+    cost = _number(inputs.get("cost_of_equity"))
+    growth = _number(inputs.get("terminal_growth"))
+    if fcf and cost and growth is not None and cost > growth:
+        return "fcfe", fcf / ((cost - growth) / 100), {
+            "basisSource": "matched_fcfe_inputs",
+            "costOfEquity": cost,
+            "terminalGrowth": growth,
+        }
+    fcff = _per_share(inputs.get("fcff"), shares)
+    wacc = _number(inputs.get("wacc"))
+    if fcff and wacc and growth is not None and wacc > growth:
+        return "dcf", fcff / ((wacc - growth) / 100), {
+            "basisSource": "matched_fcff_dcf_inputs",
+            "wacc": wacc,
+            "terminalGrowth": growth,
+        }
+    return None
 
 
 def health_score(metrics: dict, ratios: dict, family: str, inflation: float | None,
@@ -83,18 +135,48 @@ def health_score(metrics: dict, ratios: dict, family: str, inflation: float | No
 def value_company(raw: dict) -> dict | None:
     live = raw.get("live_price") or {}
     metrics = raw.get("financial_metrics") or {}
+    units = raw.get("financial_metrics_units") or {}
     category = live.get("market_category")
     family = model_family(category)
     spec = MODEL_SPECS.get(family)
     shares = _number(live.get("total_shares"))
     if not spec:
         return None
+    intrinsic = _intrinsic_method(raw, family)
+    if intrinsic:
+        method, intrinsic_value, intrinsic_assumptions = intrinsic
+        return {
+            "family": family,
+            "method": method,
+            "modelVersion": f"{family}-{method}-v1.0.0",
+            "fairValueLow": round(intrinsic_value * 0.80),
+            "fairValueBase": round(intrinsic_value),
+            "fairValueHigh": round(intrinsic_value * 1.20),
+            "basisPerShare": round(intrinsic_value, 2),
+            "assumptions": {
+                "industry": category,
+                "currency": "IRR_PER_SHARE",
+                "multipleType": "intrinsic_value_model",
+                **intrinsic_assumptions,
+            },
+            "scenarios": {
+                "bear": round(intrinsic_value * 0.80),
+                "base": round(intrinsic_value),
+                "bull": round(intrinsic_value * 1.20),
+            },
+        }
+    if family == "fund":
+        return None
     if spec.method == "price_to_book":
+        if units and units.get("total_equity") in {"UNKNOWN", "UNIT_UNKNOWN", None}:
+            return None
         equity_million_rial = _number(metrics.get("total_equity"))
         if not equity_million_rial or equity_million_rial <= 0 or not shares or shares <= 0:
             return None
         per_share_basis = equity_million_rial * 1_000_000 / shares
     else:
+        if units and units.get("eps_basic") in {"UNKNOWN", "UNIT_UNKNOWN"}:
+            return None
         per_share_basis = _number(live.get("eps")) or _number(metrics.get("eps_basic"))
         if (not per_share_basis or per_share_basis <= 0) and shares and shares > 0:
             profit = _number(metrics.get("net_profit"))
@@ -102,8 +184,21 @@ def value_company(raw: dict) -> dict | None:
                 per_share_basis = profit * 1_000_000 / shares
         if not per_share_basis or per_share_basis <= 0:
             return None
-    base = per_share_basis * spec.multiple
-    low, high = base * (1 - spec.downside), base * (1 + spec.upside)
+    base_multiple = (
+        max(4.0, min(8.0, spec.multiple))
+        if spec.method == "price_to_book"
+        else spec.multiple
+    )
+    base = per_share_basis * base_multiple
+    if spec.method in {"normalized_pe", "price_to_book"}:
+        # User-facing policy scenarios: 4 is conservative and 8 optimistic
+        # for both earnings and book-value multiples. The family multiple is
+        # retained as the internal base case between those bounds.
+        low, high = per_share_basis * 4.0, per_share_basis * 8.0
+        scenario_multiples = {"bear": 4.0, "base": base_multiple, "bull": 8.0}
+    else:
+        low, high = base * (1 - spec.downside), base * (1 + spec.upside)
+        scenario_multiples = {"bear": 1 - spec.downside, "base": 1.0, "bull": 1 + spec.upside}
     return {
         "family": family,
         "method": spec.method,
@@ -114,11 +209,12 @@ def value_company(raw: dict) -> dict | None:
         "basisPerShare": round(per_share_basis, 2),
         "assumptions": {
             "industry": category,
-            "multiple": spec.multiple,
+            "multiple": base_multiple,
             "scenarioDownside": spec.downside,
             "scenarioUpside": spec.upside,
             "currency": "IRR_PER_SHARE",
             "multipleType": "internal_policy_scenario",
+            "scenarioMultiples": scenario_multiples,
             "basisSource": (
                 "book_value_proxy"
                 if spec.method == "price_to_book"

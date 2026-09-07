@@ -3,7 +3,7 @@ import { ArrowUpLeft, Database, Gauge, ShieldCheck, Sparkles } from 'lucide-reac
 import gsap from 'gsap';
 
 export type FundamentalDashboardOverview = {
-  catalog: { instruments: number };
+  catalog: { instruments: number; core_ready: number; needs_recovery: number };
   prices: { rows: number; instruments: number; from_date: string; to_date: string };
   disclosures: { rows: number; issuers: number; updated_at: string | null };
   analysis: { analyzed: number };
@@ -32,7 +32,9 @@ export function FundamentalDashboard({ overview }: { overview: FundamentalDashbo
   }, []);
 
   const metrics = [
-    { label: 'نماد و ابزار فعال', value: fa(overview?.catalog.instruments), icon: Database },
+    { label: 'کل نمادهای فعال', value: fa(overview?.catalog.instruments), icon: Database },
+    { label: 'آماده تحلیل بنیادی', value: fa(overview?.catalog.core_ready), icon: Sparkles },
+    { label: 'نیازمند تکمیل داده', value: fa(overview?.catalog.needs_recovery), icon: Gauge },
     { label: 'رکورد قیمت روزانه', value: fa(overview?.prices.rows), icon: ArrowUpLeft },
     { label: 'نسخه اطلاعیه کدال', value: fa(overview?.disclosures.rows), icon: ShieldCheck },
     { label: 'تحلیل ثبت‌شده', value: fa(overview?.analysis.analyzed), icon: Sparkles },

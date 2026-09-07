@@ -22,6 +22,9 @@ STATEMENTS = ("income_statement", "balance_sheet", "monthly_activity")
 # after inspecting a real response and adding a fixture/test for the label.
 FACT_LABELS = {
     "درآمدهای عملیاتی": "revenue",
+    "جمع درآمدهای عملیاتی": "revenue",
+    "درآمدهای بیمه‌ای": "revenue",
+    "درآمدهای بیمه ای": "revenue",
     "بهای تمام شده درآمدهای عملیاتی": "cogs",
     "سود (زیان) ناخالص": "gross_profit",
     "سود (زیان) عملیاتی": "operating_profit",
