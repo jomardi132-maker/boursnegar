@@ -7,7 +7,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
-from app.services.codal_excel_parser import parse_financial_statement, extract_period_end_jalali
+from app.services.codal_excel_parser import (parse_financial_statement,
+    extract_period_end_jalali, extract_period_length_months,
+    derive_period_start_jalali, has_child_entity_qualifier)
 
 SOURCE = 'browser/codal.ir'
 SCHEMA = 'boursnegar-codalpy-jsonl-v1'
@@ -51,8 +53,10 @@ def output_type(title: str) -> str:
     return 'income_statement'
 
 def fact_output_type(fact_key: str, title: str) -> str:
-    if fact_key in {'total_assets', 'total_liabilities', 'total_equity'}:
+    if fact_key in {'total_assets', 'total_liabilities', 'total_equity', 'nav_per_share', 'units_outstanding'}:
         return 'balance_sheet'
+    if fact_key in {'operating_cash_flow', 'capital_expenditure', 'net_borrowing'}:
+        return 'cash_flow'
     return output_type(title)
 
 def main() -> None:
@@ -77,8 +81,14 @@ def main() -> None:
                 continue
             tracing, title = str(letter.get('TracingNo') or ''), str(letter.get('Title') or '')
             period = extract_period_end_jalali(title)
+            period_length_months = extract_period_length_months(title)
+            period_start = derive_period_start_jalali(period, period_length_months)
             if not symbol or not tracing:
                 errors.append({'file': bundle.name, 'line': line_no, 'error': 'symbol_or_tracing_missing'}); continue
+            if has_child_entity_qualifier(title):
+                errors.append({'symbol': symbol, 'tracing_no': tracing, 'file': bundle.name,
+                               'error': 'child_entity_financial_statement', 'title': title})
+                continue
             kind = output_type(title)
             for doc in record.get('documents') or []:
                 if doc.get('kind') not in ('html', 'excel') or not doc.get('path'): continue
@@ -96,9 +106,17 @@ def main() -> None:
                 for fact_key in parsed['found_items']:
                     value = parsed['metrics'].get(fact_key)
                     if value is None or not period: continue
+                    # A zero NAV is an explicit Codal cell in some malformed
+                    # fund statements, but it is not a usable per-unit value.
+                    # Retain the source document while keeping it out of the
+                    # promoted financial-facts stream.
+                    if fact_key == 'nav_per_share' and value <= 0: continue
                     audited, scope = statement_metadata(title)
-                    fact_unit = 'IRR' if fact_key == 'eps_basic' else unit
-                    rows.append({'source': SOURCE, 'symbol': symbol, 'from_jalali': record.get('from_jalali'), 'to_jalali': record.get('to_jalali'),
+                    # Per-unit NAV is a price-like amount, even when the
+                    # surrounding statement declares totals in million rial.
+                    fact_unit = 'IRR' if fact_key in {'eps_basic', 'nav_per_share'} else 'units' if fact_key == 'units_outstanding' else unit
+                    rows.append({'source': SOURCE, 'symbol': symbol, 'from_jalali': period_start or record.get('from_jalali'), 'to_jalali': period,
+                                 'period_length_months': period_length_months,
                                  'retrieved_at': record.get('retrieved_at'), 'output_type': fact_output_type(fact_key, title), 'source_action_id': f'{tracing}:{fact_key}:{period}',
                                  'tracing_no': tracing, 'period_end_jalali': period, 'fact_key': fact_key, 'source_label': fact_key,
                                  'value': value, 'raw_value': value, 'unit': fact_unit or 'UNKNOWN',
@@ -106,7 +124,8 @@ def main() -> None:
                                              'letter_code': letter.get('LetterCode'), 'parser_found_items': parsed['found_items'],
                                              'detail_url': official_url(letter.get('Url') or letter.get('URL') or letter.get('DetailUrl'), 'codal.ir'),
                                              'excel_url': official_url(letter.get('ExcelUrl'), 'excel.codal.ir'),
-                                             'audited': audited, 'scope': scope}})
+                                             'audited': audited, 'scope': scope,
+                                             'capture_range': {'from': record.get('from_jalali'), 'to': record.get('to_jalali')}}})
     target = out / 'normalized.jsonl'; target.write_text(''.join(json.dumps(row, ensure_ascii=False, sort_keys=True) + '\n' for row in rows), encoding='utf8')
     manifest = {'schema': SCHEMA, 'source': SOURCE, 'files': [{'path': target.name, 'symbol': '*', 'records': len(rows), 'sha256': sha(target)}],
                 'source_documents': [{'path': path, 'sha256': checksum} for path, checksum in sorted(source_files)], 'errors': errors}

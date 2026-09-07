@@ -41,7 +41,11 @@ class IndustryValuationTests(unittest.TestCase):
             "financial_metrics": {"total_equity": 2_000},
         })
         self.assertEqual(value["method"], "price_to_book")
-        self.assertEqual(value["fairValueBase"], 2000)
+        self.assertEqual(value["fairValueBase"], 8000)
+        self.assertEqual(value["fairValueLow"], 8000)
+        self.assertEqual(value["fairValueHigh"], 16000)
+        self.assertEqual(value["assumptions"]["scenarioMultiples"]["bear"], 4.0)
+        self.assertEqual(value["assumptions"]["scenarioMultiples"]["bull"], 8.0)
 
     def test_values_real_estate_with_explicit_book_value_proxy(self):
         value = value_company({
@@ -52,8 +56,79 @@ class IndustryValuationTests(unittest.TestCase):
         self.assertEqual(value["method"], "price_to_book")
         self.assertEqual(value["assumptions"]["basisSource"], "book_value_proxy")
 
+    def test_values_holdings_only_with_explicit_book_value_proxy(self):
+        value = value_company({
+            "live_price": {"market_category": "شرکت‌های چند رشته‌ای صنعتی", "total_shares": 1_000_000},
+            "financial_metrics": {"total_equity": 2_000},
+        })
+        self.assertEqual(value["family"], "holding")
+        self.assertEqual(value["method"], "price_to_book")
+        self.assertEqual(value["fairValueBase"], 8000)
+        self.assertEqual(value["assumptions"]["basisSource"], "book_value_proxy")
+
+    def test_holding_uses_nav_when_official_nav_is_supplied(self):
+        value = value_company({
+            "live_price": {"market_category": "شرکت های چند رشته ای صنعتی"},
+            "valuation_inputs": {"nav_per_share": 5000},
+            "financial_metrics": {},
+        })
+        self.assertEqual(value["method"], "nav")
+        self.assertEqual(value["fairValueBase"], 5000)
+        self.assertEqual(value["assumptions"]["basisSource"], "official_nav_per_share")
+
+    def test_fund_uses_official_nav_only(self):
+        value = value_company({
+            "live_price": {"market_category": "صندوق سرمایه‌گذاری قابل معامله"},
+            "valuation_inputs": {"nav_per_share": 2500},
+            "financial_metrics": {},
+        })
+        self.assertEqual(value["family"], "fund")
+        self.assertEqual(value["method"], "nav")
+        self.assertEqual(value["fairValueBase"], 2500)
+
+    def test_fund_without_official_nav_is_gated(self):
+        self.assertIsNone(value_company({
+            "live_price": {"market_category": "صندوق سرمایه‌گذاری قابل معامله"},
+            "financial_metrics": {"eps_basic": 1000},
+        }))
+
+    def test_financial_uses_residual_income_only_with_complete_inputs(self):
+        value = value_company({
+            "live_price": {
+                "market_category": "بانک ها و موسسات اعتباری",
+                "total_shares": 1_000_000,
+            },
+            "valuation_inputs": {
+                "net_income": 100,
+                "book_equity": 1000,
+                "cost_of_equity": 20,
+                "terminal_growth": 5,
+            },
+            "financial_metrics": {},
+        })
+        self.assertEqual(value["method"], "residual_income")
+        self.assertEqual(value["assumptions"]["basisSource"], "matched_residual_income_inputs")
+
+    def test_operating_company_uses_dcf_only_with_complete_fcff_inputs(self):
+        value = value_company({
+            "live_price": {"market_category": "فلزات اساسی", "total_shares": 1_000_000},
+            "valuation_inputs": {"fcff": 100, "wacc": 20, "terminal_growth": 5},
+            "financial_metrics": {},
+        })
+        self.assertEqual(value["method"], "dcf")
+        self.assertEqual(value["assumptions"]["basisSource"], "matched_fcff_dcf_inputs")
+
+    def test_operating_company_uses_fcfe_only_with_complete_inputs(self):
+        value = value_company({
+            "live_price": {"market_category": "فلزات اساسی", "total_shares": 1_000_000},
+            "valuation_inputs": {"fcfe": 100, "cost_of_equity": 20, "terminal_growth": 5},
+            "financial_metrics": {},
+        })
+        self.assertEqual(value["method"], "fcfe")
+        self.assertEqual(value["assumptions"]["basisSource"], "matched_fcfe_inputs")
+
     def test_rejects_negative_earnings_and_unknown_industry(self):
-        self.assertIsNone(value_company({"live_price": {"market_category": "خودرو و ساخت قطعات"}, "financial_metrics": {"eps_basic": 10}}))
+        self.assertIsNone(value_company({"live_price": {"market_category": "صنعت ناشناخته"}, "financial_metrics": {"eps_basic": 10}}))
         self.assertIsNone(value_company({"live_price": {"market_category": "فلزات اساسی"}, "financial_metrics": {"eps_basic": -10}}))
 
     def test_health_score_requires_enough_dimensions(self):

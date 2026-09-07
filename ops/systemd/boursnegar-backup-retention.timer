@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Boursnegar backup retention daily
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=15min
+Unit=boursnegar-backup-retention.service
+
+[Install]
+WantedBy=timers.target

@@ -15,7 +15,7 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default="artifacts/local-ingestion.sqlite3")
+    parser.add_argument("--db", default="data-service/artifacts/local-ingestion.sqlite3")
     parser.add_argument("--export", default="")
     args = parser.parse_args()
     path = Path(args.db).resolve()

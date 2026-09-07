@@ -1,5 +1,6 @@
 import hashlib
 import json
+from math import isfinite
 from datetime import datetime, timedelta, timezone
 
 from app.analytics.engine import Policy, core_questions, decide
@@ -20,7 +21,32 @@ REQUIRED_METRICS = (
 
 def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy()) -> dict:
     metrics = raw.get("financial_metrics") or {}
-    ratios = raw.get("ratios") or {}
+    ratios = dict(raw.get("ratios") or {})
+    ratio_anomalies = list(ratios.get("ratio_anomalies") or [])
+    ratio_limits = {
+        "roe_percent": 1000,
+        "roa_percent": 1000,
+        "gross_margin_percent": 1000,
+        "operating_margin_percent": 1000,
+        "net_margin_percent": 1000,
+        "debt_ratio_percent": 1000,
+        "cash_to_profit_ratio_percent": 10000,
+    }
+    # Older snapshots may lack ratio-quality metadata; validate before scoring.
+    for name, limit in ratio_limits.items():
+        value = ratios.get(name)
+        try:
+            numeric = float(value) if value is not None else None
+        except (TypeError, ValueError):
+            numeric = None
+        if numeric is not None and (not isfinite(numeric) or abs(numeric) > limit):
+            marker = f"{name}:abs>{limit}"
+            if marker not in ratio_anomalies:
+                ratio_anomalies.append(marker)
+            ratios[name] = None
+    if ratio_anomalies:
+        ratios["ratio_quality"] = "INVALID"
+        ratios["ratio_anomalies"] = ratio_anomalies
     live = raw.get("live_price") or {}
     present = sum(metrics.get(key) is not None for key in REQUIRED_METRICS)
     coverage = round(present / len(REQUIRED_METRICS) * 100, 2)
@@ -30,6 +56,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     report = raw.get("report_used") or {}
     title = str(report.get("title") or "")
     audited = "حسابرسی شده" in title and "حسابرسی نشده" not in title
+    selection_basis = report.get("selection_basis")
     confidence = 70.0 if audited else 55.0
     if raw.get("live_price_error"):
         confidence -= 10
@@ -43,6 +70,9 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     context = raw.get("analysis_context") or {}
     comparison = raw.get("period_comparison") or {}
     family = model_family(live.get("market_category"))
+    fund_model_required = family == "fund"
+    if fund_model_required:
+        data_status = "FUND_MODEL_REQUIRED"
     periods_available = int(context.get("financial_periods") or 0)
     return_90d = context.get("price_return_90d_percent")
     return_365d = context.get("price_return_365d_percent")
@@ -74,7 +104,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         (operating_margin is not None and operating_margin < 5)
         or (net_margin is not None and net_margin < 5)
     )
-    operating_company = family not in {"bank", "financial", "real_estate", "unclassified"}
+    operating_company = family not in {"bank", "financial", "real_estate", "holding", "fund", "unclassified"}
     turnaround_candidate = bool(
         (current_profit is not None and current_profit > 0 and previous_profit is not None and previous_profit <= 0)
         or (operating_company and revenue_growth is not None and inflation is not None and revenue_growth > inflation
@@ -83,9 +113,18 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             and inflation is not None and monthly_growth > inflation)
     )
     capital_action_data_gap = bool(context.get("capital_action_data_gap"))
+    market_closure_regime = bool(context.get("market_closure_regime"))
+    if market_closure_regime:
+        confidence = min(confidence, 60.0)
     if market_fundamental_divergence:
         confidence = min(confidence, 60.0)
     valuation = value_company(raw)
+    # A fund still requires the dedicated NAV model, but a sourced NAV is a
+    # valid completion of that requirement and must not be overwritten by the
+    # generic FUND_MODEL_REQUIRED guard below.
+    if family == "fund" and valuation is not None:
+        fund_model_required = False
+        data_status = "READY" if not missing_metrics else "PARTIAL_DATA"
     valuation_family = valuation.get("family") if valuation else family
     score, dimensions = health_score(
         metrics,
@@ -132,10 +171,17 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         report_mode=report_mode,
         policy=policy,
     )
-    if (market_fundamental_divergence or turnaround_candidate or capital_action_data_gap) and not critical_warning:
+    if fund_model_required:
         decision = "INSUFFICIENT_DATA"
+    if (market_closure_regime or market_fundamental_divergence or turnaround_candidate or capital_action_data_gap) and not critical_warning:
+        decision = "INSUFFICIENT_DATA"
+    if ratio_anomalies:
+        decision = "INSUFFICIENT_DATA"
+        confidence = min(confidence, 35.0)
     analysis_state = (
+        "FUND_MODEL_REQUIRED" if fund_model_required else
         "CAPITAL_ACTION_DATA_GAP" if capital_action_data_gap else
+        "MARKET_CLOSURE_REGIME" if market_closure_regime else
         "MARKET_FUNDAMENTAL_DIVERGENCE" if market_fundamental_divergence else
         "TURNAROUND_CANDIDATE" if turnaround_candidate else
         "STANDARD"
@@ -152,7 +198,32 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "dataStatus": data_status,
         "missingMetrics": missing_metrics,
         "confidence": confidence,
+        "ratioQuality": ratios.get("ratio_quality", "VALID"),
+        "ratioAnomalies": ratio_anomalies,
         "valuation": valuation,
+        "valuationGate": {
+            "status": "READY" if valuation else "REVIEW",
+            "method": valuation.get("method") if valuation else None,
+            "reason": None if valuation else (
+                "واحد یا ورودی لازم برای ارزش‌گذاری معتبر نیست؛ نتیجه عددی صادر نشد."
+                if raw.get("financial_metrics_units") else
+                "ورودی‌های کامل مدل ارزش‌گذاری در این گزارش موجود نیست."
+            ),
+        },
+        "fundModel": {
+            "status": "REQUIRED" if fund_model_required else "NOT_APPLICABLE",
+            "method": "nav_discount_to_asset_value" if fund_model_required else None,
+            "requiredEvidence": [
+                "official_nav_or_net_asset_value",
+                "portfolio_holdings_market_value",
+                "fund_liabilities_and_cash",
+                "units_outstanding_and_period_end",
+            ] if fund_model_required else [],
+            "reason": (
+                "اطلاعات موجود از نوع گزارش پورتفو است؛ تا استخراج NAV رسمی، ارزش روز دارایی‌ها، بدهی‌ها و تعداد واحدها، ارزش‌گذاری صندوق و محدوده خرید/فروش صادر نمی‌شود."
+                if fund_model_required else None
+            ),
+        },
         "analysisState": analysis_state,
         "analysisContext": context,
         "financialHistory": raw.get("financial_history") or [],
@@ -180,7 +251,12 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
             "periodEnd": report.get("period_end"),
             "periodLengthMonths": report.get("period_length_months"),
             "audited": audited,
+            "selectionBasis": selection_basis,
             "basisNote": (
+                "این تحلیل بر اساس جدیدترین دوره کامل و قابل‌اتکای صورت مالی تهیه شده است؛ ممکن است گزارش کوتاه‌مدت جدیدتری ناقص باشد و برای جلوگیری از نتیجه گمراه‌کننده مبنا قرار نگرفته باشد. گزارش حسابرسی‌نشده است و با انتشار صورت مالی بعدی باید بازبینی شود."
+                if selection_basis == "latest_complete_core_period" and not audited else
+                "این تحلیل بر اساس جدیدترین دوره کامل و قابل‌اتکای صورت مالی تهیه شده است؛ ممکن است گزارش کوتاه‌مدت جدیدتری ناقص باشد و برای جلوگیری از نتیجه گمراه‌کننده مبنا قرار نگرفته باشد. اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند."
+                if selection_basis == "latest_complete_core_period" else
                 "این تحلیل بر اساس آخرین صورت مالی موجود و قابل‌استخراج تهیه شده است؛ اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند. گزارش حسابرسی‌نشده است و با انتشار صورت مالی بعدی باید بازبینی شود."
                 if not audited else
                 "این تحلیل بر اساس آخرین صورت مالی حسابرسی‌شده موجود و قابل‌استخراج تهیه شده است؛ اطلاعیه‌های جدیدترِ غیرمالی جایگزین صورت مالی نمی‌شوند."
@@ -190,7 +266,9 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "coreQuestions": questions,
         "reasons": [
             f"امتیاز سلامت بنیادی {score} از ۱۰۰ است." if score is not None else "امتیاز سلامت به‌دلیل کمبود داده محاسبه نشد.",
-            f"ارزش منصفانه پایه با مدل سناریویی {valuation['method']} و فرض‌های نمایش‌داده‌شده محاسبه شد." if valuation else "برای این صنعت هنوز مدل سناریویی پشتیبانی‌شده یا داده لازم موجود نیست.",
+            f"ارزش منصفانه پایه با مدل سناریویی {valuation['method']} و فرض‌های نمایش‌داده‌شده محاسبه شد." if valuation else
+            "برای صندوق، مدل NAV و شواهد رسمی ارزش روز پورتفو هنوز کامل نشده است؛ بنابراین محدوده خرید و فروش یا توصیه قطعی صادر نمی‌شود." if fund_model_required else
+            "برای این صنعت هنوز مدل سناریویی پشتیبانی‌شده یا داده لازم موجود نیست.",
             "رشد هم‌دوره برای محاسبه رشد واقعی در دسترس نیست؛ نرخ تورم مرجع مستقل نمایش داده می‌شود."
             if (raw.get("period_comparison") or {}).get("revenue_growth_percent") is None else
             f"رشد واقعی با نرخ تورم مرجع {inflation} درصد محاسبه شده است.",
@@ -202,6 +280,8 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         ] if market_fundamental_divergence else []) + ([
             "رشد واقعی درآمد یا عبور سود خالص از زیان به سود، احتمال چرخش سودآوری را نشان می‌دهد؛ برای تأیید به تداوم در دوره بعد نیاز است."
         ] if turnaround_candidate else []) + ([
+            "یک یا چند نسبت مالی از نظر دامنه یا سازگاری داده‌ای غیرعادی است؛ این نسبت‌ها از مبنای تصمیم حذف شدند و تا اصلاح منبع، نتیجه قطعی صادر نمی‌شود."
+        ] if ratio_anomalies else []) + ([
             f"رشد مبلغ فروش ماهانه هم‌دوره {monthly_growth:.1f} درصد است و از تورم مرجع عبور کرده، اما برای تأیید چرخش به تداوم نیاز دارد."
         ] if turnaround_candidate and monthly_growth is not None and inflation is not None and monthly_growth > inflation else []) + ([
             "تغییر تعداد سهام در تاریخچه بازار دیده شده، اما اطلاعیه اقدام شرکتی متناظر هنوز به داده ساختاریافته متصل نشده است."

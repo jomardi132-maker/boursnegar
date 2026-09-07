@@ -14,6 +14,7 @@ OUTPUT_TYPES = {
     'revenue': 'income_statement', 'cogs': 'income_statement',
     'gross_profit': 'income_statement', 'operating_profit': 'income_statement',
     'net_profit': 'income_statement', 'eps_basic': 'income_statement',
+    'operating_cash_flow': 'cash_flow',
 }
 
 

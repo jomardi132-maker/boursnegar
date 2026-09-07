@@ -13,9 +13,12 @@ pandas.read_html پردازش می‌شه، نه openpyxl.
 هیچ عدد جایگزین/پیش‌فرضی نداریم - اگه قلمی پیدا نشه، مقدارش None
 می‌مونه و صادقانه گزارش می‌شه، نه یه عدد ساختگی.
 """
+import json
 import re
+from io import StringIO
 import requests
 import pandas as pd
+from bs4 import BeautifulSoup
 
 from app.config import HTTP_USER_AGENT
 
@@ -26,10 +29,24 @@ ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
 ASCII_DIGITS = "0123456789"
 _DIGIT_TRANS = str.maketrans(PERSIAN_DIGITS + ARABIC_INDIC_DIGITS, ASCII_DIGITS + ASCII_DIGITS)
 JALALI_DATE_RE = re.compile(r"(?<!\d)(14\d{2})[\-/](\d{1,2})[\-/](\d{1,2})(?!\d)")
+PERIOD_MONTHS_RE = re.compile(r"(?:دوره\s*)?([0-9۰-۹٠-٩]{1,2})\s*ماهه")
+# Codal sometimes returns a parent issuer's notices together with separate
+# financial statements filed for named subsidiaries.  The trailing entity
+# qualifier is explicit evidence that the document is not the parent report.
+CHILD_ENTITY_TITLE_RE = re.compile(r"\(\s*(?:شرکت|موسسه)\s+[^()]+\s*\)\s*$")
 
 # قلم‌های هدف: کلید داخلی -> لیستی از برچسب‌های محتمل فارسی (بعد از نرمال‌سازی، بدون فاصله)
 TARGET_ITEMS = {
-    "revenue": ["درآمدهایعملیاتی", "درآمدعملیاتی"],
+    "revenue": [
+        "درآمدهایعملیاتی",
+        "درآمدعملیاتی",
+        "جمعدرآمدهایعملیاتی",
+        # Insurance statements use this exact total instead of the generic
+        # operating-revenue label.
+        "درآمدهایبیمه‌ای",
+        "درآمدهایبیمه ای",
+        "درآمدهایبیمهای",
+    ],
     "cogs": ["بهایتمامشدهدرآمدهایعملیاتی"],
     "gross_profit": ["سود(زیان)ناخالص", "سودناخالص"],
     "operating_profit": ["سود(زیان)عملیاتی", "سودعملیاتی"],
@@ -38,6 +55,14 @@ TARGET_ITEMS = {
     "total_assets": ["جمعدارایی‌ها", "جمعداراییها", "جمعکلدارایی‌ها"],
     "total_liabilities": ["جمعبدهی‌ها", "جمعبدهیها"],
     "total_equity": ["جمعحقوقصاحبانسهام", "جمعحقوقمالکانه"],
+    # Fund net-asset statements publish this as a dedicated per-unit row.
+    "nav_per_share": [
+        "خالصداراییهایهرواحدسرمایهگذاری",
+        "خالصداراییهرواحدسرمایهگذاری",
+        # Fund financial statements often publish ending units and unit price
+        # together; the second numeric cell is the official NAV per unit.
+        "خالصداراییها(واحدهایسرمایهگذاری)پایاندوره",
+    ],
     "operating_cash_flow": [
         "خالصجریانهایوجهنقدحاصلازفعالیتهایعملیاتی",
         "خالصجریانهاینقدیحاصلازفعالیتهایعملیاتی",
@@ -49,6 +74,25 @@ TARGET_ITEMS = {
         "جریانخالصوجهنقدناشیازفعالیتهایعملیاتی",
         "جریانخالصورود(خروج)نقدحاصلازفعالیتهایعملیاتی",
         "جریانخالصورود(خروج)نقدناشیازفعالیتهایعملیاتی",
+    ],
+    "capital_expenditure": [
+        "خریدداراییهایثابت",
+        "خریدداراییهایثابتومشهود",
+        "پرداختبابتخریدداراییهایثابت",
+        "خریدداراییهایثابتومشهود",
+    ],
+    "net_borrowing": [
+        "دریافت(پرداخت)تسهیلات",
+        "خالصدریافت(پرداخت)تسهیلات",
+        "جریانخالصدریافت(پرداخت)تسهیلات",
+        "خالصجریاننقدیازفعالیتهای تامینمالی",
+    ],
+    "units_outstanding": [
+        "تعدادواحدهایدرپایاندوره",
+        "تعدادواحدهایدرپایانعملکرد",
+        "تعدادواحدهایدرپایانسالمالی",
+        "تعدادواحدهایدرصندوق",
+        "خالصداراییها(واحدهایسرمایهگذاری)پایاندوره",
     ],
 }
 
@@ -73,6 +117,44 @@ def extract_period_end_jalali(title: str | None) -> str | None:
     if not (1400 <= year <= 1499 and 1 <= month <= 12 and 1 <= day <= 31):
         return None
     return f"{year:04d}/{month:02d}/{day:02d}"
+
+
+def extract_period_length_months(title: str | None) -> int | None:
+    """Extract the report's stated period length, independent of search dates."""
+    if not title:
+        return None
+    normalized = str(title).translate(_DIGIT_TRANS)
+    match = PERIOD_MONTHS_RE.search(normalized)
+    if match:
+        months = int(match.group(1))
+        if 1 <= months <= 60:
+            return months
+    if "سال مالی" in normalized or "سالانه" in normalized:
+        return 12
+    return None
+
+
+def has_child_entity_qualifier(title: str | None) -> bool:
+    """Return whether a financial-statement title names a child entity."""
+    if not title:
+        return False
+    normalized = str(title).replace("\u200c", " ").strip()
+    return bool(CHILD_ENTITY_TITLE_RE.search(normalized))
+
+
+def derive_period_start_jalali(period_end: str | None, length_months: int | None) -> str | None:
+    """Derive the accounting-period start from the official end and length."""
+    if not period_end or not length_months or length_months < 1:
+        return None
+    try:
+        year, month, _day = (int(part) for part in period_end.split('/'))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if not (1400 <= year <= 1499 and 1 <= month <= 12):
+        return None
+    start_index = year * 12 + (month - 1) - int(length_months) + 1
+    start_year, start_month_zero = divmod(start_index, 12)
+    return f"{start_year:04d}/{start_month_zero + 1:02d}/01"
 
 
 def _normalize_label(value) -> str:
@@ -144,20 +226,31 @@ def _extract_keys_from_table(df, keys) -> dict:
     """
     local = {}
     for _, row in df.iterrows():
-        if len(row) < 2:
-            continue
-        label_norm = _normalize_label(row.iloc[0])
-        if not label_norm:
-            continue
-        for key in keys:
-            if key in local:
+        # Some Codal statements render two sub-statements side by side. In
+        # those tables the label/value pair can begin at any cell, not only
+        # at columns 0/1. Scan adjacent cells while keeping the exact-label
+        # match and the first numeric value policy.
+        for index in range(max(0, len(row) - 1)):
+            label_norm = _normalize_label(row.iloc[index])
+            if not label_norm:
                 continue
-            for pattern in TARGET_ITEMS[key]:
-                if label_norm == pattern:
-                    value = parse_persian_number(row.iloc[1])
+            for key in keys:
+                if key in local:
+                    continue
+                if label_norm in TARGET_ITEMS[key]:
+                    value_index = index + 1
+                    if key == "nav_per_share" and label_norm == "خالصداراییها(واحدهایسرمایهگذاری)پایاندوره":
+                        value_index = index + 2
+                    if value_index >= len(row):
+                        continue
+                    value = parse_persian_number(row.iloc[value_index])
+                    if key == "nav_per_share" and value == 0:
+                        # A zero NAV is not a usable fund unit price. Some
+                        # statements contain an unrelated zero row with the
+                        # same normalized label before the ending NAV table.
+                        continue
                     if value is not None:
                         local[key] = value
-                    break
     return local
 
 
@@ -168,6 +261,70 @@ def _value_column_period(df) -> str | None:
     column = df.columns[1]
     text = ' '.join(str(part) for part in column) if isinstance(column, tuple) else str(column)
     return extract_period_end_jalali(text)
+
+
+def _read_html_tables_resilient(source):
+    """Read usable Codal tables even when one legacy table is malformed."""
+    try:
+        return pd.read_html(source)
+    except (ValueError, ImportError, IndexError):
+        if isinstance(source, StringIO):
+            html = source.getvalue()
+        elif isinstance(source, (bytes, bytearray)):
+            html = source.decode("utf-8", errors="replace")
+        else:
+            html = str(source)
+        tables = []
+        for table in BeautifulSoup(html, "html.parser").find_all("table"):
+            try:
+                tables.extend(pd.read_html(StringIO(str(table))))
+            except (ValueError, ImportError, IndexError):
+                continue
+        if tables:
+            return tables
+        raise
+
+
+def _read_embedded_datasource_tables(html_bytes: bytes) -> list:
+    """Read hidden Codal statement sheets embedded in the HTML datasource JSON."""
+    if not isinstance(html_bytes, (bytes, bytearray)):
+        return []
+    html = html_bytes.decode("utf-8", errors="replace")
+    marker = "var datasource ="
+    start = html.find(marker)
+    if start < 0:
+        return []
+    payload = html[start + len(marker):].lstrip()
+    try:
+        datasource, _ = json.JSONDecoder().raw_decode(payload)
+    except json.JSONDecodeError:
+        return []
+
+    tables = []
+    for sheet in datasource.get("sheets", []):
+        sheet_title = _normalize_label(sheet.get("title_Fa"))
+        for table in sheet.get("tables", []):
+            rows = {}
+            for cell in table.get("cells", []):
+                if not cell.get("isVisible", True):
+                    continue
+                row = cell.get("rowSequence")
+                column = cell.get("columnSequence")
+                if row is None or column is None:
+                    continue
+                rows.setdefault(row, {})[column] = cell.get("value")
+            if not rows:
+                continue
+            width = max(max(values) for values in rows.values())
+            frame = pd.DataFrame(
+                [[values.get(column) for column in range(1, width + 1)] for _, values in sorted(rows.items())]
+            )
+            # Keep the originating sheet visible to the caller through the
+            # table metadata used by the normal statement selectors.
+            frame.attrs["codal_sheet_title"] = sheet_title
+            frame.attrs["codal_table_title"] = _normalize_label(table.get("title_Fa"))
+            tables.append(frame)
+    return tables
 
 
 def _find_consistent_balance_sheet(tables) -> tuple[dict, int | None]:
@@ -228,7 +385,21 @@ def parse_financial_statement(html_bytes: bytes) -> dict:
     قاطی کردن ردیف‌هاشون عدد غلط می‌ده.
     """
     try:
-        tables = pd.read_html(html_bytes)
+        # Some Codal HTML reports are UTF-8, but pandas may interpret raw
+        # bytes using a legacy encoding and turn Persian labels into mojibake.
+        # Decode explicitly when possible; the bytes fallback keeps support
+        # for older/non-UTF-8 Excel framesets.
+        source = html_bytes
+        if isinstance(html_bytes, (bytes, bytearray)):
+            try:
+                source = StringIO(html_bytes.decode("utf-8"))
+            except UnicodeDecodeError:
+                source = html_bytes
+        tables = _read_embedded_datasource_tables(html_bytes)
+        # Legacy Excel-compatible files have no datasource JSON; retain the
+        # resilient table reader as the fallback for those documents.
+        if not tables:
+            tables = _read_html_tables_resilient(source)
     except (ValueError, ImportError, IndexError) as e:
         raise CodalExcelParseError(f"هیچ جدولی در فایل پیدا نشد: {e}") from e
 

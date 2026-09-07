@@ -3,6 +3,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,28 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class LocalCoverageToolsTest(unittest.TestCase):
+    def test_promotion_report_audit_accepts_current_and_legacy_schemas(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        path = ROOT / 'data-service/scripts/audit_promotion_reports.py'
+        spec = spec_from_file_location('promotion_audit', path)
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
+        current = {
+            'schema': 'boursnegar-notice-promotion-v1', 'status': 'success',
+            'backup': '/backup.dump',
+            'idempotent_replay': '{"inserted": 0}',
+            'ready': '{"status":"ready"}', 'health': '{"status":"ok"}',
+        }
+        legacy = {
+            'schema': 'boursnegar-evidence-promotion-v1', 'status': 'success',
+            'backup': '/backup.dump',
+            'idempotent_replay': '{"inserted": 0}',
+            'ready': '{"status":"ready"}',
+        }
+        self.assertTrue(module.ok_report(current))
+        self.assertTrue(module.ok_report(legacy))
+
     def test_recalculate_and_plan_are_deterministic(self):
         with tempfile.TemporaryDirectory() as temp:
             db_path = Path(temp) / 'local.sqlite3'
@@ -41,7 +64,46 @@ class LocalCoverageToolsTest(unittest.TestCase):
             with export_path.open(encoding='utf-8-sig') as handle:
                 self.assertEqual(len(list(csv.reader(handle))), 3)
             with plan_path.open(encoding='utf-8-sig') as handle:
-                self.assertEqual(len(list(csv.reader(handle))), 3)
+                self.assertEqual(len(list(csv.reader(handle))), 2)
+
+    def test_plan_uses_authoritative_coverage_priority(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db_path = Path(temp) / 'local.sqlite3'
+            coverage_path = Path(temp) / 'coverage-symbols.csv'
+            plan_path = Path(temp) / 'adaptive-plan.csv'
+            db = sqlite3.connect(db_path)
+            db.execute('CREATE TABLE symbols(symbol TEXT PRIMARY KEY, industry TEXT, status TEXT NOT NULL DEFAULT "unknown", standard_count INTEGER NOT NULL DEFAULT 0, period_count INTEGER NOT NULL DEFAULT 0, gap_summary TEXT NOT NULL DEFAULT "", updated_at TEXT NOT NULL DEFAULT "now")')
+            db.executemany('INSERT INTO symbols(symbol,industry) VALUES(?,?)', [('READY', 'x'), ('GAP', 'x')])
+            db.commit(); db.close()
+            coverage_path.write_text('\ufeffsymbol,coverage_tier,valid_periods,valid_fact_keys\nREADY,CORE_READY,5,20\nGAP,MISSING_COMPARABLE_PERIODS,1,2\n', encoding='utf-8')
+            subprocess.run([sys.executable, str(ROOT / 'data-service/scripts/plan_local_recovery.py'), '--db', str(db_path), '--coverage-csv', str(coverage_path), '--out', str(plan_path)], check=True)
+            with plan_path.open(encoding='utf-8-sig', newline='') as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[0]['نماد'], 'GAP')
+            self.assertEqual(rows[0]['coverage_tier'], 'MISSING_COMPARABLE_PERIODS')
+
+    def test_orchestrator_latest_only_ignores_older_manifest_errors(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        path = ROOT / 'data-service/scripts/daily_orchestrator.py'
+        spec = spec_from_file_location('daily_orchestrator_scope', path)
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = root / '1405' / 'cursor-0001' / 'browser'
+            new = root / '1405' / 'cursor-0002' / 'browser'
+            old.mkdir(parents=True); new.mkdir(parents=True)
+            (old / 'manifest.json').write_text('{"errors":[{"symbol":"old"}]}', encoding='utf-8')
+            (new / 'manifest.json').write_text('{"files":[]}', encoding='utf-8')
+            now = time.time()
+            old.touch(); new.touch()
+            import os
+            os.utime(old / 'manifest.json', (now - 2, now - 2))
+            os.utime(new / 'manifest.json', (now, now))
+            result = module.validate_artifacts(root, latest_only=True)
+            self.assertTrue(result['valid'])
+            self.assertEqual(result['manifests'], 1)
 
 
 if __name__ == '__main__':

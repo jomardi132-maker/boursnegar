@@ -50,13 +50,17 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:"],
+        imgSrc: ["'self'", "data:", "https:"],
         connectSrc: ["'self'"],
       },
     },
     crossOriginEmbedderPolicy: false,
   }),
 );
+app.use((_req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  next();
+});
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 app.use(cookieParser());
@@ -127,36 +131,87 @@ const analyzeSchema = z.object({
   reportMode: z.enum(["audited", "latest_codal"]).default("audited"),
 });
 const commentSchema = z.object({ kind: z.enum(["site_feedback", "symbol_comment"]), symbol: z.string().max(32).optional(), body: z.string().trim().min(3).max(2000) });
+const COMMENT_REWARD_DAILY_CAP = 30;
+const COMMENT_REWARD_MONTHLY_CAP = 100;
 
-function commentQuality(body: string) {
-  const normalized = body.trim();
+type CommentAssessment = {
+  quality: number;
+  actionKind: 'feedback_logged' | 'task_candidate' | 'safety_review';
+  topic: 'bug' | 'suggestion' | 'question' | 'trading' | 'general';
+  reward: number;
+  replyText: string;
+};
+
+function assessComment(comment: { kind: string; symbol?: string | null; body: string }): CommentAssessment {
+  const normalized = comment.body.trim();
   const hasPersian = /[\u0600-\u06ff]/.test(normalized);
   const hasSubstance = normalized.length >= 40;
-  const looksSpam = /(https?:\/\/|وی‌پی‌ان|تبلیغ|کسب درآمد تضمینی)/i.test(normalized);
-  return Math.max(0, Math.min(100, (hasPersian ? 35 : 0) + (hasSubstance ? 45 : 15) - (looksSpam ? 70 : 0)));
+  const hasDetail = /[؟?؛;،,.:]/.test(normalized) || /\d/.test(normalized);
+  const looksSpam = /(https?:\/\/|وی‌?پی‌?ان|تبلیغ|کسب درآمد تضمینی|سیگنال قطعی|سود تضمینی)/i.test(normalized);
+  const topic: CommentAssessment['topic'] = /(رمز|احراز|باگ|خطا|خراب|نمایش نمی|باز نمی|مشکل)/i.test(normalized)
+    ? 'bug'
+    : /(پیشنهاد|بهبود|اضافه|امکان|قابلیت|بهتره|ای‌?کاش)/i.test(normalized)
+      ? 'suggestion'
+      : /(بخر|بفروش|خرید|فروش|ورود|حد ضرر|هدف|سیگنال|ارزش ورود)/i.test(normalized)
+        ? 'trading'
+        : /(چطور|چگونه|چرا|آیا|؟|\?)/.test(normalized)
+          ? 'question'
+          : 'general';
+  const quality = Math.max(0, Math.min(100,
+    (hasPersian ? 30 : 0) + (hasSubstance ? 35 : 15) + (hasDetail ? 20 : 0) + (topic !== 'general' ? 15 : 0) - (looksSpam ? 85 : 0),
+  ));
+  const actionKind: CommentAssessment['actionKind'] = looksSpam || quality < 40
+    ? 'safety_review'
+    : topic === 'bug' || topic === 'suggestion'
+      ? 'task_candidate'
+      : 'feedback_logged';
+  const reward = quality >= 80 && actionKind !== 'safety_review' ? 10 : 0;
+  const symbol = comment.symbol ? ` درباره ${comment.symbol}` : '';
+  const replyText = comment.kind === 'site_feedback'
+    ? topic === 'bug'
+      ? 'درود بر شما؛ گزارش خطای شما ثبت شد و برای بررسی فنی به تیم مربوط ارجاع شد. اگر امکان دارد، مسیر تکرار خطا و زمان رخداد را هم بنویسید.'
+      : topic === 'suggestion'
+        ? 'درود بر شما؛ پیشنهاد مشخص شما ثبت شد و برای اولویت‌بندی بهبودهای بورس‌نگار بررسی می‌شود. از اینکه تجربه کاربری را دقیق‌تر می‌کنید سپاسگزاریم.'
+        : topic === 'question'
+          ? 'درود بر شما؛ پرسش‌تان ثبت شد. پاسخ نهایی بر اساس داده و مستندات قابل بررسی ارائه می‌شود.'
+          : 'درود بر شما؛ از بازخوردتان سپاسگزاریم. نظر شما ثبت شد و برای بهبود بورس‌نگار بررسی می‌شود.'
+    : topic === 'trading'
+      ? `از مشارکت شما${symbol} سپاسگزاریم. این دیدگاه ثبت شد؛ تصمیم خرید یا فروش باید با داده به‌روز، مدیریت ریسک و افق سرمایه‌گذاری خودتان انجام شود و این پاسخ توصیه قطعی نیست.`
+      : topic === 'question'
+        ? `پرسش شما${symbol} ثبت شد. پاسخ تحلیلی فقط بر پایه داده‌های قابل استناد ارائه می‌شود و در نبود داده کافی، موضوع برای بررسی بیشتر علامت‌گذاری خواهد شد.`
+        : `از مشارکت شما${symbol} سپاسگزاریم. دیدگاه‌تان ثبت شد؛ لطفاً تحلیل‌ها را مستند و بدون توصیه قطعی سرمایه‌گذاری مطرح کنید.`;
+  return { quality, actionKind, topic, reward, replyText };
 }
 
 async function automateComment(comment: { id: string; userId: string; kind: string; symbol?: string | null; body: string }) {
-  const quality = commentQuality(comment.body);
-  const actionKind = /(رمز|احراز|باگ|خطا|پیشنهاد|بهبود|مشکل)/i.test(comment.body) ? 'task_candidate' : quality < 40 ? 'safety_review' : 'feedback_logged';
-  const reward = quality >= 80 ? 10 : 0;
+  const assessment = assessComment(comment);
   await withTransaction(async (client) => {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`comment-automation:${comment.id}`]);
     const existing = await client.query(`SELECT 1 FROM comment_automation_actions WHERE comment_id=$1`, [comment.id]);
     if (existing.rowCount) return;
     const actor = await client.query(`SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id WHERE u.status='active' AND r.code IN ('admin','comment_moderator') AND u.id<>$1 ORDER BY CASE r.code WHEN 'comment_moderator' THEN 0 ELSE 1 END, u.created_at ASC LIMIT 1`, [comment.userId]);
     if (!actor.rows[0]) return;
-    const replyText = comment.kind === 'site_feedback'
-      ? 'درود بر شما؛ از بازخوردتان سپاسگزاریم. پیشنهاد شما ثبت شد و برای بهبود بورس‌نگار بررسی می‌شود.'
-      : 'از مشارکت شما در گفت‌وگو سپاسگزاریم. دیدگاه شما ثبت شد؛ لطفاً تحلیل‌ها را مستند و بدون توصیه قطعی سرمایه‌گذاری مطرح کنید.';
-    const reply = await client.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id`, [actor.rows[0].id, comment.kind, comment.symbol || null, comment.id, replyText]);
+    let reward = assessment.reward;
+    if (reward > 0) {
+      const creditAccount = await client.query(`SELECT user_id FROM analysis_credits WHERE user_id=$1 FOR UPDATE`, [comment.userId]);
+      if (!creditAccount.rows[0]) reward = 0;
+      const normalizedBody = comment.body.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+      const totals = await client.query(`SELECT coalesce(sum(cr.credits) FILTER (WHERE cr.created_at >= current_date),0)::int AS daily, coalesce(sum(cr.credits) FILTER (WHERE cr.created_at >= date_trunc('month',now())),0)::int AS monthly FROM comment_rewards cr JOIN comments c ON c.id=cr.comment_id WHERE c.user_id=$1`, [comment.userId]);
+      const duplicate = await client.query(`SELECT 1 FROM comments c JOIN comment_rewards cr ON cr.comment_id=c.id WHERE c.user_id=$1 AND regexp_replace(lower(trim(c.body)), '\\s+', ' ', 'g')=$2 AND c.id<>$3 AND cr.created_at >= now()-interval '30 days' LIMIT 1`, [comment.userId, normalizedBody, comment.id]);
+      if (Number(totals.rows[0]?.daily || 0) + reward > COMMENT_REWARD_DAILY_CAP || Number(totals.rows[0]?.monthly || 0) + reward > COMMENT_REWARD_MONTHLY_CAP || duplicate.rowCount) reward = 0;
+    }
+    const reply = await client.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id`, [actor.rows[0].id, comment.kind, comment.symbol || null, comment.id, assessment.replyText]);
     if (reward > 0) {
       const balance = await client.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`, [comment.userId, reward]);
       if (balance.rows[0]) {
-        await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5) ON CONFLICT DO NOTHING`, [comment.userId, reward, balance.rows[0].balance, comment.id, `comment-auto-reward:${comment.id}`]);
+        await client.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5)`, [comment.userId, reward, balance.rows[0].balance, comment.id, `comment-auto-reward:${comment.id}`]);
         await client.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, [comment.id, actor.rows[0].id, reward]);
+        await client.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) VALUES($1,'comment_reward',$2,$3,$4)`, [comment.userId, 'جایزه نظر سازنده', `به دلیل ثبت نظر سازنده، ${reward} اعتبار به حساب شما اضافه شد.`, comment.symbol ? `/s/${encodeURIComponent(comment.symbol)}#symbol-comments` : '#symbol-comments']);
       }
     }
-    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, quality, actionKind, reward, reply.rows[0].id]);
+    await client.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) VALUES($1,'comment_reply',$2,$3,$4)`, [comment.userId, 'پاسخ خودکار به نظر شما', assessment.replyText, comment.symbol ? `/s/${encodeURIComponent(comment.symbol)}#symbol-comments` : '#symbol-comments']);
+    await client.query(`INSERT INTO comment_automation_actions(comment_id,quality_score,action_kind,reward_credits,reply_comment_id) VALUES($1,$2,$3,$4,$5)`, [comment.id, assessment.quality, assessment.actionKind, reward, reply.rows[0].id]);
+    await client.query(`INSERT INTO admin_audit_logs(admin_user_id,action,target_type,target_id,metadata,ip) VALUES(NULL,'comment.automation','comment',$1,$2,'0.0.0.0'::inet)`, [comment.id, { quality: assessment.quality, topic: assessment.topic, actionKind: assessment.actionKind, reward, rewardCaps: { daily: COMMENT_REWARD_DAILY_CAP, monthly: COMMENT_REWARD_MONTHLY_CAP } }]);
   });
 }
 
@@ -324,9 +379,21 @@ app.get("/api/comments", asyncRoute(async (req, res) => {
 }));
 app.post("/api/comments", requireUser, requireCsrf, rateLimit("comments", 5, 15*60_000), asyncRoute(async (req,res)=>{
   const p=z.object({ ...commentSchema.shape, parentId:z.string().uuid().nullable().optional() }).safeParse(req.body); if(!p.success || (p.data.kind==='symbol_comment' && !p.data.symbol) || (p.data.kind==='site_feedback' && p.data.symbol)) return res.status(400).json({success:false,error:"نظر معتبر نیست."});
-  if (p.data.parentId) { const parent=await pool.query(`SELECT id,kind,symbol,status FROM comments WHERE id=$1`,[p.data.parentId]); const row=parent.rows[0]; if(!row || row.status!=='published' || row.kind!==p.data.kind || (row.symbol||null)!==(p.data.symbol||null)) return res.status(400).json({success:false,error:"پیام مرجع معتبر نیست."}); }
-  const row=await pool.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id,parent_id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
-  await automateComment({id: row.rows[0].id, userId: req.authUser!.id, kind: p.data.kind, symbol: p.data.symbol || null, body: p.data.body});
+  if (p.data.parentId) return res.status(403).json({success:false,error:"پاسخ مستقیم کاربران غیرفعال است. پاسخ‌ها توسط سامانه یا مدیر گفت‌وگو منتشر می‌شوند."});
+  const duplicateKey = [req.authUser!.id, p.data.kind, p.data.symbol || "", p.data.parentId || "", p.data.body].join("\u001f");
+  const row=await withTransaction(async c=>{
+    await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`,[duplicateKey]);
+    const recent=await c.query(`SELECT id,parent_id,created_at FROM comments WHERE user_id=$1 AND kind=$2 AND symbol IS NOT DISTINCT FROM $3 AND parent_id IS NOT DISTINCT FROM $4 AND body=$5 AND created_at >= now()-interval '10 minutes' ORDER BY created_at DESC LIMIT 1`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
+    if(recent.rows[0]) return {rows:recent.rows,duplicate:true};
+    const inserted=await c.query(`INSERT INTO comments(user_id,kind,symbol,parent_id,body,status) VALUES($1,$2,$3,$4,$5,'published') RETURNING id,parent_id,created_at`,[req.authUser!.id,p.data.kind,p.data.symbol||null,p.data.parentId||null,p.data.body]);
+    return {rows:inserted.rows,duplicate:false};
+  });
+  if(row.duplicate) return res.status(200).json({success:true,comment:row.rows[0],duplicate:true});
+  try {
+    await automateComment({id: row.rows[0].id, userId: req.authUser!.id, kind: p.data.kind, symbol: p.data.symbol || null, body: p.data.body});
+  } catch (error) {
+    console.error('[comment-automation-failed]', { commentId: row.rows[0].id, error: error instanceof Error ? error.message : 'UNKNOWN' });
+  }
   if(p.data.parentId){await pool.query(`INSERT INTO user_notifications(user_id,kind,title,body,target_url) SELECT c.user_id,'comment_reply','پاسخ تازه به نظر شما',$1,$2 FROM comments c WHERE c.id=$3 AND c.user_id<>$4`,[p.data.body.slice(0,180),p.data.symbol?`/s/${encodeURIComponent(p.data.symbol)}#symbol-comments`:'#symbol-comments',p.data.parentId,req.authUser!.id]);}
   res.status(201).json({success:true,comment:row.rows[0]});
 }));
@@ -932,8 +999,21 @@ app.patch("/api/admin/comments/:id", requireUser, requireCommentModerator, requi
   const result=await withTransaction(async c=>{
     const found=await c.query(`SELECT id,user_id FROM comments WHERE id=$1 FOR UPDATE`,[req.params.id]); if(!found.rows[0]) throw new Error('COMMENT_NOT_FOUND');
     await c.query(`UPDATE comments SET status=$2,updated_at=now() WHERE id=$1`,[req.params.id,p.data.status]);
-    if(p.data.reward>0){const balance=await c.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`,[found.rows[0].user_id,p.data.reward]);if(!balance.rows[0])throw new Error('CREDITS_NOT_FOUND');await c.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5) ON CONFLICT DO NOTHING`,[found.rows[0].user_id,p.data.reward,balance.rows[0].balance,req.params.id,`comment-reward:${req.params.id}`]);await c.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[req.params.id,req.authUser!.id,p.data.reward]);}
-    return {status:p.data.status,reward:p.data.reward};
+    let grantedReward = 0;
+    if(p.data.reward>0){
+      await c.query(`SELECT user_id FROM analysis_credits WHERE user_id=$1 FOR UPDATE`,[found.rows[0].user_id]);
+      const key=`comment-reward:${req.params.id}`;
+      const existing=await c.query(`SELECT id FROM credit_ledger WHERE idempotency_key=$1`,[key]);
+      if(!existing.rows[0]){
+        const balance=await c.query(`UPDATE analysis_credits SET balance=balance+$2,updated_at=now() WHERE user_id=$1 RETURNING balance`,[found.rows[0].user_id,p.data.reward]);
+        if(!balance.rows[0])throw new Error('CREDITS_NOT_FOUND');
+        await c.query(`INSERT INTO credit_ledger(user_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key) VALUES($1,$2,$3,'campaign','comment',$4,$5)`,[found.rows[0].user_id,p.data.reward,balance.rows[0].balance,req.params.id,key]);
+        await c.query(`INSERT INTO comment_rewards(comment_id,admin_user_id,credits) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[req.params.id,req.authUser!.id,p.data.reward]);
+        grantedReward=p.data.reward;
+      }
+    }
+    await c.query(`INSERT INTO admin_audit_logs(admin_user_id,action,target_type,target_id,metadata,ip) VALUES($1,'comment.reward.manual','comment',$2,$3,$4::inet)`, [req.authUser!.id, req.params.id, { status: p.data.status, requestedReward: p.data.reward, grantedReward }, req.ip || '0.0.0.0']);
+    return {status:p.data.status,reward:grantedReward};
   });
   res.json({success:true,result});
 }));
@@ -1011,6 +1091,10 @@ async function start() {
       ).middlewares,
     );
   else {
+    app.use((req, res, next) => {
+      if (req.path.endsWith(".map")) return res.status(404).end();
+      next();
+    });
     app.use(express.static(distPath, { index: false, maxAge: "1h" }));
     app.get("*", asyncRoute(async (req, res) => {
       const match = req.path.match(/^\/s\/([^/]+)\/?$/);
@@ -1028,10 +1112,24 @@ async function start() {
       const title = `${stock.symbol} | ${stock.legal_name} — بورس‌نگار`;
       const description = `قیمت، نمودار، اطلاعیه‌های کدال و تحلیل بنیادی ${stock.symbol}، ${stock.legal_name} در صنعت ${stock.industry || "بازار سرمایه"}`;
       const canonical = `https://boursnegar.ir/s/${encodeURIComponent(stock.symbol)}`;
+      const dataset = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        name: `داده بازار و کدال ${stock.symbol}`,
+        description,
+        url: canonical,
+        creator: { "@type": "Organization", name: "بورس‌نگار" },
+        inLanguage: "fa-IR",
+        variableMeasured: ["قیمت پایانی", "حجم معاملات", "اطلاعیه‌های کدال"],
+      }).replace(/</g, "\\u003c");
       const html = fs.readFileSync(path.join(distPath, "index.html"), "utf8")
         .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
         .replace(/<meta name="description" content="[^"]*"\/>/, `<meta name="description" content="${escapeHtml(description)}"/>`)
-        .replace("</head>", `<link rel="canonical" href="${canonical}"/><meta property="og:type" content="website"/><meta property="og:title" content="${escapeHtml(title)}"/><meta property="og:description" content="${escapeHtml(description)}"/><meta property="og:url" content="${canonical}"/></head>`);
+        .replace(/<link rel="canonical" href="[^"]*"\/>/, `<link rel="canonical" href="${canonical}"/>`)
+        .replace(/<meta property="og:title" content="[^"]*"\/>/, `<meta property="og:title" content="${escapeHtml(title)}"/>`)
+        .replace(/<meta property="og:description" content="[^"]*"\/>/, `<meta property="og:description" content="${escapeHtml(description)}"/>`)
+        .replace(/<meta property="og:url" content="[^"]*"\/>/, `<meta property="og:url" content="${canonical}"/>`)
+        .replace("</head>", `<script type="application/ld+json">${dataset}</script></head>`);
       res.type("html").send(html);
     }));
   }

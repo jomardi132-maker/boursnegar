@@ -12,7 +12,7 @@ import './dashboard.css';
 
 export type User = { id: string; email: string | null; mobile: string | null; role: 'user' | 'admin' | 'comment_moderator'; credits: number };
 type SymbolSuggestion = { symbol: string; legal_name: string; industry: string | null; isin: string };
-type MarketOverview = { catalog: { instruments: number }; prices: { rows: number; instruments: number; from_date: string; to_date: string }; disclosures: { rows: number; issuers: number; updated_at: string | null }; analysis: { analyzed: number } };
+type MarketOverview = { catalog: { instruments: number; core_ready: number; needs_recovery: number }; prices: { rows: number; instruments: number; from_date: string; to_date: string }; disclosures: { rows: number; issuers: number; updated_at: string | null }; analysis: { analyzed: number } };
 const csrfStorage = 'boursnegar_csrf';
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -114,6 +114,11 @@ export function AppProduction() {
         <div className="symbol-search"><form className="search-box" onSubmit={analyze}><Search aria-hidden="true"/><label className="sr-only" htmlFor="symbol">نماد یا نام شرکت</label><input id="symbol" value={query} onChange={(e) => setQuery(e.target.value)} onFocus={()=>setSearchFocused(true)} onBlur={()=>window.setTimeout(()=>setSearchFocused(false),120)} placeholder="نام شرکت یا نماد؛ مثلاً مبارکه، فولاد یا وبملت" required maxLength={80} autoComplete="off" aria-autocomplete="list" aria-expanded={searchFocused&&suggestions.length>0}/><button disabled={loading}>{loading ? <span className="spinner"/> : <>{user?'تحلیل کامل':'مشاهده سهم'} <ArrowLeft /></>}</button></form>{searchFocused&&suggestions.length>0&&<div className="symbol-suggestions" role="listbox">{suggestions.map((item)=><button type="button" role="option" key={item.isin} onMouseDown={()=>window.location.assign(`/s/${encodeURIComponent(item.symbol)}`)}><span><b>{item.symbol}</b><small>{item.legal_name}</small></span><em>{item.industry||'بازار سرمایه'}</em></button>)}</div>}</div>
         {error && <div className="error-state" role="alert">{error}</div>}<div className="trust-line"><ShieldCheck/> تاریخچه بازار از ۱۴۰۴ <span/> اطلاعیه‌های رسمی کدال <span/> بدون عدد ساختگی</div></div>
         <div className="hero-panel"><div className="panel-head"><span>وضعیت زندهٔ پایگاه داده</span><span className="live-dot">متصل</span></div><div className="database-number"><strong>{overview ? overview.catalog.instruments.toLocaleString('fa-IR') : '—'}</strong><span>نماد و ابزار فعال</span></div><div className="database-grid"><div><b>{overview ? overview.prices.rows.toLocaleString('fa-IR') : '—'}</b><small>رکورد قیمت روزانه</small></div><div><b>{overview ? overview.disclosures.rows.toLocaleString('fa-IR') : '—'}</b><small>نسخه اطلاعیه کدال</small></div><div><b>{overview ? overview.prices.instruments.toLocaleString('fa-IR') : '—'}</b><small>نماد با تاریخچه ۱۴۰۴</small></div><div><b>{overview ? overview.analysis.analyzed.toLocaleString('fa-IR') : '—'}</b><small>نسخه تحلیل ثبت‌شده</small></div></div><div className="panel-note">این اعداد مستقیماً از پایگاه دادهٔ عملیاتی بورس‌نگار خوانده می‌شوند.</div></div>
+      </section>
+      <section className="market-context" aria-labelledby="market-context-title">
+        <div className="context-status"><span className="status-pulse" /> <span>پایانهٔ داده فعال</span><small>آخرین همگام‌سازی از منابع ثبت‌شده</small></div>
+        <div className="context-copy"><span className="context-label">زمینهٔ بازار</span><h2 id="market-context-title">قیمت را بدون تاریخچه و منبع تفسیر نمی‌کنیم.</h2><p>اثر توقف بازار، تأخیر گزارش‌ها و پنجرهٔ کشف قیمت در کنار هر تحلیل قابل پیگیری است.</p></div>
+        <div className="context-actions"><a href="#market">اسکرینر بازار <ArrowLeft /></a><a href="#sources">منابع داده <Database /></a></div>
       </section>
       <FundamentalDashboard overview={overview} />
       <MarketExplorer/>

@@ -7,7 +7,7 @@ network context. It writes raw response artifacts plus a resumable manifest;
 Production credentials and databases are never accessed.
 """
 from __future__ import annotations
-import argparse, hashlib, json, os, signal, subprocess, time, urllib.parse, urllib.request
+import argparse, hashlib, json, os, re, signal, subprocess, time, urllib.parse, urllib.request
 from pathlib import Path
 
 STOP = False
@@ -103,9 +103,11 @@ def main():
     p=argparse.ArgumentParser(); p.add_argument('--symbol',action='append',required=True)
     p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True)
     p.add_argument('--out',default='artifacts/browser-codal'); p.add_argument('--port',type=int,default=9222)
-    p.add_argument('--profile',default='.chrome-codal-profile'); p.add_argument('--pause-for-login',action='store_true'); p.add_argument('--download-documents',action='store_true'); p.add_argument('--download-all-documents',action='store_true'); p.add_argument('--professional-documents',action='store_true'); p.add_argument('--excel-only',action='store_true'); p.add_argument('--html-only',action='store_true'); p.add_argument('--defer-pdf',action='store_true'); p.add_argument('--download-timeout',type=float,default=8.0)
+    p.add_argument('--profile',default='.chrome-codal-profile'); p.add_argument('--pause-for-login',action='store_true'); p.add_argument('--download-documents',action='store_true'); p.add_argument('--download-all-documents',action='store_true'); p.add_argument('--professional-documents',action='store_true'); p.add_argument('--document-period-months',type=int,action='append',help='Only download formal notices whose title states one of these periods. Search metadata is retained for all notices.'); p.add_argument('--excel-only',action='store_true'); p.add_argument('--html-only',action='store_true'); p.add_argument('--defer-pdf',action='store_true'); p.add_argument('--download-timeout',type=float,default=8.0)
     args=p.parse_args(); out=Path(args.out); out.mkdir(parents=True,exist_ok=True)
     cp=out/'checkpoint.json'; checkpoint=json.loads(cp.read_text()) if cp.exists() else {'done':{},'errors':[]}
+    checkpoint.setdefault('progress', {})
+    cp.write_text(json.dumps(checkpoint,ensure_ascii=False,indent=2),encoding='utf-8')
     chrome=ChromeCDP(args.port,Path(args.profile)); chrome.start()
     chrome.allow_downloads(out)
     signal.signal(signal.SIGINT,_stop); signal.signal(signal.SIGTERM,_stop)
@@ -130,7 +132,25 @@ def main():
                     f"try{{const r=await fetch('/api/search/v2/q?{query}',{{signal:c.signal}});"
                     f"return await r.text()}}finally{{clearTimeout(t)}}}})()"
                 )
-                raw=chrome.eval(expression)
+                raw = None
+                eval_error = None
+                for attempt in range(3):
+                    try:
+                        raw = chrome.eval(expression)
+                        break
+                    except RuntimeError as exc:
+                        eval_error = exc
+                        if attempt < 2:
+                            # Codal occasionally aborts a page-side fetch while
+                            # the tab is still changing state. Retry in a
+                            # fresh search page before recording a real gap.
+                            time.sleep(1.0 + attempt)
+                            chrome.navigate('https://search.codal.ir/', wait=0.5)
+                if raw is None:
+                    checkpoint['errors'].append({'symbol': symbol, 'page': page,
+                                                 'error': 'page_eval_failed:' + str(eval_error)[:500]})
+                    cp.write_text(json.dumps(checkpoint,ensure_ascii=False,indent=2),encoding='utf-8')
+                    break
                 try:
                     payload=json.loads(raw)
                 except (TypeError,json.JSONDecodeError) as exc:
@@ -138,11 +158,20 @@ def main():
                         no_notices=True
                         checkpoint['done'][key]={'file':None,'records':0,'status':'NO_NOTICES','sha256':None}
                     else:
-                        checkpoint['errors'].append({'symbol':symbol,'page':page,'error':'non_json_response:'+str(exc)[:300]})
+                        # Keep a bounded diagnostic fingerprint.  The full
+                        # response may contain session or page data, so never
+                        # persist it; the prefix is enough to distinguish an
+                        # HTML challenge/proxy page from an API payload.
+                        prefix = re.sub(r'\s+', ' ', str(raw)[:240]).strip() if raw is not None else ''
+                        checkpoint['errors'].append({'symbol':symbol,'page':page,
+                                                     'error':'non_json_response:'+str(exc)[:300],
+                                                     'response_prefix':prefix})
                     cp.write_text(json.dumps(checkpoint,ensure_ascii=False,indent=2),encoding='utf-8')
                     break
                 batch=payload.get('Letters') or []
                 letters.extend(batch)
+                checkpoint['progress'][key]={'page':page,'records':len(letters),'updated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+                cp.write_text(json.dumps(checkpoint,ensure_ascii=False,indent=2),encoding='utf-8')
                 time.sleep(1.0)
                 if len(batch) < 100: break
             path=out/(symbol.replace('/','_')+f'-{args.from_jalali.replace("/","")}-{args.to_jalali.replace("/","")}.jsonl')
@@ -153,6 +182,12 @@ def main():
                     if args.download_documents or args.download_all_documents or args.professional_documents:
                         title=str(letter.get('Title') or '')
                         financial_notice=any(token in title for token in ('صورت', 'مالی', 'فعالیت ماهانه', 'عملکرد ماهانه','ترازنامه','سود','زیان'))
+                        if args.document_period_months:
+                            normalized_title=title.translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹','0123456789'))
+                            stated_periods=[int(value) for value in re.findall(r'دوره\s+(\d+)\s+ماهه',normalized_title)]
+                            if not any(value in args.document_period_months for value in stated_periods):
+                                f.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n')
+                                continue
                         if args.professional_documents:
                             document_kinds=() if args.excel_only else (('html', letter.get('Url'), '.html'),)
                             if financial_notice and not args.html_only: document_kinds += (('excel', letter.get('ExcelUrl'), '.xls'),)
@@ -176,6 +211,45 @@ def main():
                                     if not html: raise RuntimeError('empty HTML document')
                                     target.write_text(html, encoding='utf-8')
                                     row.setdefault('documents',[]).append({'kind':kind,'path':target.name,'sha256':sha(target),'status':200,'symbol':symbol,'tracing_no':str(letter.get('TracingNo') or ''),'title':title,'letter_code':letter.get('LetterCode'),'source':'browser/codal.ir'})
+                                    # Codal renders only the first sheet, while
+                                    # the balance sheet is often available from
+                                    # the same official page through ddlTable.
+                                    # Capture that sheet in the browser context
+                                    # so the importer never has to guess values.
+                                    if financial_notice and not args.excel_only:
+                                        # Capture the balance sheet, income statement and cash-flow
+                                        # tabs separately. Codal often serves only the selected tab.
+                                        sheet_specs=(
+                                            ('0', 'صورت وضعیت مالی', ('جمع دارایی', 'جمع دارايي', 'total_assets')),
+                                            ('1', 'صورت سود و زیان', ('سود', 'زیان', 'net_profit')),
+                                            ('9', 'صورت جریان های نقدی', ('جریان', 'نقد', 'cash_flow')),
+                                        )
+                                        for sheet_code, sheet_title, markers in sheet_specs:
+                                            sheet_target=out/f'{symbol}-{safe}-html-sheet-{sheet_code}.html'
+                                            if not sheet_target.exists():
+                                                chrome.eval(f"""(()=>{{const s=document.querySelector('#ddlTable');if(!s)return false;s.value='{sheet_code}';s.dispatchEvent(new Event('change',{{bubbles:true}}));return true}})()""")
+                                                deadline=time.time()+15
+                                                sheet_html=''
+                                                previous_length=0
+                                                stable_reads=0
+                                                while time.time()<deadline:
+                                                    time.sleep(0.25)
+                                                    sheet_html=chrome.eval("document.documentElement.outerHTML") or ''
+                                                    current_length=len(sheet_html)
+                                                    if current_length == previous_length and current_length > 0:
+                                                        stable_reads += 1
+                                                    else:
+                                                        stable_reads = 0
+                                                    previous_length = current_length
+                                                    # The datasource script can be exposed before its JSON
+                                                    # payload is fully rendered. Require a stable document.
+                                                    if (sheet_title in sheet_html and '</script>' in sheet_html and
+                                                        any(marker in sheet_html for marker in markers) and stable_reads >= 3):
+                                                        break
+                                                if sheet_html and sheet_title in sheet_html and any(marker in sheet_html for marker in markers):
+                                                    sheet_target.write_text(sheet_html,encoding='utf-8')
+                                            if sheet_target.exists() and sheet_target.stat().st_size > 0:
+                                                row.setdefault('documents',[]).append({'kind':f'html-sheet-{sheet_code}','path':sheet_target.name,'sha256':sha(sheet_target),'status':200,'symbol':symbol,'tracing_no':str(letter.get('TracingNo') or ''),'title':title,'letter_code':letter.get('LetterCode'),'source':'browser/codal.ir'})
                                 else:
                                     before={p.name for p in out.iterdir()}
                                     chrome.navigate(url, wait=0.2)

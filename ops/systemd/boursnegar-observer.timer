@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Boursnegar health observer
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=boursnegar-observer.service
+
+[Install]
+WantedBy=timers.target

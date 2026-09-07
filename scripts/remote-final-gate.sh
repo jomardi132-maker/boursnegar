@@ -6,9 +6,9 @@ test "$(sed -n 's/^EMAIL_ENABLED=//p' "$web_env" | tail -1)" = true
 test "$(stat -c '%a' "$web_env")" = 600
 test "$(stat -c '%a' "$data_env")" = 600
 test "$(stat -c '%U:%G' "$data_env")" = root:root
-curl -fsS http://127.0.0.1:3000/readyz | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ready" and d["mail"]=="ready"'
-curl -fsS http://127.0.0.1:8001/health >/dev/null
-curl -fsS https://boursnegar.ir/healthz >/dev/null
+curl --max-time 15 -fsS http://127.0.0.1:3000/readyz | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ready" and d["mail"]=="ready"'
+curl --max-time 15 -fsS http://127.0.0.1:8001/health >/dev/null
+curl --max-time 15 -fsS https://boursnegar.ir/healthz >/dev/null
 systemctl is-active --quiet boursnegar-data-service.service
 pm2 pid bourse-app | grep -Eq '^[1-9][0-9]*$'
 test ! -e /tmp/boursnegar-test-email.input

@@ -9,6 +9,6 @@ User=root
 WorkingDirectory=/var/www/boursnegar-data-current
 EnvironmentFile=/var/www/boursnegar-data-current/.env
 Environment=PYTHONPATH=.
-ExecStart=/var/www/boursnegar-data-current/venv/bin/python scripts/codalpy_remote_import.py --manifest /var/lib/boursnegar/codalpy/manifest.json --symbol * --batch-size 500
+ExecStart=/var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest /var/lib/boursnegar/codalpy/manifest.json --symbol * --batch-size 500
 TimeoutStartSec=6h
 Nice=10

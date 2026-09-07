@@ -238,7 +238,7 @@ def _persist_parsed_metrics(db: Session, report: models.FinancialReport | None, 
         ).first()
         if exists:
             continue
-        statement = "cash_flow" if item_name == "operating_cash_flow" else "balance_sheet" if item_name.startswith("total_") else "income_statement"
+        statement = "cash_flow" if item_name in {"operating_cash_flow", "capital_expenditure", "net_borrowing"} else "balance_sheet" if item_name.startswith("total_") else "income_statement"
         db.add(models.FinancialLineItem(report_id=report.id, statement_type=statement, item_name=item_name, item_value=item_value))
         inserted += 1
     db.commit()
@@ -248,6 +248,17 @@ def _persist_parsed_metrics(db: Session, report: models.FinancialReport | None, 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+    return {"status": "ready"}
 
 
 @app.get("/api/tsetmc/live/{symbol}")
@@ -403,10 +414,54 @@ def _stored_codal_letters(db: Session, symbol: str) -> list[dict]:
 def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tuple[dict, str, dict] | None:
     """Use a validated local v1 financial snapshot before making a Codal request."""
     audited_clause = "AND fp.audited" if report_mode == "audited" else ""
-    annual_clause = "AND fp.length_months = 12" if report_mode == "audited" else ""
     rows = db.execute(text(f"""
+      WITH period_groups AS (
+        SELECT fp.end_date,fp.end_date_jalali,
+               fp.length_months,fp.audited,fp.scope,
+               split_part(d.source_disclosure_id, ':', 1) AS source_tracing_no,
+               coalesce(ind.model_family,'') AS model_family,
+               bool_or(ff.fact_key='nav_per_share' AND ff.normalized_value > 0) AS has_nav,
+               bool_or(ff.fact_key='revenue' AND ff.normalized_value IS NOT NULL) AS has_revenue,
+               bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL) AS has_net_profit,
+               count(DISTINCT ff.fact_key) FILTER (WHERE ff.fact_key IN
+                 ('revenue','net_profit','operating_cash_flow','capital_expenditure','net_borrowing','total_assets',
+                  'total_liabilities','total_equity','eps_basic')
+                 AND ff.normalized_value IS NOT NULL) AS present_core
+        FROM symbol_aliases sa
+        JOIN instruments i ON i.id=sa.instrument_id
+        JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+        JOIN financial_facts ff ON ff.period_id=fp.id
+        JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
+        JOIN disclosures d ON d.id=dv.disclosure_id
+        JOIN issuers iss ON iss.id=i.issuer_id
+        LEFT JOIN industries ind ON ind.id=iss.industry_id
+        WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause}
+          AND ff.quality_status='VALID'
+        GROUP BY fp.end_date,
+                 fp.end_date_jalali,fp.length_months,fp.audited,fp.scope,
+                 split_part(d.source_disclosure_id, ':', 1),ind.model_family
+        HAVING (bool_or(ff.fact_key='revenue' AND ff.normalized_value IS NOT NULL)
+           OR (coalesce(ind.model_family,'')='fund'
+               AND bool_or(ff.fact_key='total_assets' AND ff.normalized_value IS NOT NULL))
+           OR bool_or(ff.fact_key='nav_per_share' AND ff.normalized_value > 0))
+           AND bool_or(ff.fact_key='net_profit' AND ff.normalized_value IS NOT NULL)
+      ), selected_group AS (
+        SELECT * FROM period_groups
+        -- A newer short-period statement can contain only one statement type.
+        -- Prefer the newest period with the complete core set, while joining
+        -- Income and balance facts may be separate Codal notices, but are
+        -- safe to combine only when period, scope and audit status match.
+        ORDER BY has_nav DESC,
+                 (model_family='fund') DESC,
+                 (present_core = 7) DESC,
+                 present_core DESC,
+                 end_date DESC,
+                 CASE WHEN scope='consolidated' THEN 0 ELSE 1 END,
+                 audited DESC
+        LIMIT 1
+      )
       SELECT fp.id AS period_id,d.title,d.source_disclosure_id,d.published_date_jalali,d.scope,
-             fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,
+             fp.end_date,fp.end_date_jalali,fp.length_months,fp.audited,sg.model_family,
              coalesce(dv.metadata->>'excel_url',fr.excel_url) AS excel_url,
              coalesce(dv.metadata->>'detail_url',fr.detail_url) AS detail_url,
              ff.fact_key,ff.normalized_value,
@@ -417,26 +472,14 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
       JOIN financial_facts ff ON ff.period_id=fp.id
       JOIN disclosure_versions dv ON dv.id=fp.disclosure_version_id
       JOIN disclosures d ON d.id=dv.disclosure_id
+      JOIN selected_group sg ON sg.end_date=fp.end_date AND sg.length_months=fp.length_months
+        AND sg.audited=fp.audited AND sg.scope IS NOT DISTINCT FROM fp.scope
+        AND sg.source_tracing_no=split_part(d.source_disclosure_id, ':', 1)
       LEFT JOIN financial_reports fr ON fr.company_id=(SELECT c.id FROM companies c WHERE c.symbol=:symbol LIMIT 1)
         AND fr.tracing_no=split_part(d.source_disclosure_id, ':', 1)
-      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL {audited_clause} {annual_clause}
+      WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
         AND ff.quality_status='VALID'
-        -- A newer interim or subsidiary statement may contain only balance-sheet
-        -- facts. Select a period that can actually support the core analysis.
-        AND EXISTS (
-          SELECT 1 FROM financial_facts revenue_fact
-          WHERE revenue_fact.period_id=fp.id
-            AND revenue_fact.fact_key='revenue'
-            AND revenue_fact.quality_status='VALID'
-            AND revenue_fact.normalized_value IS NOT NULL
-        )
-        AND EXISTS (
-          SELECT 1 FROM financial_facts profit_fact
-          WHERE profit_fact.period_id=fp.id
-            AND profit_fact.fact_key='net_profit'
-            AND profit_fact.quality_status='VALID'
-            AND profit_fact.normalized_value IS NOT NULL
-        )
+        AND (ff.fact_key <> 'nav_per_share' OR ff.normalized_unit='IRR')
       ORDER BY CASE WHEN fp.scope='consolidated' THEN 0 ELSE 1 END,
                fp.end_date DESC,fp.audited DESC,ff.fact_key
     """), {"symbol": symbol}).mappings().all()
@@ -445,25 +488,38 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
     metrics = {key: None for key in (
         "revenue", "cogs", "gross_profit", "operating_profit", "net_profit",
         "eps_basic", "total_assets", "total_liabilities", "total_equity",
-        "operating_cash_flow",
+        "operating_cash_flow", "capital_expenditure", "net_borrowing", "nav_per_share", "units_outstanding",
     )}
+    metric_units = {}
     first = rows[0]
     for row in rows:
-        # Codal often publishes the income statement and balance sheet as
-        # separate disclosures. They may share a period end but have different
-        # period ids; combine only an exact same-date, same-length, same-scope,
-        # same-audit-status set so parent/subsidiary facts never mix.
-        same_financial_period = (
-            row["end_date"] == first["end_date"]
-            and row["length_months"] == first["length_months"]
-            and row["scope"] == first["scope"]
-            and row["audited"] == first["audited"]
-        )
-        if not same_financial_period:
-            continue
         if row["fact_key"] in metrics and row["normalized_value"] is not None:
             metrics[row["fact_key"]] = float(row["normalized_value"])
-    if metrics["revenue"] is None or metrics["net_profit"] is None:
+            metric_units[row["fact_key"]] = row["normalized_unit"]
+    # Fund NAV is sometimes disclosed in a separate net-assets notice with
+    # the same period end. Join that fact explicitly instead of silently
+    # losing it when the selected income statement is a different notice.
+    if first["model_family"] == "fund" and metrics["nav_per_share"] is None:
+        nav = db.execute(text("""
+            SELECT ff.normalized_value, ff.normalized_unit
+            FROM symbol_aliases sa
+            JOIN instruments i ON i.id=sa.instrument_id
+            JOIN financial_periods fp ON fp.issuer_id=i.issuer_id
+            JOIN financial_facts ff ON ff.period_id=fp.id
+            WHERE sa.symbol=:symbol AND sa.valid_to IS NULL
+              AND fp.end_date=:end_date AND fp.length_months=:length
+              AND fp.audited=:audited AND fp.scope IS NOT DISTINCT FROM :scope
+              AND ff.fact_key='nav_per_share' AND ff.quality_status='VALID'
+              AND ff.normalized_unit='IRR'
+              AND ff.normalized_value > 0
+            ORDER BY fp.id DESC LIMIT 1
+        """), {"symbol": symbol, "end_date": first["end_date"],
+               "length": first["length_months"], "audited": first["audited"],
+               "scope": first["scope"]}).mappings().first()
+        if nav:
+            metrics["nav_per_share"] = float(nav["normalized_value"])
+            metric_units["nav_per_share"] = nav["normalized_unit"]
+    if (metrics["revenue"] is None and first["model_family"] != "fund") or metrics["net_profit"] is None:
         return None
     candidate = {
         "Title": first["title"], "TracingNo": first["source_disclosure_id"],
@@ -473,9 +529,18 @@ def _stored_financial_report(db: Session, symbol: str, report_mode: str) -> tupl
         "_period_id": str(first["period_id"]), "_end_date": first["end_date"],
         "_end_date_jalali": first["end_date_jalali"],
         "_length_months": first["length_months"], "_audited": bool(first["audited"]),
+        "_selection_basis": (
+            "latest_complete_core_period"
+            if all(metrics[key] is not None for key in (
+                "revenue", "net_profit", "operating_cash_flow", "total_assets",
+                "total_liabilities", "total_equity", "eps_basic",
+            ))
+            else "latest_available_revenue_profit_period"
+        ),
     }
     return candidate, str(first["excel_url"] or ""), {
         "metrics": metrics,
+        "metric_units": metric_units,
         "found_items": sorted(key for key, value in metrics.items() if value is not None),
         "missing_items": sorted(key for key, value in metrics.items() if value is None),
         "source": "local_codal_financial_facts",
@@ -534,8 +599,13 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
           dp.close AS raw_close,dp.shares_outstanding
         FROM daily_prices dp,target t
         WHERE dp.instrument_id=t.instrument_id AND dp.quality_status='VALID'
+          AND dp.volume>0
         ORDER BY dp.trading_date,dp.retrieved_at DESC
       ), latest AS (SELECT * FROM prices ORDER BY trading_date DESC LIMIT 1),
+      closure_sessions AS (
+        SELECT p.*,row_number() OVER (ORDER BY p.trading_date) AS session_no
+        FROM prices p WHERE p.trading_date>='2026-05-19'
+      ),
       share_series AS (
         SELECT trading_date,shares_outstanding,
           lag(shares_outstanding) OVER(ORDER BY trading_date) previous_shares
@@ -563,12 +633,32 @@ def _stored_analysis_context(db: Session, symbol: str) -> dict:
         (SELECT shares_outstanding FROM prices WHERE shares_outstanding>0 ORDER BY trading_date DESC LIMIT 1) AS latest_shares,
         (SELECT trading_date FROM latest_share_change) AS shares_change_date,
         (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '90 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_90d,
-        (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '365 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_365d
+        (SELECT p.price FROM prices p,latest WHERE p.trading_date<=latest.trading_date-INTERVAL '365 days' ORDER BY p.trading_date DESC LIMIT 1) AS price_365d,
+        (SELECT price FROM prices WHERE trading_date='2026-02-25' LIMIT 1) AS closure_pre_price,
+        (SELECT price FROM closure_sessions WHERE session_no=1) AS closure_post_price,
+        (SELECT price FROM closure_sessions WHERE session_no=5) AS closure_post_price_5,
+        (SELECT price FROM closure_sessions WHERE session_no=10) AS closure_post_price_10,
+        (SELECT price FROM closure_sessions WHERE session_no=20) AS closure_post_price_20
     """), {"symbol": symbol}).mappings().first()
     if not row:
         return {}
     result = dict(row)
     latest = float(result["latest_price"]) if result.get("latest_price") is not None else None
+    closure_pre = result.pop("closure_pre_price", None)
+    closure_post = result.pop("closure_post_price", None)
+    result["market_closure_regime"] = bool(closure_pre is not None and closure_post is not None)
+    result["market_closure_start"] = "2026-02-28"
+    result["market_reopen_date"] = "2026-05-19"
+    result["closure_gap_return_percent"] = (
+        round((float(closure_post) / float(closure_pre) - 1) * 100, 2)
+        if closure_pre not in (None, 0) and closure_post is not None else None
+    )
+    for sessions in (5, 10, 20):
+        post = result.pop(f"closure_post_price_{sessions}", None)
+        result[f"post_reopen_return_{sessions}_sessions_percent"] = (
+            round((float(post) / float(closure_post) - 1) * 100, 2)
+            if closure_post not in (None, 0) and post is not None else None
+        )
     for days in (90, 365):
         previous = result.pop(f"price_{days}d", None)
         result[f"price_return_{days}d_percent"] = (
@@ -792,7 +882,10 @@ def _is_financial_statement(letter: dict) -> bool:
 
 
 def _financial_candidates(letters: list[dict], report_mode: str) -> list[dict]:
-    candidates = [letter for letter in letters if letter.get("HasExcel") and _is_financial_statement(letter)]
+    candidates = [letter for letter in letters
+                  if letter.get("HasExcel")
+                  and _is_financial_statement(letter)
+                  and not codal_excel_parser.has_child_entity_qualifier(letter.get("Title"))]
     if report_mode == "latest_codal":
         return candidates
     return [
@@ -954,11 +1047,28 @@ def analyze_symbol(symbol: str, report_mode: str = "audited", db: Session = Depe
             "publish_datetime": candidate.get("PublishDateTime"),
             "period_end": candidate.get("_end_date_jalali") or candidate.get("_end_date"),
             "period_length_months": candidate.get("_length_months"),
+            "detail_url": candidate.get("Url"),
             "excel_url": excel_url,
+            "selection_basis": candidate.get("_selection_basis"),
         },
         "live_price": live_data,
         "live_price_error": live_error,
         "financial_metrics": parsed["metrics"],
+        "financial_metrics_units": parsed.get("metric_units", {}),
+        # Keep intrinsic inputs explicit and provenance-gated.  At present
+        # official per-unit NAV is the only intrinsic input promoted from
+        # Codal facts; DCF/FCFE assumptions remain absent until sourced.
+        "valuation_inputs": {
+            "nav_per_share": parsed["metrics"].get("nav_per_share"),
+            "fcfe": (
+                parsed["metrics"].get("operating_cash_flow")
+                - abs(parsed["metrics"].get("capital_expenditure"))
+                + parsed["metrics"].get("net_borrowing")
+                if parsed["metrics"].get("operating_cash_flow") is not None
+                and parsed["metrics"].get("capital_expenditure") is not None
+                and parsed["metrics"].get("net_borrowing") is not None else None
+            ),
+        },
         "financial_metrics_found": parsed["found_items"],
         "financial_metrics_missing": parsed["missing_items"],
         "period_comparison": comparison,

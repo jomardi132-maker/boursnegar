@@ -1,10 +1,9 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { AppProduction } from './AppProduction';
+import './stock.css';
+import './production.css';
+import './modern-theme.css';
+import './redesign.css';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><AppProduction /></React.StrictMode>);

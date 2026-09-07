@@ -34,6 +34,27 @@ class OrphanCandidateLinkTest(unittest.TestCase):
         signature = MODULE.report_signature('اطلاعات و صورت‌های مالی تلفیقی دوره ۶ ماهه منتهی به ۱۴۰۴/۱۲/۲۹ (حسابرسی شده)')
         self.assertEqual(signature, ('1404/12/29', 6, True, True, 'financial'))
 
+    def test_document_title_reads_official_title_from_html_workbook(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'نماد-123-excel.xls'
+            path.write_text(
+                '<html><head><title>اطلاعات و صورت‌های مالی تلفیقی دوره ۶ ماهه منتهی به ۱۴۰۴/۱۲/۲۹</title></head></html>',
+                encoding='utf-8',
+            )
+            self.assertIn('تلفیقی', MODULE.document_title(path))
+
+    def test_companion_html_naming_is_deterministic(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'کپرور-1571587-excel.xls'
+            companion = path.with_name('کپرور-1571587-html.html')
+            companion.write_text(
+                '<html><head><title>صورت‌های مالی دوره ۳ ماهه منتهی به ۱۴۰۴/۱۲/۲۹</title></head></html>',
+                encoding='utf-8',
+            )
+            self.assertTrue(companion.exists())
+            self.assertIn('3 ماهه', MODULE.document_title(companion))
+            self.assertIn('3 ماهه', MODULE.resolved_report_title(path, 'کپرور', '1571587'))
+
 
 if __name__ == '__main__':
     unittest.main()

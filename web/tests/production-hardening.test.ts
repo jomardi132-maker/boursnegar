@@ -58,5 +58,48 @@ describe("production hardening contract", () => {
     expect(source).toContain("og:title");
     expect(source).toContain('req.path.match(/^\\/s\\/');
     expect(source).toContain('rel="canonical"');
+    expect(source).toContain('"@type": "Dataset"');
+    expect(source).toContain('replace(/<link rel="canonical"');
+  });
+  it("adds an explicit browser capability policy", () => {
+    expect(source).toContain("Permissions-Policy");
+    expect(source).toContain("camera=(), microphone=(), geolocation=(), payment=()");
+  });
+  it("does not publish production source maps", () => {
+    expect(source).toContain('req.path.endsWith(".map")');
+    expect(source).toContain('return res.status(404).end()');
+  });
+  it("deduplicates concurrent identical comments", () => {
+    expect(source).toContain("pg_advisory_xact_lock");
+    expect(source).toContain("created_at >= now()-interval '10 minutes'");
+    expect(source).toContain("duplicate:true");
+  });
+  it("assesses comments before replying and rewards only constructive content", () => {
+    expect(source).toContain("function assessComment");
+    expect(source).toContain("actionKind !== 'safety_review'");
+    expect(source).toContain("comment_reward");
+    expect(source).toContain("پاسخ خودکار به نظر شما");
+  });
+  it("keeps the automation ledger writable by the application role", () => {
+    expect(fs.readFileSync(path.resolve("migrations/023_comment_automation_permissions.sql"), "utf8")).toContain("GRANT SELECT, INSERT");
+  });
+  it("blocks user-authored replies while retaining internal automation replies", () => {
+    expect(source).toContain("پاسخ مستقیم کاربران غیرفعال است");
+    expect(source).toContain("parentId");
+    const comments = fs.readFileSync(path.resolve("src/components/Comments.tsx"), "utf8");
+    expect(comments).not.toContain("پاسخ به این نظر");
+    expect(comments).not.toContain("<Reply");
+  });
+  it("caps automated rewards, rejects repeated rewarded content, and audits actions", () => {
+    expect(source).toContain("COMMENT_REWARD_DAILY_CAP");
+    expect(source).toContain("COMMENT_REWARD_MONTHLY_CAP");
+    expect(source).toContain("now()-interval '30 days'");
+    expect(source).toContain("comment.automation");
+    expect(source).toContain("reward_credits");
+    expect(source).toContain("comment.reward.manual");
+    expect(source).toContain("comment-automation-failed");
+    expect(source).toContain("FOR UPDATE");
+    expect(source).toContain("requestedReward");
+    expect(source).toContain("grantedReward");
   });
 });

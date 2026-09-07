@@ -57,7 +57,7 @@ export function installPlatformRoutes(app: express.Express) {
     "/api/market/overview",
     asyncRoute(async (_req, res) => {
       const [catalog, prices, disclosures, coverage] = await Promise.all([
-        pool.query(`SELECT count(*)::int AS instruments FROM instruments WHERE active`),
+        pool.query(`WITH facts AS (SELECT fp.issuer_id,count(DISTINCT (fp.end_date,fp.length_months,fp.scope)) FILTER (WHERE ff.quality_status='VALID') AS periods,count(DISTINCT ff.fact_key) FILTER (WHERE ff.quality_status='VALID') AS fact_keys FROM financial_periods fp LEFT JOIN financial_facts ff ON ff.period_id=fp.id GROUP BY fp.issuer_id) SELECT count(DISTINCT i.id)::int AS instruments,count(DISTINCT i.id) FILTER (WHERE coalesce(f.periods,0)>=2 AND coalesce(f.fact_keys,0)>=7)::int AS core_ready,count(DISTINCT i.id) FILTER (WHERE coalesce(f.periods,0)<2 OR coalesce(f.fact_keys,0)<7)::int AS needs_recovery FROM instruments i JOIN issuers iss ON iss.id=i.issuer_id LEFT JOIN facts f ON f.issuer_id=iss.id WHERE i.active`),
         pool.query(`SELECT count(*)::int AS rows,count(DISTINCT instrument_id)::int AS instruments,min(trading_date) AS from_date,max(trading_date) AS to_date FROM daily_prices`),
         pool.query(`SELECT count(*)::int AS rows,count(DISTINCT d.issuer_id)::int AS issuers,max(v.retrieved_at) AS updated_at FROM disclosure_versions v JOIN disclosures d ON d.id=v.disclosure_id`),
         pool.query(`SELECT count(*)::int AS analyzed FROM analytical_snapshots`),
@@ -69,10 +69,10 @@ export function installPlatformRoutes(app: express.Express) {
     "/api/market/dashboard",
     asyncRoute(async (_req, res) => {
       const result = await pool.query(`
-        WITH market_date AS (SELECT max(trading_date) AS value FROM daily_prices WHERE quality_status='VALID'), latest AS (
+        WITH market_date AS (SELECT max(trading_date) AS value FROM daily_prices WHERE quality_status='VALID' AND volume>0), latest AS (
           SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,
             coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count
-          FROM daily_prices p,market_date d WHERE p.quality_status='VALID' AND p.trading_date=d.value
+          FROM daily_prices p,market_date d WHERE p.quality_status='VALID' AND p.volume>0 AND p.trading_date=d.value
           ORDER BY p.instrument_id,p.retrieved_at DESC
         ), market AS (
           SELECT l.*,prev.price AS previous_price,sa.symbol,ir.legal_name
@@ -81,7 +81,7 @@ export function installPlatformRoutes(app: express.Express) {
           JOIN issuers ir ON ir.id=i.issuer_id
           LEFT JOIN industries ind ON ind.id=ir.industry_id
           LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p
-            WHERE p.instrument_id=l.instrument_id AND p.trading_date<l.trading_date AND p.quality_status='VALID'
+            WHERE p.instrument_id=l.instrument_id AND p.trading_date<l.trading_date AND p.quality_status='VALID' AND p.volume>0
             ORDER BY p.trading_date DESC LIMIT 1) prev ON true
           WHERE sa.symbol !~ '[0-9۰-۹]$' AND ir.legal_name NOT LIKE 'ح .%'
             AND coalesce(ind.title_fa,'') <> 'صندوق سرمایه‌گذاری قابل معامله'
@@ -106,9 +106,9 @@ export function installPlatformRoutes(app: express.Express) {
       if (!parsed.success) return res.status(400).json({ success:false,error:"فیلترهای اسکرینر معتبر نیستند." });
       const v=parsed.data; const orderBy:Record<string,string>={value:"value DESC NULLS LAST",return:"return_1m DESC NULLS LAST",volume:"volume DESC NULLS LAST",health:"health_score DESC NULLS LAST",pe:"pe ASC NULLS LAST"};
       const result=await pool.query(`
-        WITH market_dates AS (SELECT max(trading_date) AS latest,(SELECT trading_date FROM (SELECT DISTINCT trading_date FROM daily_prices WHERE quality_status='VALID' ORDER BY trading_date DESC LIMIT 1 OFFSET 49) d) AS cutoff FROM daily_prices WHERE quality_status='VALID'),
-        latest AS (SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date=d.latest ORDER BY p.instrument_id,p.retrieved_at DESC),
-        moving AS (SELECT instrument_id,avg(price) FILTER (WHERE rn<=20) AS ma20,avg(price) FILTER (WHERE rn<=50) AS ma50 FROM (SELECT p.instrument_id,coalesce(p.adjusted_close,p.close) AS price,row_number() OVER (PARTITION BY p.instrument_id ORDER BY p.trading_date DESC) AS rn FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.trading_date>=d.cutoff) recent GROUP BY instrument_id),
+        WITH market_dates AS (SELECT max(trading_date) AS latest,(SELECT trading_date FROM (SELECT DISTINCT trading_date FROM daily_prices WHERE quality_status='VALID' AND volume>0 ORDER BY trading_date DESC LIMIT 1 OFFSET 49) d) AS cutoff FROM daily_prices WHERE quality_status='VALID' AND volume>0),
+        latest AS (SELECT DISTINCT ON (p.instrument_id) p.instrument_id,p.trading_date,p.trading_date_jalali,coalesce(p.adjusted_close,p.close) AS price,p.volume,p.value,p.trade_count FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.volume>0 AND p.trading_date=d.latest ORDER BY p.instrument_id,p.retrieved_at DESC),
+        moving AS (SELECT instrument_id,avg(price) FILTER (WHERE rn<=20) AS ma20,avg(price) FILTER (WHERE rn<=50) AS ma50,avg(CASE WHEN high IS NOT NULL AND low IS NOT NULL AND high>low THEN high-low END) FILTER (WHERE rn<=20) AS atr20 FROM (SELECT p.instrument_id,coalesce(p.adjusted_close,p.close) AS price,p.high,p.low,row_number() OVER (PARTITION BY p.instrument_id ORDER BY p.trading_date DESC) AS rn FROM daily_prices p,market_dates d WHERE p.quality_status='VALID' AND p.volume>0 AND p.trading_date>=d.cutoff) recent GROUP BY instrument_id),
         latest_financial_period AS (SELECT DISTINCT ON (fp.issuer_id) fp.issuer_id,fp.id FROM financial_periods fp ORDER BY fp.issuer_id,fp.end_date DESC,fp.audited DESC,fp.id DESC),
         fact_coverage AS (SELECT lfp.issuer_id,round((count(DISTINCT ff.fact_key) FILTER (WHERE ff.fact_key IN ('revenue','net_profit','operating_cash_flow','total_assets','total_liabilities','total_equity','eps_basic')))::numeric / 7 * 100,2) AS coverage FROM latest_financial_period lfp JOIN financial_facts ff ON ff.period_id=lfp.id AND ff.quality_status='VALID' GROUP BY lfp.issuer_id),
         universe AS (
@@ -142,8 +142,11 @@ export function installPlatformRoutes(app: express.Express) {
             nullif(snap.quality_summary->'valuation'->>'fairValueLow','')::numeric AS fair_value_low,
             nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric AS fair_value_base,
             nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric AS fair_value_high,
+            nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80 AS valuation_buy_zone_high,
+            nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15 AS valuation_sell_zone_low,
             nullif(snap.quality_summary->'valuation'->>'fairValueBase','')::numeric * 0.80 AS buy_zone_high,
             nullif(snap.quality_summary->'valuation'->>'fairValueHigh','')::numeric * 1.15 AS sell_zone_low,
+            'VALUATION_ONLY' AS zone_basis,
             CASE
               WHEN l.price >= moving.ma20 AND moving.ma20 >= moving.ma50 THEN 'UPTREND'
               WHEN l.price < moving.ma20 AND moving.ma20 < moving.ma50 THEN 'DOWNTREND'
@@ -154,8 +157,8 @@ export function installPlatformRoutes(app: express.Express) {
             nullif(snap.quality_summary->'keyMetrics'->>'pe','')::numeric AS pe,
             nullif(snap.quality_summary->'keyMetrics'->>'roe','')::numeric AS roe
           FROM latest l JOIN instruments i ON i.id=l.instrument_id AND i.active JOIN symbol_aliases sa ON sa.instrument_id=i.id AND sa.valid_to IS NULL JOIN issuers ir ON ir.id=i.issuer_id AND ir.active LEFT JOIN industries ind ON ind.id=ir.industry_id
-          LEFT JOIN fact_coverage fc ON fc.issuer_id=ir.issuer_id
-          LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' ORDER BY p.trading_date DESC LIMIT 1) month ON true
+          LEFT JOIN fact_coverage fc ON fc.issuer_id=ir.id
+          LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' AND p.volume>0 ORDER BY p.trading_date DESC LIMIT 1) month ON true
           LEFT JOIN moving ON moving.instrument_id=l.instrument_id
           LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
           WHERE sa.symbol !~ '[0-9۰-۹]$' AND ir.legal_name NOT LIKE 'ح .%'
@@ -163,8 +166,30 @@ export function installPlatformRoutes(app: express.Express) {
         ), filtered AS (SELECT * FROM universe WHERE ($1='' OR symbol ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%') AND ($2='' OR industry=$2) AND ($3='' OR decision=$3) AND ($4::numeric IS NULL OR return_1m >= $4) AND ($5::numeric IS NULL OR pe <= $5) AND ($6::numeric IS NULL OR roe >= $6) AND ($7::numeric IS NULL OR volume >= $7) AND ($8='' OR ($8='above_ma20' AND price>ma20) OR ($8='above_ma50' AND price>ma50)))
         SELECT *,count(*) OVER()::int AS total FROM filtered ORDER BY ${orderBy[v.sort]},symbol LIMIT 50 OFFSET $9`,[v.q,v.industry,v.decision,v.minReturn??null,v.maxPe??null,v.minRoe??null,v.minVolume??null,v.trend,(v.page-1)*50]);
       const industries=await pool.query(`SELECT title_fa FROM industries WHERE title_fa<>'صندوق سرمایه‌گذاری قابل معامله' ORDER BY title_fa`);
+      const rows = result.rows.map((row) => {
+        const anomalies: string[] = [];
+        const limits: Record<string, number> = { roe: 1000, pe: 10000 };
+        const sanitized = { ...row };
+        for (const [name, limit] of Object.entries(limits)) {
+          const value = Number(row[name]);
+          if (Number.isFinite(value) && Math.abs(value) > limit) {
+            anomalies.push(`${name}:abs>${limit}`);
+            sanitized[name] = null;
+          }
+        }
+        if (anomalies.length) {
+          sanitized.decision = "INSUFFICIENT_DATA";
+          sanitized.action_state = "DATA_REVIEW";
+          sanitized.fundamental_strength = "UNKNOWN";
+          sanitized.review_signal = "INCOMPLETE_EVIDENCE";
+          sanitized.confidence = null;
+          sanitized.ratio_quality = "INVALID";
+          sanitized.ratio_anomalies = anomalies;
+        }
+        return sanitized;
+      });
       res.set("Cache-Control","public, max-age=30, stale-while-revalidate=120");
-      res.json({success:true,rows:result.rows,total:result.rows[0]?.total??0,page:v.page,industries:industries.rows.map(row=>row.title_fa)});
+      res.json({success:true,rows,total:rows[0]?.total??0,page:v.page,industries:industries.rows.map(row=>row.title_fa)});
     }),
   );
   app.get(
@@ -233,9 +258,13 @@ export function installPlatformRoutes(app: express.Express) {
       if (!symbol.success) return res.status(400).json({ success: false, error: "نماد معتبر نیست." });
       const profile = await pool.query(
         `SELECT i.id AS instrument_id,sa.symbol,i.isin,i.market_instrument_id,
-                ir.legal_name,ind.title_fa AS industry,ind.model_family
+                ir.legal_name,ind.title_fa AS industry,ind.model_family,
+                ip.official_website_url,ip.logo_url,ip.source_type AS profile_source_type,
+                ip.source_reference AS profile_source_reference,ip.evidence_checksum AS profile_evidence_checksum,
+                ip.verified_at AS profile_verified_at
          FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id
          JOIN issuers ir ON ir.id=i.issuer_id LEFT JOIN industries ind ON ind.id=ir.industry_id
+         LEFT JOIN issuer_profiles ip ON ip.issuer_id=ir.id AND ip.status='VERIFIED'
          WHERE sa.symbol=$1 AND sa.valid_to IS NULL AND i.active LIMIT 1`,
         [symbol.data],
       );
@@ -244,7 +273,7 @@ export function installPlatformRoutes(app: express.Express) {
       const [history, disclosureRows, legacyDisclosureRows, snapshot, rahavard, peers] = await Promise.all([
         pool.query(
           `SELECT trading_date,trading_date_jalali,open,high,low,close,last,adjusted_close,volume,value,trade_count,quality_status
-           FROM daily_prices WHERE instrument_id=$1 ORDER BY trading_date DESC LIMIT 420`,
+           FROM daily_prices WHERE instrument_id=$1 AND quality_status='VALID' AND volume>0 ORDER BY trading_date DESC LIMIT 420`,
           [stock.instrument_id],
         ),
         pool.query(
@@ -274,7 +303,12 @@ export function installPlatformRoutes(app: express.Express) {
                   s.quality_summary->'valuation'->>'fairValueLow' AS scenario_low,
                   s.quality_summary->'valuation'->>'fairValueBase' AS scenario_base,
                   s.quality_summary->'valuation'->>'fairValueHigh' AS scenario_high,
-                  s.quality_summary->'valuation'->>'method' AS valuation_method
+                  s.quality_summary->'valuation'->>'method' AS valuation_method,
+                  s.quality_summary->'valuation'->>'basisPerShare' AS valuation_basis_per_share,
+                  s.quality_summary->'valuation'->'assumptions'->>'basisSource' AS valuation_basis_source,
+                  s.quality_summary->'valuation'->'assumptions'->>'multiple' AS valuation_multiple,
+                  s.quality_summary->'valuationGate'->>'status' AS valuation_gate_status,
+                  s.quality_summary->'valuationGate'->>'reason' AS valuation_gate_reason
            FROM analytical_snapshots s
            LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
            LEFT JOIN health_score_results h ON h.snapshot_id=s.id
@@ -286,7 +320,7 @@ export function installPlatformRoutes(app: express.Express) {
         pool.query(
           `WITH latest_price AS (
              SELECT DISTINCT ON (p.instrument_id) p.instrument_id,coalesce(p.adjusted_close,p.close) AS price
-             FROM daily_prices p WHERE p.quality_status='VALID' ORDER BY p.instrument_id,p.trading_date DESC,p.retrieved_at DESC
+             FROM daily_prices p WHERE p.quality_status='VALID' AND p.volume>0 ORDER BY p.instrument_id,p.trading_date DESC,p.retrieved_at DESC
            ), latest_snapshot AS (
              SELECT DISTINCT ON (s.instrument_id) s.instrument_id,s.quality_summary,r.decision
              FROM analytical_snapshots s LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
@@ -323,7 +357,22 @@ export function installPlatformRoutes(app: express.Express) {
         .map((row) => ({ ...row, detail_url: row.detail_url || `https://codal.ir/ReportList.aspx?search&Symbol=${encodeURIComponent(stock.symbol)}` }))
         .slice(0, 16);
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-      res.json({ success: true, stock: { ...stock, instrument_id: undefined }, latest, returns, prices, disclosures, rahavardReports:rahavard.rows, snapshot: snapshot.rows[0] ?? null, peers: peers.rows });
+      const { instrument_id: _instrumentId, official_website_url, logo_url, profile_source_type, profile_source_reference, profile_evidence_checksum, profile_verified_at, ...stockPublic } = stock;
+      res.json({
+        success: true,
+        stock: {
+          ...stockPublic,
+          issuerProfile: official_website_url || logo_url ? {
+            officialWebsiteUrl: official_website_url,
+            logoUrl: logo_url,
+            sourceType: profile_source_type,
+            sourceReference: profile_source_reference,
+            evidenceChecksum: profile_evidence_checksum,
+            verifiedAt: profile_verified_at,
+          } : null,
+        },
+        latest, returns, prices, disclosures, rahavardReports:rahavard.rows, snapshot: snapshot.rows[0] ?? null, peers: peers.rows
+      });
     }),
   );
   app.get("/api/stocks/:symbol/follow",requireUser,asyncRoute(async(req,res)=>{const row=await pool.query(`SELECT 1 FROM stock_follows WHERE user_id=$1 AND symbol=$2`,[req.authUser!.id,req.params.symbol]);res.json({success:true,following:Boolean(row.rowCount)});}));

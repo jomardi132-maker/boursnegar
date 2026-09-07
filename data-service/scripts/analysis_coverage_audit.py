@@ -29,6 +29,7 @@ WITH period_coverage AS (
   SELECT instrument_id,count(*) corporate_actions FROM corporate_actions GROUP BY instrument_id
 ), symbol_coverage AS (
   SELECT sa.symbol,COALESCE(ind.title_fa,'نامشخص') industry,
+    COALESCE(ind.model_family,'') model_family,
     COALESCE(pc.periods,0) periods,COALESCE(pc.facts,0) facts,
     COALESCE(dc.monthly_disclosures,0) monthly_disclosures,
     COALESCE(ac.corporate_actions,0) corporate_actions
@@ -114,6 +115,8 @@ SELECT
   ls.confidence latest_confidence,
   ls.calculated_at latest_calculated_at,
   CASE
+    WHEN COALESCE(ind.title_fa,'') LIKE '%صندوق سرمایه‌گذاری قابل معامله%'
+      OR COALESCE(ind.title_fa,'') LIKE '%صندوق سرمایه گذاری قابل معامله%' THEN 'FUND_MODEL_REQUIRED'
     WHEN ca.symbol IS NULL THEN 'NO_CURRENT_ALIAS'
     WHEN COALESCE(pc.valid_periods,0) < 2 THEN 'MISSING_COMPARABLE_PERIODS'
     WHEN COALESCE(pc.valid_fact_keys,0) < 7 THEN 'MISSING_CORE_FACTS'

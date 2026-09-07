@@ -4,6 +4,29 @@ from app.analytics.snapshot_v2 import build_snapshot_payload
 
 
 class SnapshotV2Tests(unittest.TestCase):
+    def test_fund_uses_explicit_nav_gate_instead_of_company_valuation(self):
+        payload = build_snapshot_payload({
+            "symbol": "صندوق",
+            "report_used": {"title": "گزارش فعالیت ماهانه"},
+            "live_price": {
+                "last_price": 1000,
+                "market_category": "صندوق سرمایه‌گذاری قابل معامله",
+                "eps": 200,
+                "total_shares": 1_000_000,
+            },
+            "financial_metrics": {
+                "revenue": 100, "net_profit": 20, "operating_cash_flow": 15,
+                "total_assets": 300, "total_liabilities": 100,
+                "total_equity": 200, "eps_basic": 20,
+            },
+        }, "latest_codal")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+        self.assertEqual(payload["analysisState"], "FUND_MODEL_REQUIRED")
+        self.assertEqual(payload["dataStatus"], "FUND_MODEL_REQUIRED")
+        self.assertIsNone(payload["valuation"])
+        self.assertEqual(payload["fundModel"]["status"], "REQUIRED")
+        self.assertIn("official_nav_or_net_asset_value", payload["fundModel"]["requiredEvidence"])
+
     def test_missing_official_benchmarks_and_industry_model_are_insufficient(self):
         raw = {
             "symbol": "فولاد",
@@ -36,6 +59,24 @@ class SnapshotV2Tests(unittest.TestCase):
         )
         self.assertEqual(len(payload["payloadChecksum"]), 64)
 
+    def test_official_detail_url_is_preferred_over_excel_fallback(self):
+        payload = build_snapshot_payload(
+            {
+                "symbol": "نماد",
+                "report_used": {
+                    "title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده",
+                    "detail_url": "https://codal.ir/Reports/Decision.aspx?LetterSerial=abc",
+                    "excel_url": "https://excel.codal.ir/service/Excel/GetAll/abc/0",
+                },
+                "financial_metrics": {"revenue": 100, "net_profit": 20},
+            },
+            "audited",
+        )
+        self.assertEqual(
+            payload["sourceLineage"]["codalDocument"],
+            "https://codal.ir/Reports/Decision.aspx?LetterSerial=abc",
+        )
+
     def test_missing_metrics_reduce_coverage_without_becoming_zero_values(self):
         payload = build_snapshot_payload(
             {
@@ -49,6 +90,27 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertGreater(payload["dataCoverage"], 0)
         self.assertLess(payload["dataCoverage"], 30)
         self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+
+    def test_anomalous_ratios_are_removed_and_block_decision(self):
+        raw = {
+            "symbol": "نمونه",
+            "financial_metrics": {
+                "revenue": 1000, "net_profit": 1600, "operating_cash_flow": 100,
+                "total_assets": 5000, "total_liabilities": 1000, "total_equity": 1,
+                "eps_basic": 10,
+            },
+            "ratios": {
+                "roe_percent": 160000, "roa_percent": 32, "net_margin_percent": 160,
+                "debt_ratio_percent": 20, "cash_to_profit_ratio_percent": 6.25,
+                "pe_ratio": 4,
+            },
+            "live_price": {"last_price": 100, "eps": 10, "total_shares": 1000000, "market_category": "محصولات شیمیایی"},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+        self.assertEqual(payload["ratioQuality"], "INVALID")
+        self.assertIn("roe_percent:abs>1000", payload["ratioAnomalies"])
+        self.assertIsNone(payload["keyMetrics"]["roe"])
 
     def test_financial_history_is_exposed_without_inventing_missing_cash_flow(self):
         history = [{
@@ -146,6 +208,24 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
         self.assertEqual(payload["analysisState"], "MARKET_FUNDAMENTAL_DIVERGENCE")
         self.assertTrue(any("نتیجه قطعی" in reason for reason in payload["reasons"]))
+
+    def test_market_closure_regime_caps_confidence_and_blocks_decision(self):
+        raw = {
+            "symbol": "توقف", "company_name": "نمونه توقف بازار",
+            "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 1000, "market_category": "فلزات اساسی", "eps": 100},
+            "financial_metrics": {"revenue": 2000, "net_profit": 200, "operating_cash_flow": 180,
+                "total_assets": 3000, "total_liabilities": 1000, "total_equity": 2000, "eps_basic": 100},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": 10, "operating_margin_percent": 15, "debt_ratio_percent": 33,
+                "cash_to_profit_ratio_percent": 90, "pe_ratio": 10},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+            "analysis_context": {"market_closure_regime": True, "closure_gap_return_percent": -8.5},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["analysisState"], "MARKET_CLOSURE_REGIME")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+        self.assertLessEqual(payload["confidence"], 60)
 
     def test_real_growth_and_profit_improvement_marks_turnaround_candidate(self):
         raw = {

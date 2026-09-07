@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app.ingestion.market_history import model_family
 from app.analytics.period_comparison import build_period_comparison
 from app.analytics.ttm import build_ttm_metrics
-from app.services.codal_excel_parser import extract_period_end_jalali
+from app.services.codal_excel_parser import extract_period_end_jalali, parse_financial_statement
 
 
 class DataServiceContractTests(unittest.TestCase):
@@ -88,6 +88,48 @@ class DataServiceContractTests(unittest.TestCase):
         self.assertNotIn('datetime.date.today()', source)
         self.assertNotIn('"years": [1404, 1405]', source)
 
+    def test_utf8_persian_html_labels_are_not_decoded_as_mojibake(self):
+        html = """
+        <table>
+          <tr><td>درآمدهای عملیاتی</td><td>100</td></tr>
+          <tr><td>بهای تمام‌شده درآمدهای عملیاتی</td><td>(20)</td></tr>
+          <tr><td>سود (زیان) ناخالص</td><td>80</td></tr>
+          <tr><td>سود (زیان) عملیاتی</td><td>70</td></tr>
+          <tr><td>سود (زیان) خالص</td><td>50</td></tr>
+          <tr><td>سود (زیان) پایه هر سهم</td><td>10</td></tr>
+        </table>
+        """.encode("utf-8")
+        parsed = parse_financial_statement(html)
+        self.assertEqual(parsed["metrics"]["revenue"], 100)
+        self.assertEqual(parsed["metrics"]["net_profit"], 50)
+        self.assertIn("eps_basic", parsed["found_items"])
+
+    def test_malformed_legacy_table_does_not_hide_usable_tables(self):
+        html = """
+        <table><tr><td></td></tr></table>
+        <table>
+          <tr><td>درآمدهای عملیاتی</td><td>100</td></tr>
+          <tr><td>بهای تمام‌شده درآمدهای عملیاتی</td><td>(20)</td></tr>
+          <tr><td>سود (زیان) ناخالص</td><td>80</td></tr>
+          <tr><td>سود (زیان) خالص</td><td>50</td></tr>
+        </table>
+        """.encode("utf-8")
+        parsed = parse_financial_statement(html)
+        self.assertEqual(parsed["metrics"]["revenue"], 100)
+        self.assertEqual(parsed["metrics"]["net_profit"], 50)
+
+    def test_side_by_side_balance_sheet_labels_are_extracted(self):
+        html = """
+        <table>
+          <tr><td>جمع دارایی‌ها</td><td>516</td><td>جمع بدهی ها</td><td>445</td></tr>
+          <tr><td>جمع حقوق مالکانه</td><td>71</td><td>جمع دارایی‌ها</td><td>516</td></tr>
+        </table>
+        """.encode("utf-8")
+        parsed = parse_financial_statement(html)
+        self.assertEqual(parsed["metrics"]["total_assets"], 516)
+        self.assertEqual(parsed["metrics"]["total_liabilities"], 445)
+        self.assertEqual(parsed["metrics"]["total_equity"], 71)
+
     def test_analysis_uses_provenance_cache_when_codal_is_throttled(self):
         source = self.root.joinpath("app", "main.py").read_text(encoding="utf-8")
         self.assertIn("def _stored_codal_letters", source)
@@ -139,7 +181,7 @@ class DataServiceContractTests(unittest.TestCase):
         source = self.root.joinpath("scripts", "codalpy_remote_import.py").read_text(encoding="utf-8")
         self.assertNotIn("from codalpy", source)
         self.assertIn("pg_try_advisory_xact_lock", source)
-        self.assertIn("ON CONFLICT(source,source_action_id) DO NOTHING", source)
+        self.assertIn("ON CONFLICT(source,source_action_id) DO UPDATE SET", source)
 
     def test_daily_market_adjustment_and_fingerprint_are_deterministic(self):
         path = self.root.joinpath("scripts", "update_market_daily.py")
@@ -152,6 +194,8 @@ class DataServiceContractTests(unittest.TestCase):
         first = [{"id": "2", "l18": "ب", "pc": 20, "py": 19, "pl": 20, "tvol": 2, "tval": 40, "tno": 1},
                  {"id": "1", "l18": "الف", "pc": 10, "py": 9, "pl": 10, "tvol": 1, "tval": 10, "tno": 1}]
         self.assertEqual(module.market_fingerprint(first), module.market_fingerprint(list(reversed(first))))
+        self.assertTrue(module.catalog_coverage_ok(1346, 1613, 1000))
+        self.assertFalse(module.catalog_coverage_ok(1200, 1613, 1000))
 
     def test_corporate_action_sync_only_promotes_registered_notices(self):
         source = self.root.joinpath("scripts", "sync_corporate_action_notices.py").read_text(encoding="utf-8")

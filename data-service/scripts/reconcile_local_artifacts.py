@@ -76,7 +76,7 @@ def imported_by_checksum(db: sqlite3.Connection) -> dict[str, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--db', default='artifacts/local-ingestion.sqlite3')
+    parser.add_argument('--db', default='data-service/artifacts/local-ingestion.sqlite3')
     parser.add_argument('--root', action='append', required=True)
     args = parser.parse_args()
     db = sqlite3.connect(Path(args.db).resolve())

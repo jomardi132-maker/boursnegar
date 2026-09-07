@@ -16,6 +16,26 @@ def sha256(path):
  with path.open('rb') as f:
   for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
  return h.hexdigest()
+
+def _record_preference(record):
+ """Prefer the workbook extraction when one Codal cell has two renderings."""
+ payload = record.get('payload') or {}
+ document = str(payload.get('document') or '').lower()
+ return (document.endswith(('.xls', '.xlsx')), document, json.dumps(record, sort_keys=True, ensure_ascii=False))
+
+def _standard_records(path):
+ """Collapse repeated source actions before importing standard facts."""
+ records = {}
+ for line in path.open(encoding='utf-8'):
+  record = json.loads(line)
+  if record.get('output_type') == 'monthly_activity' or not record.get('fact_key'):
+   records[(len(records), record.get('source_action_id'))] = record
+   continue
+  key = record.get('source_action_id')
+  previous = records.get(key)
+  if previous is None or _record_preference(record) > _record_preference(previous):
+   records[key] = record
+ return list(records.values())
 def main():
  p=argparse.ArgumentParser(); p.add_argument('--manifest',required=True); p.add_argument('--batch-size',type=int,default=500); p.add_argument('--symbol',default='دکوثر'); args=p.parse_args()
  manifest_path=Path(args.manifest); manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
@@ -42,11 +62,12 @@ def main():
    if not path.exists(): path=manifest_path.parent / path
    expected=item.get('sha256')
    if not path.exists() or sha256(path) != expected: invalid.append({'file':str(path),'error':'checksum'}); continue
-   with path.open(encoding='utf-8') as f:
-    for line in f:
-     record=json.loads(line); required=('source','symbol','from_jalali','to_jalali','output_type','source_action_id','source_label','value','payload')
+   for record in _standard_records(path):
+    if record.get('source_action_id') is not None:
+     required=('source','symbol','from_jalali','to_jalali','output_type','source_action_id','source_label','value','payload')
      if any(k not in record for k in required) or record['source'] != manifest_source: invalid.append({'file':str(path),'error':'record schema'}); continue
-     inserted += db.execute(text("""INSERT INTO codalpy_records(source,symbol,output_type,source_action_id,tracing_no,period_end_jalali,fact_key,source_label,value,raw_value,unit,payload) VALUES(:source,:symbol,:output_type,:source_action_id,:tracing_no,:period_end_jalali,:fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb)) ON CONFLICT(source,source_action_id) DO NOTHING"""), {**record,'payload':json.dumps(record['payload'],ensure_ascii=False)}).rowcount
+     record_result = db.execute(text("""INSERT INTO codalpy_records(source,symbol,output_type,source_action_id,tracing_no,period_end_jalali,fact_key,source_label,value,raw_value,unit,payload) VALUES(:source,:symbol,:output_type,:source_action_id,:tracing_no,:period_end_jalali,:fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb)) ON CONFLICT(source,source_action_id) DO UPDATE SET symbol=excluded.symbol,output_type=excluded.output_type,tracing_no=excluded.tracing_no,period_end_jalali=excluded.period_end_jalali,fact_key=excluded.fact_key,source_label=excluded.source_label,value=excluded.value,raw_value=excluded.raw_value,unit=excluded.unit,payload=excluded.payload RETURNING (xmax = 0) AS was_inserted"""), {**record,'payload':json.dumps(record['payload'],ensure_ascii=False)})
+     inserted += int(bool(record_result.scalar()))
      if record.get('output_type') != 'monthly_activity' and record.get('fact_key') and record.get('period_end_jalali') and record.get('from_jalali'):
       issuer = db.execute(text("SELECT i.id AS instrument_id,i.issuer_id FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id WHERE sa.symbol=:symbol AND sa.valid_to IS NULL"), {'symbol':record['symbol']}).mappings().first()
       if not issuer: continue
@@ -58,7 +79,7 @@ def main():
       end_date=jalali_to_gregorian(y,m,d)
       sy,sm,sd=[int(x) for x in record['from_jalali'].split('/')]
       start_date=jalali_to_gregorian(sy,sm,sd)
-      length=months_between(record['from_jalali'],record['period_end_jalali'])
+      length=int(record.get('period_length_months') or months_between(record['from_jalali'],record['period_end_jalali']))
       period=db.execute(text("""INSERT INTO financial_periods(issuer_id,period_type,start_date,end_date,start_date_jalali,end_date_jalali,length_months,fiscal_year,audited,scope,disclosure_version_id) VALUES(:issuer,'interim',:start_date,:end_date,:start,:period,:length,:year,:audited,:scope,:version) ON CONFLICT(issuer_id,end_date,length_months,audited,scope,disclosure_version_id) DO UPDATE SET end_date=excluded.end_date RETURNING id"""), {'issuer':issuer['issuer_id'],'start_date':start_date,'end_date':end_date,'start':record['from_jalali'],'period':record['period_end_jalali'],'length':length,'year':y,'audited':audited,'scope':scope,'version':version}).scalar_one()
       parser_name='codal_browser_excel' if record['source']=='browser/codal.ir' else 'codalpy'
       parser_version='v2' if record['source']=='browser/codal.ir' else '0.4.5'

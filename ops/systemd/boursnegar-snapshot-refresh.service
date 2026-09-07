@@ -1,0 +1,14 @@
+[Unit]
+Description=Refresh snapshots for symbols with recent Codal evidence
+After=boursnegar-codal-financials.service boursnegar-data-service.service
+Wants=boursnegar-data-service.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/boursnegar-data-current
+EnvironmentFile=/var/www/boursnegar-data-current/.env
+Environment=PYTHONPATH=.
+ExecStart=/var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/refresh_recent_snapshots.py --hours 48
+TimeoutStartSec=3h
+Nice=10
