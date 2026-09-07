@@ -9,7 +9,7 @@
 ## وضعیت تثبیت‌شده در 2026-09-07
 
 - Production در `/healthz` سالم و در `/readyz` آماده است؛ PM2 برنامهٔ وب آنلاین است.
-- data-service فعال از release `/var/www/boursnegar-data-releases/20260907T181233Z-main-f2b6240d0` اجرا می‌شود؛ rollback فوری `/var/www/boursnegar-data-releases/20260907T123202Z-main-80c5f3796` است.
+- data-service فعال از release `/var/www/boursnegar-data-releases/20260907T184251Z-main-fdcec7067-sync` اجرا می‌شود؛ rollback فوری `/var/www/boursnegar-data-releases/20260907T183731Z-main-fdcec7067` است.
 - دیتابیس Production حدود 3.3 GB است. جدول خام `codalpy_records` حدود 2.8 GB از آن را تشکیل می‌دهد.
 - دیتابیس canonical لوکال فقط `data-service/artifacts/local-ingestion.sqlite3` است و `PRAGMA quick_check=ok` دارد.
 - `artifacts/local-ingestion.sqlite3` یک snapshot قدیمی و غیرcanonical است؛ حذف نشود، اما هیچ workflow پیش‌فرضی نباید از آن استفاده کند.
@@ -67,7 +67,7 @@ idempotent و health/readiness نیاز دارد.
 
 1. backtest بیست‌جلسه‌ای: 13 نمونهٔ واقعی از حداقل 30؛ فعلاً به تصمیم کاربر deferred است.
 2. `339` صندوق بدون NAV معتبر: فقط با evidence رسمی تازه و تطبیق issuer/period/source/unit؛ صف NAV-only بسته است.
-3. FCFE/DCF: تا وجود OCF، CapEx، net borrowing و نرخ‌های هم‌دوره `INSUFFICIENT_DATA` بماند.
+3. FCFE/DCF: فولاد OCF، CapEx و net borrowing هم‌دوره دارد، اما cost of equity و terminal growth مستند کل Production صفرند؛ تا ورود نرخ رسمی `INSUFFICIENT_DATA` بماند.
 4. زنجیرهٔ collector تا promotion زمان‌بندی‌شده هنوز عمداً جدا و backup-gated است.
 5. جدول خام `codalpy_records` بزرگ است، اما تا تدوین retention مبتنی بر provenance حذف یا فشرده نمی‌شود.
 

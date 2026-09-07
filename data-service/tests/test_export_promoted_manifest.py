@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    'export_manifest', ROOT / 'data-service' / 'scripts' / 'export_promoted_remote_manifest.py'
+    'export_manifest', ROOT / 'scripts' / 'export_promoted_remote_manifest.py'
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

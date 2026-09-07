@@ -4,15 +4,15 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("promote_evidence", ROOT / "data-service/scripts/promote_evidence.py")
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("promote_evidence", ROOT / "scripts/promote_evidence.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
 class PromoteEvidenceUnitGateTests(unittest.TestCase):
     def test_standard_import_does_not_force_notice_only_symbol_wildcard(self):
-        source = (ROOT / "data-service/scripts/promote_evidence.py").read_text(encoding="utf-8")
+        source = (ROOT / "scripts/promote_evidence.py").read_text(encoding="utf-8")
         self.assertNotIn("codalpy_remote_import.py --manifest {remote_manifest} --symbol '*'", source)
 
     def test_nav_irr_is_accepted(self):

@@ -3,10 +3,10 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
     "reconcile_public_gate_registry",
-    ROOT / "data-service" / "scripts" / "reconcile_public_gate_registry.py",
+    ROOT / "scripts" / "reconcile_public_gate_registry.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
