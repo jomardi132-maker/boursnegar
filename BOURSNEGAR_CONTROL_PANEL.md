@@ -12,6 +12,8 @@
 - `artifacts/local-ingestion.sqlite3` یک snapshot قدیمی و غیرcanonical است؛ حذف نشود، اما هیچ workflow پیش‌فرضی نباید از آن استفاده کند.
 - artifactهای محلی evidence هستند و زیر `data-service/artifacts/` نگهداری می‌شوند؛ Git آن‌ها را track نمی‌کند.
 - سه timer کاربر فعال‌اند: collector محلی، coverage audit و backup-retention check.
+- alert worker سرور artifact معتبر دارد و timer آن بدون خطا اجرا می‌شود؛ feature و SMS همچنان عمداً خاموش‌اند.
+- فقط آخرین coverage/retention cycle در مسیر فعال می‌ماند؛ cycleهای دستی تکراری 2026-09-06 زیر `data-service/artifacts/archive/repeated-manual-cycles-20260906/` نگهداری می‌شوند.
 
 ## تنها workflow روزانه
 
@@ -59,6 +61,7 @@ idempotent و health/readiness نیاز دارد.
 2. موارد REVIEW صندوق‌ها: فقط با evidence رسمی و تطبیق issuer/period/source/unit.
 3. FCFE/DCF: تا وجود OCF، CapEx، net borrowing و نرخ‌های هم‌دوره `INSUFFICIENT_DATA` بماند.
 4. زنجیرهٔ collector تا promotion زمان‌بندی‌شده هنوز عمداً جدا و backup-gated است.
+5. جدول خام `codalpy_records` بزرگ است، اما تا تدوین retention مبتنی بر provenance حذف یا فشرده نمی‌شود.
 
 ## قانون توقف
 
