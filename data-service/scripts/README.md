@@ -24,6 +24,7 @@
 - `promote_notice_events.py` — promotion رویداد با manifest معتبر.
 - `recalculate_local_coverage.py` — محاسبهٔ coverage در mirror محلی.
 - `reconcile_local_artifacts.py` — inventory محلی بدون download.
+- `sync_server_to_local.py` — بازیابی read-only رکوردهای VALID سرور همراه lineage و checksum به mirror محلی؛ write فقط با `--apply` و پس از backup معتبر.
 - `refresh_internal_snapshots.py` — refresh فقط از evidence واردشده.
 - `refresh_recent_snapshots.py` — refresh محدود به evidence تازه.
 

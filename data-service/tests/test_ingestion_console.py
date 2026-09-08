@@ -10,6 +10,12 @@ def test_console_uses_canonical_local_database_and_artifact_root():
     assert str(DEFAULT_RUN_ROOT).endswith("data-service/artifacts/auto-sync")
 
 
+def test_remote_coverage_counts_distinct_fact_keys_like_local_coverage():
+    source = (Path(__file__).parents[1] / "scripts" / "ingestion_console.py").read_text(encoding="utf-8")
+    assert "count(DISTINCT ff.fact_key)" in source
+    assert "count(DISTINCT ff.id)" not in source
+
+
 def test_plan_is_read_only_and_full_mode_has_explicit_write_gates(tmp_path):
     common = dict(
         db=tmp_path / "local.sqlite3",
