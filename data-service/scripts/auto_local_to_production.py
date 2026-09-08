@@ -13,9 +13,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
 DEFAULT_RUN_ROOT = ROOT / 'data-service' / 'artifacts' / 'auto-sync'
+DEFAULT_ARTIFACT_ROOT = ROOT / 'data-service' / 'artifacts'
+DEFAULT_LOCAL_BACKUP_ROOT = DEFAULT_ARTIFACT_ROOT / 'backups'
 
 def run(cmd, *, cwd=ROOT, timeout=600, capture=False):
-    print(json.dumps({'step': ' '.join(map(str, cmd))}, ensure_ascii=False), flush=True)
+    rendered = ' '.join(map(str, cmd))
+    if len(rendered) > 1200:
+        rendered = rendered[:1200] + f' ... [{len(cmd)} arguments]'
+    print(json.dumps({'step': rendered}, ensure_ascii=False), flush=True)
     return subprocess.run(cmd, cwd=cwd, check=True, timeout=timeout,
                           text=True, capture_output=capture, encoding='utf-8', errors='replace')
 
@@ -123,14 +128,84 @@ def imported_artifact_paths(db: Path) -> set[str]:
     except sqlite3.OperationalError:
         return set()
 
-def import_existing_local_artifacts(db: Path, artifact_root: Path) -> int:
+def validate_artifact_directory(directory: Path) -> list[str]:
+    """Validate the files declared by one local manifest before importing it."""
+    errors: list[str] = []
+    manifest_path = directory / 'manifest.json'
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    except Exception as exc:
+        return [f'{manifest_path}: invalid manifest: {exc}']
+    for item in manifest.get('files') or []:
+        name = item.get('path') or item.get('file')
+        if not name:
+            errors.append(f'{manifest_path}: declared file has no path')
+            continue
+        path = directory / str(name)
+        if not path.is_file():
+            errors.append(f'{path}: missing')
+            continue
+        expected = str(item.get('sha256') or '')
+        if expected and sha256(path) != expected:
+            errors.append(f'{path}: checksum mismatch')
+            continue
+        if path.suffix == '.jsonl':
+            with path.open(encoding='utf-8', errors='replace') as handle:
+                for number, line in enumerate(handle, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        errors.append(f'{path}:{number}: invalid JSON: {exc}')
+                        break
+    return errors
+
+def backup_local_sqlite(db: Path, backup_root: Path = DEFAULT_LOCAL_BACKUP_ROOT) -> dict:
+    """Create and integrity-check a consistent SQLite backup before mass import."""
+    backup_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    destination = backup_root / f'{stamp}-local-ingestion.sqlite3'
+    source_connection = sqlite3.connect(db)
+    backup_connection = sqlite3.connect(destination)
+    try:
+        source_connection.backup(backup_connection)
+        result = backup_connection.execute('PRAGMA integrity_check').fetchone()
+    finally:
+        backup_connection.close()
+        source_connection.close()
+    if not result or result[0] != 'ok':
+        destination.unlink(missing_ok=True)
+        raise SystemExit('local SQLite backup integrity check failed')
+    return {'path': str(destination), 'size_bytes': destination.stat().st_size,
+            'sha256': sha256(destination), 'integrity_check': 'ok'}
+
+def pending_local_artifacts(db: Path, artifact_root: Path) -> tuple[list[Path], list[dict]]:
     already_imported = imported_artifact_paths(db)
     artifact_dirs = [p for p in existing_local_artifacts(artifact_root) if str(p.resolve()) not in already_imported]
-    if not artifact_dirs:
-        return 0
+    valid: list[Path] = []
+    failures: list[dict] = []
     for directory in artifact_dirs:
-        run([PYTHON, 'data-service/scripts/build_local_codal_db.py', '--db', str(db), '--artifact', str(directory)], timeout=300)
-    return len(artifact_dirs)
+        errors = validate_artifact_directory(directory)
+        if errors:
+            failures.append({'path': str(directory), 'errors': errors[:3]})
+        else:
+            valid.append(directory)
+    return valid, failures
+
+def import_existing_local_artifacts(db: Path, artifact_root: Path) -> dict:
+    valid, failures = pending_local_artifacts(db, artifact_root)
+    backup = None
+    if valid:
+        backup = backup_local_sqlite(db)
+        # Import in bounded groups to avoid command-line limits while retaining
+        # one ledger entry per artifact directory.
+        for start in range(0, len(valid), 100):
+            cmd = [PYTHON, 'data-service/scripts/build_local_codal_db.py', '--db', str(db)]
+            for directory in valid[start:start + 100]:
+                cmd.extend(['--artifact', str(directory)])
+            run(cmd, timeout=1800)
+    return {'imported_dirs': len(valid), 'invalid_dirs': failures, 'backup': backup}
 
 def local_symbol_rows(db: Path) -> dict[str, dict[str, object]]:
     con = sqlite3.connect(db)
@@ -286,6 +361,8 @@ def main():
     p.add_argument('--db',default='data-service/artifacts/local-ingestion.sqlite3'); p.add_argument('--ssh-target',default='boursnegar')
     p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True)
     p.add_argument('--limit',type=int,default=10); p.add_argument('--run-root',default=str(DEFAULT_RUN_ROOT))
+    p.add_argument('--preimport-root', default=str(DEFAULT_ARTIFACT_ROOT),
+                   help='Root containing previously downloaded local artifacts')
     p.add_argument('--symbols-file', help='newline-delimited active symbols to process instead of local-priority selection')
     p.add_argument('--apply',action='store_true'); p.add_argument('--allow-download',action='store_true')
     p.add_argument('--skip-local',action='store_true'); p.add_argument('--skip-production',action='store_true')
@@ -296,18 +373,21 @@ def main():
     report_path=Path(args.report).resolve() if args.report else run_root/'execution-report.json'
     run_base = Path(args.run_root).resolve()
     run_base.mkdir(parents=True, exist_ok=True)
-    already_imported = imported_artifact_paths(db) if run_base.exists() else set()
-    preimport_pending = len([p for p in existing_local_artifacts(run_base) if str(p.resolve()) not in already_imported]) if run_base.exists() else 0
-    imported_dirs = 0
-    if args.apply and not args.skip_preimport and run_base.exists():
-        imported_dirs = import_existing_local_artifacts(db, run_base)
-        if imported_dirs:
+    preimport_root = Path(args.preimport_root).resolve()
+    pending_dirs, pending_invalid = pending_local_artifacts(db, preimport_root) if preimport_root.exists() else ([], [])
+    preimport_result = {'imported_dirs': 0, 'invalid_dirs': pending_invalid, 'backup': None}
+    if args.apply and not args.skip_preimport and preimport_root.exists():
+        preimport_result = import_existing_local_artifacts(db, preimport_root)
+        if preimport_result['imported_dirs']:
             run([PYTHON, 'data-service/scripts/recalculate_local_coverage.py', '--db', str(db)], timeout=300)
     remote=server_symbols(args.ssh_target)
     local_rows=local_symbol_rows(db)
     attempted = attempted_symbols(run_base)
     selected=select_explicit_symbols(Path(args.symbols_file).resolve(), remote) if args.symbols_file else select_symbols(remote, local_rows, args.limit, attempted)
-    plan={'run_id':run_id,'server_symbols':len(remote),'selected_symbols':selected,'attempted_symbols':len(attempted),'apply':args.apply,'allow_download':args.allow_download,'preimport_pending_dirs':0 if args.skip_preimport else preimport_pending,'preimported_artifact_dirs':imported_dirs}
+    plan={'run_id':run_id,'server_symbols':len(remote),'selected_symbols':selected,'attempted_symbols':len(attempted),'apply':args.apply,'allow_download':args.allow_download,
+          'preimport_root':str(preimport_root),'preimport_pending_dirs':0 if args.skip_preimport else len(pending_dirs),
+          'preimport_invalid_dirs':[] if args.skip_preimport else pending_invalid,
+          'preimported_artifact_dirs':preimport_result['imported_dirs'],'local_backup':preimport_result['backup']}
     execution={'schema':'boursnegar-local-to-production-execution-v1','started_at':datetime.now(timezone.utc).isoformat(),'plan':plan,'report':str(report_path)}
     print(json.dumps({'plan':plan},ensure_ascii=False,indent=2))
     if not args.apply:
