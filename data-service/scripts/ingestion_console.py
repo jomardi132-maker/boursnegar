@@ -56,12 +56,14 @@ def build_pipeline_command(*, mode, db, ssh_target, from_jalali, to_jalali, limi
     limit=int(limit)
     if not 1 <= limit <= 1524:
         raise ValueError('اندازه batch باید بین ۱ و ۱۵۲۴ باشد')
+    script = 'continuous_local_completion.py' if mode == 'local' else 'auto_local_to_production.py'
+    size_flag = '--batch-size' if mode == 'local' else '--limit'
     cmd=[str(ROOT/'data-service/venv/bin/python'),
-         str(ROOT/'data-service/scripts/auto_local_to_production.py'),
+         str(ROOT/'data-service/scripts'/script),
          '--db',str(Path(db).resolve()),'--ssh-target',ssh_target,
          '--from-jalali',from_jalali,'--to-jalali',to_jalali,
-         '--limit',str(limit),'--run-root',str(Path(run_root).resolve())]
-    if mode != 'plan':
+         size_flag,str(limit),'--run-root',str(Path(run_root).resolve())]
+    if mode == 'full':
         cmd.extend(('--apply','--allow-download'))
     if mode == 'local':
         cmd.append('--skip-production')
@@ -212,7 +214,7 @@ class App:
         ttk.Label(settings,text='پیش‌فرض کوچک است؛ برای کل صف ۱۵۲۴ را وارد کنید.',foreground='#94a3b8').pack(side='left')
         actions=ttk.Frame(tab); actions.pack(fill='x',padx=16,pady=8)
         self.pipeline_buttons=[]
-        for text,mode in (('۱. فقط پیش‌بررسی امن','plan'),('۲. تکمیل دیتابیس لوکال','local'),('۳. تکمیل لوکال و همگام‌سازی سرور','full')):
+        for text,mode in (('۱. فقط پیش‌بررسی امن','plan'),('۲. تکمیل خودکار دیتابیس لوکال','local'),('۳. تکمیل لوکال و همگام‌سازی سرور','full')):
             button=ttk.Button(actions,text=text,command=lambda m=mode:self.run_pipeline(m)); button.pack(side='right',padx=4); self.pipeline_buttons.append(button)
         refresh_button=ttk.Button(actions,text='بازخوانی وضعیت',command=self.refresh_control_status); refresh_button.pack(side='left'); self.pipeline_buttons.append(refresh_button)
         progress=ttk.Frame(tab); progress.pack(fill='x',padx=16,pady=(8,4))

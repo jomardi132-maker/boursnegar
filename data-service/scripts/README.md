@@ -12,6 +12,7 @@
 - `boursnegar_daily_supervisor.py` — اجرای محدود زنجیره و تولید report قابل ممیزی؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `codalpy_local_fetch.py` — collector محلی artifact-only.
 - `codalpy_remote_import.py` — importer استاندارد، بدون client شبکه و idempotent.
+- `continuous_local_completion.py` — supervisor خودکار batchهای لوکال؛ تا پایان صف ادامه می‌دهد و روی failure یا سه batch بدون fact جدید توقف امن دارد.
 - `daily_local_ingestion.py` — pipeline محدود Codalpy و fallback مرورگر؛ اجرای انبوه نیست.
 - `daily_codal_monitor.py` — collector محدود و checkpointed؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `daily_orchestrator.py` — coordinator محدود؛ زمان‌بندی فعلاً خارج از محدوده است.
