@@ -77,9 +77,16 @@ class State:
         self.db.commit()
     def upsert_symbols(self, rows):
         self.db.executemany('INSERT INTO symbols(symbol,industry,status,last_remote_count,standard_count,period_count,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET industry=excluded.industry,status=excluded.status,last_remote_count=excluded.last_remote_count,standard_count=excluded.standard_count,period_count=excluded.period_count,updated_at=excluded.updated_at',[(r['symbol'],r.get('industry'),r.get('status','incomplete'),r.get('raw_count',0),r.get('standard_count',0),r.get('period_count',0),now()) for r in rows]); self.db.commit()
+    def ensure_symbols(self, rows):
+        """Add newly active symbols without overwriting Local coverage with remote counts."""
+        self.db.executemany(
+            'INSERT OR IGNORE INTO symbols(symbol,industry,status,updated_at) VALUES(?,?,?,?)',
+            [(r['symbol'],r.get('industry'),'unknown',now()) for r in rows],
+        )
+        self.db.commit()
     def rows(self):
         try:
-            return self.db.execute('''SELECT s.symbol,s.industry,s.status,s.last_local_count,s.last_remote_count,s.gap_summary,s.last_error,
+            return self.db.execute('''SELECT s.symbol,s.industry,s.status,s.standard_count,s.period_count,s.gap_summary,s.last_error,
                 COALESCE(c.ready,0),COALESCE(c.conflicts,0),COALESCE(c.unlinked,0)
                 FROM symbols s LEFT JOIN (
                   SELECT inferred_symbol,
@@ -91,7 +98,7 @@ class State:
         except sqlite3.OperationalError as exc:
             if 'orphan_fact_candidates' not in str(exc):
                 raise
-            return self.db.execute('''SELECT symbol,industry,status,last_local_count,last_remote_count,
+            return self.db.execute('''SELECT symbol,industry,status,standard_count,period_count,
                 gap_summary,last_error,0,0,0 FROM symbols ORDER BY symbol''').fetchall()
     def artifact_rows(self):
         try:
@@ -146,7 +153,10 @@ def discover_remote(target, log):
       LEFT JOIN industries ind ON ind.id=iss.industry_id LEFT JOIN financial_periods fp ON fp.issuer_id=iss.id
       LEFT JOIN financial_facts ff ON ff.period_id=fp.id
       WHERE sa.valid_to IS NULL AND i.active GROUP BY ind.title_fa,sa.symbol ORDER BY 1,2;"""
-    remote_cmd='sudo -u postgres psql -d boursnegar_db -Atc '+shlex.quote(sql)
+    # sudo keeps the SSH account's current directory.  Moving to /tmp first
+    # prevents PostgreSQL's harmless but alarming "/root: Permission denied"
+    # warning from being shown as an operator error in the GUI log.
+    remote_cmd='cd /tmp && sudo -u postgres psql -d boursnegar_db -Atc '+shlex.quote(sql)
     out=subprocess.check_output(['ssh',target,remote_cmd],text=True,encoding='utf8')
     rows=[]
     for line in out.splitlines():
@@ -180,8 +190,8 @@ class App:
         notebook=ttk.Notebook(root); notebook.pack(fill='both',expand=True,padx=8,pady=8); operations_tab=ttk.Frame(notebook); symbols_tab=ttk.Frame(notebook); files_tab=ttk.Frame(notebook); notebook.add(operations_tab,text=fa('مرکز عملیات')); notebook.add(symbols_tab,text=fa('وضعیت نمادها')); notebook.add(files_tab,text=fa('دفترکل فایل‌های محلی'))
         self.build_operations_tab(operations_tab)
         filters=ttk.Frame(symbols_tab); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=18); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(8,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=20); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='وضعیت:').pack(side='right',padx=(8,2)); self.status_box=ttk.Combobox(filters,textvariable=self.status_var,state='readonly',values=('همه وضعیت‌ها','کامل','قابل‌مقایسه','ناقص'),width=13); self.status_box.pack(side='right'); self.status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='کمبود:').pack(side='right',padx=(8,2)); self.gap_box=ttk.Combobox(filters,textvariable=self.gap_var,state='readonly',width=18); self.gap_box.pack(side='right'); self.gap_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(symbols_tab,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
-        self.tree=ttk.Treeview(symbols_tab,columns=('symbol','industry','status','percent','local','remote','gaps','error','ready','conflicts','unlinked'),show='headings',style='Persian.Treeview'); self.tree.tag_configure('complete',foreground='#198754'); self.tree.tag_configure('comparable',foreground='#9a6700'); self.tree.tag_configure('incomplete',foreground='#b42318')
-        for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت','تکمیل','محلی','سرور','کمبودها','خطا','آماده','تعارض','بی‌اتصال'),(110,180,110,75,80,80,240,260,80,80,80)): self.tree.heading(c,text=fa(t),anchor='e'); self.tree.column(c,anchor='e',width=w)
+        self.tree=ttk.Treeview(symbols_tab,columns=('symbol','industry','status','percent','facts','periods','gaps','error','ready','conflicts','unlinked'),show='headings',style='Persian.Treeview'); self.tree.tag_configure('complete',foreground='#198754'); self.tree.tag_configure('comparable',foreground='#9a6700'); self.tree.tag_configure('incomplete',foreground='#b42318')
+        for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت لوکال','تکمیل','fact معتبر','تعداد دوره','کمبودها','خطا','آماده','تعارض','بی‌اتصال'),(110,180,120,75,90,90,240,260,80,80,80)): self.tree.heading(c,text=fa(t),anchor='e'); self.tree.column(c,anchor='e',width=w)
         self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(symbols_tab); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='تکمیل محلی از کدال',command=lambda:self.run_pipeline('local')).pack(side='right',padx=5); ttk.Button(bar,text='تکمیل و ارسال به سرور',command=lambda:self.run_pipeline('full')).pack(side='right',padx=5); ttk.Button(bar,text='خروجی CSV',command=self.export_rows).pack(side='left'); ttk.Label(bar,text='اطلاعات فقط پس از کنترل کیفیت ارسال می‌شود.').pack(side='left',padx=12)
         file_filters=ttk.Frame(files_tab); file_filters.pack(fill='x',padx=8,pady=8); ttk.Label(file_filters,text='جست‌وجوی مسیر:').pack(side='right'); file_search=ttk.Entry(file_filters,textvariable=self.file_search_var,width=36); file_search.pack(side='right',padx=5); file_search.bind('<KeyRelease>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='نوع:').pack(side='right'); self.file_role_box=ttk.Combobox(file_filters,textvariable=self.file_role_var,state='readonly',width=14); self.file_role_box.pack(side='right',padx=5); self.file_role_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='وضعیت:').pack(side='right'); self.file_status_box=ttk.Combobox(file_filters,textvariable=self.file_status_var,state='readonly',width=14); self.file_status_box.pack(side='right',padx=5); self.file_status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Button(file_filters,text='بازخوانی دفترکل',command=self.scan_artifacts).pack(side='left'); ttk.Button(file_filters,text='ممیزی Excelهای بی‌مرجع',command=self.audit_orphans).pack(side='left',padx=5); ttk.Button(file_filters,text='خروجی صف بررسی',command=self.export_candidate_review).pack(side='left',padx=5)
         ttk.Label(files_tab,textvariable=self.file_summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3); self.file_tree=ttk.Treeview(files_tab,columns=('path','role','status','size','records','errors','imported','parse','symbol'),show='headings',style='Persian.Treeview');
@@ -272,7 +282,7 @@ class App:
         for row in visible:
             status=row[2]; values=list(row); values[2]=labels.get(status,values[2]); standard=max(0,int(row[3] or 0)); periods=max(0,int(row[4] or 0)); values.insert(3,f'{min(100,round(standard*70/7+periods*30/2))}%'); self.tree.insert('', 'end', values=tuple(fa(value) for value in values), tags=(status,))
         counts={key:sum(1 for r in rows if r[2]==key) for key in ('complete','comparable','incomplete')}; total=len(rows); pct=(counts['complete']*100/total) if total else 0
-        self.summary_var.set(fa(f'کل: {total}  |  کامل: {counts["complete"]}  |  قابل‌مقایسه: {counts["comparable"]}  |  ناقص: {counts["incomplete"]}  |  تکمیل کامل: {pct:.1f}%  |  نمایش: {len(visible)}'))
+        self.summary_var.set(fa(f'پوشش دیتابیس لوکال — کل: {total}  |  کامل: {counts["complete"]}  |  قابل‌مقایسه: {counts["comparable"]}  |  ناقص: {counts["incomplete"]}  |  تکمیل کامل: {pct:.1f}%  |  نمایش: {len(visible)}'))
     def refresh_artifacts(self):
         for item in self.file_tree.get_children(): self.file_tree.delete(item)
         rows=self.state.artifact_rows(); roles=sorted({r[1] for r in rows}); statuses=sorted({r[2] for r in rows}); self.file_role_box['values']=['همه انواع']+roles; self.file_status_box['values']=['همه وضعیت‌ها']+statuses
@@ -304,7 +314,10 @@ class App:
         except Exception as exc: self.log('REVIEW EXPORT ERROR '+str(exc))
     def discover(self):
         def work():
-            try: rows=discover_remote(self.target,self.log); self.state.upsert_symbols(rows); self.events.put(('refresh',None)); self.log(f'{len(rows)} symbols discovered')
+            try:
+                rows=discover_remote(self.target,self.log); self.state.ensure_symbols(rows)
+                counts={key:sum(1 for row in rows if row.get('status')==key) for key in ('complete','comparable','incomplete')}
+                self.events.put(('server_discovery',(len(rows),counts))); self.log(f'{len(rows)} symbols discovered')
             except Exception as e:self.log('DISCOVER ERROR '+str(e))
         threading.Thread(target=work,daemon=True).start()
     def export_rows(self):
@@ -341,6 +354,8 @@ class App:
             if kind=='log': self.logbox.insert('end',value+'\n','rtl'); self.logbox.see('end')
             elif kind=='refresh': self.refresh()
             elif kind=='artifacts': self.refresh_artifacts()
+            elif kind=='server_discovery':
+                total,counts=value; self.server_status_var.set(fa(f'Production — کل: {total} | کامل: {counts["complete"]} | قابل‌مقایسه: {counts["comparable"]} | ناقص: {counts["incomplete"]}')); self.refresh()
             elif kind=='control_status':
                 ready,detail=value; self.server_status_var.set(fa(('آماده | ' if ready else 'خطا | ')+detail)); self.set_busy(False,'بررسی وضعیت پایان یافت'); self.refresh_operations()
             elif kind=='pipeline_done':
