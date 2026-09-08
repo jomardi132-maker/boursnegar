@@ -13,6 +13,7 @@
 - `codalpy_local_fetch.py` — collector محلی artifact-only.
 - `codalpy_remote_import.py` — importer استاندارد، بدون client شبکه و idempotent.
 - `continuous_local_completion.py` — supervisor خودکار batchهای لوکال؛ تا پایان صف ادامه می‌دهد و روی failure یا سه batch بدون fact جدید توقف امن دارد.
+- `overnight_local_completion.py` — اجرای بدون‌ناظر بازیابی آرشیو و سپس تکمیل checkpointed لوکال؛ دارای log و status پایدار و بدون write روی به Production.
 - `daily_local_ingestion.py` — pipeline محدود Codalpy و fallback مرورگر؛ اجرای انبوه نیست.
 - `daily_codal_monitor.py` — collector محدود و checkpointed؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `daily_orchestrator.py` — coordinator محدود؛ زمان‌بندی فعلاً خارج از محدوده است.
@@ -25,6 +26,7 @@
 - `promote_notice_events.py` — promotion رویداد با manifest معتبر.
 - `recalculate_local_coverage.py` — محاسبهٔ coverage در mirror محلی.
 - `reconcile_local_artifacts.py` — inventory محلی بدون download.
+- `recover_local_archive.py` — بازیابی idempotent آرشیو جابه‌جا‌شده: integrity، backup، merge، ledger، audit/link، promotion قطعی و محاسبه پوشش.
 - `sync_server_to_local.py` — بازیابی read-only رکوردهای VALID سرور همراه lineage و checksum به mirror محلی؛ write فقط با `--apply` و پس از backup معتبر.
 - `refresh_internal_snapshots.py` — refresh فقط از evidence واردشده.
 - `refresh_recent_snapshots.py` — refresh محدود به evidence تازه.

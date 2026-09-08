@@ -216,6 +216,7 @@ class App:
         self.pipeline_buttons=[]
         for text,mode in (('۱. فقط پیش‌بررسی امن','plan'),('۲. تکمیل خودکار دیتابیس لوکال','local'),('۳. تکمیل لوکال و همگام‌سازی سرور','full')):
             button=ttk.Button(actions,text=text,command=lambda m=mode:self.run_pipeline(m)); button.pack(side='right',padx=4); self.pipeline_buttons.append(button)
+        archive_button=ttk.Button(actions,text='بازیابی هوشمند آرشیو',command=self.recover_archive); archive_button.pack(side='right',padx=4); self.pipeline_buttons.append(archive_button)
         refresh_button=ttk.Button(actions,text='بازخوانی وضعیت',command=self.refresh_control_status); refresh_button.pack(side='left'); self.pipeline_buttons.append(refresh_button)
         progress=ttk.Frame(tab); progress.pack(fill='x',padx=16,pady=(8,4))
         ttk.Label(progress,textvariable=self.pipeline_status_var,anchor='e',font=self.bold).pack(fill='x')
@@ -302,6 +303,23 @@ class App:
             for folder in ('all-symbols-v16','all-symbols-v17','all-symbols-v18'): cmd += ['--root',str(ROOT/'artifacts'/folder)]
             try: command(cmd,self.log); self.events.put(('artifacts',None))
             except Exception as exc: self.log('LEDGER ERROR '+str(exc))
+        threading.Thread(target=work,daemon=True).start()
+    def recover_archive(self):
+        if self.busy: return
+        archive=Path('/home/king/Boursnegar-artifacts-archive-20260906')
+        if not archive.is_dir():
+            messagebox.showerror(fa('آرشیو پیدا نشد'),fa(str(archive))); return
+        if not messagebox.askyesno(fa('بازیابی آرشیو'),fa('از دیتابیس فعلی backup گرفته می‌شود؛ فقط شواهد قطعی وارد و موارد مبهم گزارش می‌شوند. ادامه می‌دهید؟')):
+            return
+        self.set_busy(True,'بازیابی و ممیزی آرشیو در حال اجراست…')
+        cmd=[str(ROOT/'data-service/venv/bin/python'),str(ROOT/'data-service/scripts/recover_local_archive.py'),
+             '--db',str(self.state.path),'--archive',str(archive),'--apply']
+        def work():
+            try:
+                result=self.state.run('control-center:archive-recovery',lambda:command(cmd,self.log))
+                self.events.put(('pipeline_done',(True,'بازیابی آرشیو',result)))
+            except Exception as exc:
+                self.events.put(('pipeline_done',(False,'بازیابی آرشیو',str(exc))))
         threading.Thread(target=work,daemon=True).start()
     def audit_orphans(self):
         def work():
