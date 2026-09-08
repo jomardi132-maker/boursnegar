@@ -16,11 +16,23 @@ def _stop(*_):
     STOP = True
 
 def cleanup_profile_processes(profile: Path):
-    target = f'--user-data-dir={profile.resolve()}'.encode()
+    expected = profile.resolve()
+    def owns_profile(entry: Path, cmdline: bytes) -> bool:
+        for raw in cmdline.split(b'\0'):
+            if not raw.startswith(b'--user-data-dir='):
+                continue
+            value = Path(raw.split(b'=', 1)[1].decode(errors='replace'))
+            if not value.is_absolute():
+                try:
+                    value = ((entry / 'cwd').resolve() / value).resolve()
+                except (FileNotFoundError, PermissionError):
+                    continue
+            return value == expected
+        return False
     for entry in Path('/proc').glob('[0-9]*'):
         try:
             cmdline = (entry / 'cmdline').read_bytes()
-            if target not in cmdline or b'/opt/google/chrome/chrome' not in cmdline:
+            if not owns_profile(entry, cmdline) or b'/opt/google/chrome/chrome' not in cmdline:
                 continue
             os.kill(int(entry.name), signal.SIGTERM)
         except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError):
@@ -29,7 +41,7 @@ def cleanup_profile_processes(profile: Path):
     for entry in Path('/proc').glob('[0-9]*'):
         try:
             cmdline = (entry / 'cmdline').read_bytes()
-            if target not in cmdline or b'/opt/google/chrome/chrome' not in cmdline:
+            if not owns_profile(entry, cmdline) or b'/opt/google/chrome/chrome' not in cmdline:
                 continue
             os.kill(int(entry.name), signal.SIGKILL)
         except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError):
@@ -37,7 +49,7 @@ def cleanup_profile_processes(profile: Path):
 
 class ChromeCDP:
     def __init__(self, port: int, profile: Path):
-        self.port, self.profile, self.proc, self.ws, self.seq = port, profile, None, None, 0
+        self.port, self.profile, self.proc, self.ws, self.seq = port, profile.resolve(), None, None, 0
     def start(self):
         import websocket
         self.profile.mkdir(parents=True, exist_ok=True)
