@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from scripts.auto_local_to_production import (
+    DEFAULT_RUN_ROOT,
     aggregate_events,
     aggregate_manifests,
     base_symbol,
@@ -16,10 +17,26 @@ from scripts.auto_local_to_production import (
     attempted_symbols,
     symbol_run_root,
     symbol_failure_exit_code,
+    parse_import_result,
 )
 
 
 class AutoLocalToProductionTest(unittest.TestCase):
+    def test_full_pipeline_records_refresh_health_and_retention_gates(self):
+        source = (Path(__file__).parents[1] / 'scripts' / 'auto_local_to_production.py').read_text(encoding='utf-8')
+        self.assertIn('boursnegar-snapshot-refresh.service', source)
+        self.assertIn('/usr/local/sbin/boursnegar-backup-retention', source)
+        self.assertIn("'retention':", source)
+
+    def test_default_run_root_is_canonical_data_service_artifact_root(self):
+        self.assertTrue(str(DEFAULT_RUN_ROOT).endswith('data-service/artifacts/auto-sync'))
+
+    def test_import_summary_rejects_validation_errors(self):
+        result = parse_import_result('{"inserted": 2, "validation_errors": []}\n')
+        self.assertEqual(result['inserted'], 2)
+        with self.assertRaises(SystemExit):
+            parse_import_result('{"inserted": 0, "validation_errors": [{"error": "checksum"}]}\n')
+
     def test_symbol_failure_is_nonzero_without_discarding_successful_imports(self):
         self.assertEqual(symbol_failure_exit_code([]), 0)
         self.assertEqual(symbol_failure_exit_code([{'symbol': 'ثبهساز'}]), 2)

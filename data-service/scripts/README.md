@@ -6,7 +6,7 @@
 
 ## مسیر canonical غیر‌بازاری
 
-- `auto_local_to_production.py` — orchestrator امن local-to-Production؛ پیش‌فرض dry-run و write فقط پس از manifest/checksum/backup/replay.
+- `auto_local_to_production.py` — orchestrator امن و کامل local-to-Production؛ پیش‌فرض dry-run و write فقط پس از manifest/checksum، backup معتبر با `pg_restore -l`، import، replay صفر، refresh دستی snapshot، health/readiness، retention و report ساختاریافته.
 - `browser_codal_fetch.py` — جمع‌آوری محلی با Chrome و checkpoint.
 - `build_local_codal_db.py` — ساخت mirror محلی از artifactهای موجود.
 - `boursnegar_daily_supervisor.py` — اجرای محدود زنجیره و تولید report قابل ممیزی؛ زمان‌بندی فعلاً خارج از محدوده است.
@@ -15,7 +15,7 @@
 - `daily_local_ingestion.py` — pipeline محدود Codalpy و fallback مرورگر؛ اجرای انبوه نیست.
 - `daily_codal_monitor.py` — collector محدود و checkpointed؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `daily_orchestrator.py` — coordinator محدود؛ زمان‌بندی فعلاً خارج از محدوده است.
-- `ingestion_console.py` — کنسول اپراتوری canonical.
+- `ingestion_console.py` — برنامهٔ گرافیکی canonical پایتون/RTL؛ سه سطح پیش‌بررسی، تکمیل لوکال و تکمیل تا Production را با تنظیم batch، وضعیت زنده، progress، تاریخچه و log روی همان orchestrator اجرا می‌کند.
 - `normalize_browser_industry.py` — normalization صنعت از artifact مرورگر.
 - `normalize_browser_statements.py` — normalization صورت مالی بدون مقدارسازی.
 - `normalize_notice_events.py` — normalization رویدادهای رسمی.
