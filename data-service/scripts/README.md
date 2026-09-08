@@ -14,6 +14,7 @@
 - `codalpy_remote_import.py` — importer استاندارد، بدون client شبکه و idempotent.
 - `continuous_local_completion.py` — supervisor خودکار batchهای لوکال؛ تا پایان صف ادامه می‌دهد و روی failure یا سه batch بدون fact جدید توقف امن دارد.
 - `overnight_local_completion.py` — اجرای بدون‌ناظر بازیابی آرشیو و سپس تکمیل checkpointed لوکال؛ دارای log و status پایدار و بدون write روی به Production.
+- `complete_local_then_server.py` — coordinator نهایی صف شرکت/صندوق: تکمیل local در batchهای checkpointed و سپس sync فقط batchهای موفق با گیت‌های Production.
 - `daily_local_ingestion.py` — pipeline محدود Codalpy و fallback مرورگر؛ اجرای انبوه نیست.
 - `daily_codal_monitor.py` — collector محدود و checkpointed؛ زمان‌بندی فعلاً خارج از محدوده است.
 - `daily_orchestrator.py` — coordinator محدود؛ زمان‌بندی فعلاً خارج از محدوده است.
