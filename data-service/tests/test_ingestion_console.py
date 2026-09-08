@@ -45,6 +45,9 @@ def test_local_mode_never_promotes_to_production(tmp_path):
         run_root=tmp_path / "runs",
     )
     assert "--skip-production" in command
+    assert command[1].endswith("continuous_local_completion.py")
+    assert "--batch-size" in command
+    assert "--apply" not in command
 
 
 def test_symbol_rows_use_standard_fact_and_period_counts(tmp_path):
