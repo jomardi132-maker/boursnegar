@@ -147,7 +147,7 @@ def command(args, log):
     return {'exit_code':code,'command':' '.join(map(str,args))}
 def discover_remote(target, log):
     sql="""SELECT COALESCE(ind.title_fa,'نامشخص'),sa.symbol,0,
-      count(DISTINCT ff.id) FILTER (WHERE ff.quality_status='VALID'),
+      count(DISTINCT ff.fact_key) FILTER (WHERE ff.quality_status='VALID'),
       count(DISTINCT fp.end_date) FILTER (WHERE ff.quality_status='VALID')
       FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id JOIN issuers iss ON iss.id=i.issuer_id
       LEFT JOIN industries ind ON ind.id=iss.industry_id LEFT JOIN financial_periods fp ON fp.issuer_id=iss.id
