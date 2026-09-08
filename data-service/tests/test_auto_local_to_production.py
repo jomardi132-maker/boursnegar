@@ -6,11 +6,14 @@ from pathlib import Path
 
 from scripts.auto_local_to_production import (
     DEFAULT_RUN_ROOT,
+    DEFAULT_ARTIFACT_ROOT,
     aggregate_events,
     aggregate_manifests,
     base_symbol,
     existing_local_artifacts,
     import_existing_local_artifacts,
+    pending_local_artifacts,
+    validate_artifact_directory,
     select_explicit_symbols,
     select_symbols,
     is_fund_row,
@@ -30,6 +33,7 @@ class AutoLocalToProductionTest(unittest.TestCase):
 
     def test_default_run_root_is_canonical_data_service_artifact_root(self):
         self.assertTrue(str(DEFAULT_RUN_ROOT).endswith('data-service/artifacts/auto-sync'))
+        self.assertTrue(str(DEFAULT_ARTIFACT_ROOT).endswith('data-service/artifacts'))
 
     def test_import_summary_rejects_validation_errors(self):
         result = parse_import_result('{"inserted": 2, "validation_errors": []}\n')
@@ -150,7 +154,37 @@ class AutoLocalToProductionTest(unittest.TestCase):
             db.commit()
             db.close()
 
-            self.assertEqual(import_existing_local_artifacts(db_path, root), 0)
+            self.assertEqual(import_existing_local_artifacts(db_path, root)['imported_dirs'], 0)
+
+    def test_pending_artifact_requires_valid_manifest_checksum(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            db_path = root / 'local.sqlite3'
+            db_path.touch()
+            artifact = root / 'run' / 'فملی' / 'normalized'
+            artifact.mkdir(parents=True)
+            payload = artifact / 'normalized.jsonl'
+            payload.write_text('{}\n', encoding='utf-8')
+            (artifact / 'manifest.json').write_text(json.dumps({
+                'files': [{'path': payload.name, 'sha256': 'wrong'}]
+            }), encoding='utf-8')
+            valid, invalid = pending_local_artifacts(db_path, root)
+            self.assertEqual(valid, [])
+            self.assertEqual(len(invalid), 1)
+            self.assertIn('checksum mismatch', invalid[0]['errors'][0])
+
+    def test_valid_artifact_manifest_passes_validation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            artifact = Path(temp) / 'normalized'
+            artifact.mkdir()
+            payload = artifact / 'normalized.jsonl'
+            payload.write_text('{}\n', encoding='utf-8')
+            import hashlib
+            digest = hashlib.sha256(payload.read_bytes()).hexdigest()
+            (artifact / 'manifest.json').write_text(json.dumps({
+                'files': [{'path': payload.name, 'sha256': digest}]
+            }), encoding='utf-8')
+            self.assertEqual(validate_artifact_directory(artifact), [])
 
 
 if __name__ == '__main__':
