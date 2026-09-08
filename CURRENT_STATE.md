@@ -3317,3 +3317,10 @@ Health/smoke checks:
 - retention در reportهای `20260908T073802Z` و `20260908T073809Z` dry-run/apply شد. dump `/var/backups/boursnegar/20260907T190638Z-evidence-before.dump` با SHA-256 `a8891a01b3e51e4b36beafedc98add2b732f92c17df167801f8cef5c6a811665` حذف و مستقیماً قابل‌بازیابی نیست؛ backup جدید auto و `20260907T191447Z` حفظ شدند.
 - UI واقعاً روی `DISPLAY=:10.0` در اندازهٔ `1500x850` اجرا و با screenshot بررسی شد؛ پنجره وجود داشت، متن فارسی شکل‌گرفته و خوانا، کنترل‌ها بدون overlap و وضعیت‌های progress/disabled حاضر بودند. ارتفاع history برای حفظ فضای log و focus دکمه‌ها اصلاح شد. اجرای `--no-gui` نیز DB canonical و `1524` نماد را خواند.
 - suite کامل data-service پس از رفع hermeticity دو تست قدیمی daily-orchestrator برابر `174/174` است؛ رفتار timer تغییر نکرد و فقط testها artifact root موقت خود را دریافت کردند.
+
+## 2026-09-08 - رفع هشدار کاذب GUI و تفکیک پوشش Local از Production
+
+- سه اجرای واقعی دکمهٔ «فقط پیش‌بررسی امن» در ساعت‌های `07:57` تا `07:59 UTC` همگی در SQLite با `control-center:plan/PASSED` و reportهای `dry-run` ثبت شدند؛ هیچ خطای pipeline یا write وجود نداشت.
+- پیام ظاهراً خطادار `could not change directory to /root: Permission denied` از اجرای read-only `psql` با کاربر postgres و current directory حساب SSH بود، نه شکست query. فرمان remote اکنون ابتدا به `/tmp` می‌رود؛ اجرای واقعی بعدی بدون این warning و با `server_symbols=1524` و report سالم پایان یافت.
+- برچسب «ناقص» مربوط به mirror canonical لوکال بود: `1524` نماد، `3` comparable و `1521` incomplete. GUI به‌اشتباه `last_local_count/last_remote_count` را به‌جای `standard_count/period_count` برای درصد و جدول استفاده می‌کرد. ستون‌ها و درصد اصلاح و عنوان صریح «پوشش دیتابیس لوکال» اضافه شد.
+- بررسی Production دیگر وضعیت Local را overwrite نمی‌کند؛ نمادهای تازه فقط با `INSERT OR IGNORE` اضافه می‌شوند و خلاصهٔ Production جداگانه در کارت سرور نمایش داده می‌شود. suite کامل data-service برابر `176/176` است.
