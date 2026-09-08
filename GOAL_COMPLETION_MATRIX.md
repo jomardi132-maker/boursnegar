@@ -5,6 +5,7 @@
 | بخش | وضعیت | شواهد فعلی | معیار پایان |
 |---|---|---|---|
 | سامان‌دهی چت و handoff | PASS | اتاق کنترل pinned، چت‌های تکراری آرشیو، `CURRENT_STATE.md` و backlog | یک مرجع اصلی و بدون backlog متناقض |
+| مرکز کنترل Python | PASS | GUI واقعی RTL با سه حالت plan/local/full؛ اجرای واقعی «فجوش» از Local تا backup/import/replay/refresh/health/retention موفق و report ثبت شد | حفظ مسیر canonical و گیت‌های report؛ اجرای موازی یا bypass ممنوع |
 | روند delta/report | PASS | execution card، runbook، backlog و گزارش‌های timestamped؛ suite داده `149/149` و وب `75/75`؛ timerهای zero-delta بازنشسته شدند | هر اقدام delta، معیار پایان و report داشته باشد |
 | freshness اطلاعیه | PARTIAL | Production: `30543` رکورد، آخرین دریافت `2026-09-07 01:06:56 UTC`، `233` رکورد در ۴۸ ساعت؛ collector local فعال و canonical است؛ آخرین normalized artifact صفر بایت بود و import نشد | نخستین manifest تازه و غیرخالی از collector → checksum → backup-gated import → replay صفر → refresh با report موفق |
 | NAV صندوق‌ها | PASS | از ۴۱۹ صندوق فعال، هر ۸۰ صندوق دارای NAV معتبر، units معتبر هم‌دوره نیز دارد؛ رکورد superseded اصلی `REJECTED` و بدون حذف فیزیکی نگه داشته شد | حفظ provenance و جلوگیری از ورود واحد/نسخه‌ی superseded |

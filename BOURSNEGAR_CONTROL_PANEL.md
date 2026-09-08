@@ -33,6 +33,14 @@
 این زنجیره collection-only است. import به Production فقط از workflow مستقل و
 backup-gated مجاز است. اجرای دستی موازی یا اجرای `run_all_incomplete.py` ممنوع است.
 
+## مرکز کنترل گرافیکی Python
+
+ورودی اپراتوری canonical فایل `scripts/run-ingestion-console.sh` است. این launcher برنامهٔ
+`data-service/scripts/ingestion_console.py` را با DB canonical باز می‌کند. تب «مرکز عملیات»
+سه حالت دارد: پیش‌بررسی بدون write، تکمیل Local، و تکمیل Local تا Production. حالت کامل
+همان `auto_local_to_production.py` را اجرا می‌کند و بدون manifest/checksum، backup معتبر،
+replay صفر، refresh، health/readiness و retention موفق پایان‌یافته محسوب نمی‌شود.
+
 ## طبقه‌بندی ابزارهای Python
 
 ### فعال و زمان‌بندی‌شده

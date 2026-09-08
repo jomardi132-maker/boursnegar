@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
+DEFAULT_RUN_ROOT = ROOT / 'data-service' / 'artifacts' / 'auto-sync'
 
 def run(cmd, *, cwd=ROOT, timeout=600, capture=False):
     print(json.dumps({'step': ' '.join(map(str, cmd))}, ensure_ascii=False), flush=True)
@@ -37,6 +38,34 @@ def sha256(path):
     with path.open('rb') as f:
         for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
     return h.hexdigest()
+
+def write_report(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
+
+def validate_local_backup(path: Path) -> dict:
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise SystemExit(f'backup validation failed: {path}')
+    run(['pg_restore', '-l', str(path)], timeout=300, capture=True)
+    return {'path': str(path), 'size_bytes': path.stat().st_size, 'sha256': sha256(path), 'pg_restore_list': 'PASS'}
+
+def validate_remote_backup(target: str, path: str) -> dict:
+    check = run(['ssh', target,
+        f"sudo test -s {shlex.quote(path)} && sudo pg_restore -l {shlex.quote(path)} >/dev/null && "
+        f"sudo stat -c '%s' {shlex.quote(path)} && sudo sha256sum {shlex.quote(path)}"], timeout=300, capture=True)
+    lines=[line.strip() for line in check.stdout.splitlines() if line.strip()]
+    if len(lines) < 2:
+        raise SystemExit('backup validation output incomplete')
+    return {'path': path, 'size_bytes': int(lines[-2]), 'sha256': lines[-1].split()[0], 'pg_restore_list': 'PASS'}
+
+def parse_import_result(output: str) -> dict:
+    lines=[line for line in output.splitlines() if line.strip().startswith('{')]
+    if not lines:
+        raise SystemExit('importer did not return a JSON summary')
+    result=json.loads(lines[-1])
+    if result.get('validation_errors'):
+        raise SystemExit(f"import validation failed: {result['validation_errors'][:3]}")
+    return result
 
 def server_symbols(target):
     sys.path.insert(0, str(ROOT/'data-service'))
@@ -256,13 +285,15 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--db',default='data-service/artifacts/local-ingestion.sqlite3'); p.add_argument('--ssh-target',default='boursnegar')
     p.add_argument('--from-jalali',default='1404/01/01'); p.add_argument('--to-jalali',required=True)
-    p.add_argument('--limit',type=int,default=10); p.add_argument('--run-root',default='artifacts/auto-sync')
+    p.add_argument('--limit',type=int,default=10); p.add_argument('--run-root',default=str(DEFAULT_RUN_ROOT))
     p.add_argument('--symbols-file', help='newline-delimited active symbols to process instead of local-priority selection')
     p.add_argument('--apply',action='store_true'); p.add_argument('--allow-download',action='store_true')
     p.add_argument('--skip-local',action='store_true'); p.add_argument('--skip-production',action='store_true')
     p.add_argument('--skip-preimport', action='store_true', help='Skip importing already downloaded local artifacts before planning')
     p.add_argument('--backup-path', help='Write the pre-import rollback dump to this local path instead of Production backups')
+    p.add_argument('--report', help='Write a structured end-to-end execution report')
     args=p.parse_args(); db=Path(args.db).resolve(); run_id=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'); run_root=Path(args.run_root).resolve()/run_id
+    report_path=Path(args.report).resolve() if args.report else run_root/'execution-report.json'
     run_base = Path(args.run_root).resolve()
     run_base.mkdir(parents=True, exist_ok=True)
     already_imported = imported_artifact_paths(db) if run_base.exists() else set()
@@ -277,9 +308,12 @@ def main():
     attempted = attempted_symbols(run_base)
     selected=select_explicit_symbols(Path(args.symbols_file).resolve(), remote) if args.symbols_file else select_symbols(remote, local_rows, args.limit, attempted)
     plan={'run_id':run_id,'server_symbols':len(remote),'selected_symbols':selected,'attempted_symbols':len(attempted),'apply':args.apply,'allow_download':args.allow_download,'preimport_pending_dirs':0 if args.skip_preimport else preimport_pending,'preimported_artifact_dirs':imported_dirs}
+    execution={'schema':'boursnegar-local-to-production-execution-v1','started_at':datetime.now(timezone.utc).isoformat(),'plan':plan,'report':str(report_path)}
     print(json.dumps({'plan':plan},ensure_ascii=False,indent=2))
     if not args.apply:
-        print(json.dumps({'status':'dry-run','next':'add --apply; add --allow-download to fetch missing Local data'},ensure_ascii=False)); return
+        execution.update({'finished_at':datetime.now(timezone.utc).isoformat(),'status':'dry-run'})
+        write_report(report_path,execution)
+        print(json.dumps({'status':'dry-run','report':str(report_path),'next':'add --apply; add --allow-download to fetch missing Local data'},ensure_ascii=False)); return
     if args.allow_download is False and not args.skip_local:
         raise SystemExit('Local completion may fetch data; pass --allow-download explicitly')
     symbol_failures=[]
@@ -319,12 +353,14 @@ def main():
     if events_manifest['files'][0]['records']: manifests.append(events_manifest)
     if not manifests:
         status = {'status':'no-new-normalized-records','run_root':str(run_root),'symbol_failures':symbol_failures}
+        execution.update(status); execution['finished_at']=datetime.now(timezone.utc).isoformat(); write_report(report_path,execution)
         print(json.dumps(status,ensure_ascii=False))
         if symbol_failures:
             raise SystemExit(symbol_failure_exit_code(symbol_failures))
         return
     if args.skip_production:
         status = {'status':'local-complete-production-skipped','manifests':[str(run_root/'aggregate'/manifest_kind(m)/'manifest.json') for m in manifests],'symbol_failures':symbol_failures}
+        execution.update(status); execution['finished_at']=datetime.now(timezone.utc).isoformat(); write_report(report_path,execution)
         print(json.dumps(status,ensure_ascii=False))
         if symbol_failures:
             raise SystemExit(symbol_failure_exit_code(symbol_failures))
@@ -334,11 +370,14 @@ def main():
         backup_path=Path(args.backup_path).expanduser().resolve()
         stream_remote_backup(args.ssh_target, backup_path)
         remote_backup=str(backup_path)
+        backup_evidence=validate_local_backup(backup_path)
     else:
         remote_backup=f'/var/backups/boursnegar/{stamp}-auto-local-to-production.dump'
         run(['ssh',args.ssh_target,f"sudo -u postgres pg_dump -Fc -d boursnegar_db | sudo tee {shlex.quote(remote_backup)} >/dev/null"],timeout=900)
+        backup_evidence=validate_remote_backup(args.ssh_target,remote_backup)
     remote_tmp=f'/tmp/boursnegar-auto-sync-{run_id}'
     run(['ssh',args.ssh_target,f'install -d -m 0700 {remote_tmp}'],timeout=60)
+    import_results=[]
     for manifest in manifests:
         kind=manifest_kind(manifest)
         run(['scp',str(run_root/'aggregate'/kind/f'{kind}.jsonl'),f'{args.ssh_target}:{remote_tmp}/{kind}.jsonl'],timeout=300)
@@ -351,12 +390,19 @@ def main():
         # needing enough free space for a second full JSONL copy.
         run(['ssh',args.ssh_target,f'sudo mv {remote_tmp}/{kind}.jsonl {remote_dir}/{kind}.jsonl; sudo mv {remote_tmp}/{kind}-manifest.json {remote_dir}/{kind}-manifest.json; sudo chmod 0640 {remote_dir}/{kind}.jsonl {remote_dir}/{kind}-manifest.json'],timeout=60)
         remote_manifest=f'{remote_dir}/{kind}-manifest.json'
-        run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. /var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800)
+        first=run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. /var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800,capture=True)
         repeat=run(['ssh',args.ssh_target,f'cd /var/www/boursnegar-data-current && sudo env PYTHONPATH=. /var/www/boursnegar-runtimes/data-venv/bin/python3 scripts/codalpy_remote_import.py --manifest {remote_manifest} --symbol "*" --batch-size 500'],timeout=1800,capture=True)
-        if '"inserted": 0' not in repeat.stdout: raise SystemExit(f'idempotency gate failed: {kind}')
+        first_result=parse_import_result(first.stdout); repeat_result=parse_import_result(repeat.stdout)
+        if repeat_result.get('inserted') != 0: raise SystemExit(f'idempotency gate failed: {kind}')
+        import_results.append({'kind':kind,'first':first_result,'replay':repeat_result})
     run(['ssh',args.ssh_target,f'rm -rf {remote_tmp}'],timeout=60)
-    run(['ssh',args.ssh_target,'curl -fsS http://127.0.0.1:8001/health && curl -fsS http://127.0.0.1:3000/healthz && curl -fsS http://127.0.0.1:3000/readyz'],timeout=60)
-    status = {'status':'production-synchronized','backup':remote_backup,'manifests':len(manifests),'records':sum(m['files'][0]['records'] for m in manifests),'symbol_failures':symbol_failures}
+    run(['ssh',args.ssh_target,'sudo systemctl start --wait boursnegar-snapshot-refresh.service'],timeout=1800)
+    health=run(['ssh',args.ssh_target,'curl -fsS http://127.0.0.1:8001/health && curl -fsS http://127.0.0.1:8001/readyz && curl -fsS http://127.0.0.1:3000/healthz && curl -fsS http://127.0.0.1:3000/readyz'],timeout=60,capture=True)
+    retention_dry=run(['ssh',args.ssh_target,'sudo /usr/local/sbin/boursnegar-backup-retention'],timeout=300,capture=True)
+    retention_apply=run(['ssh',args.ssh_target,'sudo /usr/local/sbin/boursnegar-backup-retention --apply'],timeout=300,capture=True)
+    status = {'status':'production-synchronized','backup':backup_evidence,'manifests':len(manifests),'records':sum(m['files'][0]['records'] for m in manifests),'imports':import_results,'snapshot_refresh':'PASS','health':health.stdout.strip(),'retention':{'dry_run':retention_dry.stdout.strip(),'apply':retention_apply.stdout.strip()},'symbol_failures':symbol_failures}
+    execution.update(status); execution['finished_at']=datetime.now(timezone.utc).isoformat(); write_report(report_path,execution)
+    status['report']=str(report_path)
     print(json.dumps(status,ensure_ascii=False))
     if symbol_failures:
         raise SystemExit(symbol_failure_exit_code(symbol_failures))

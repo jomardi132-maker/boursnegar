@@ -31,7 +31,9 @@ class DailyOrchestratorTests(unittest.TestCase):
     def test_dry_run_writes_non_production_report(self):
         with tempfile.TemporaryDirectory() as directory:
             run_dir = Path(directory) / "runs"
+            artifact_root = Path(directory) / "artifacts"
             argv = ["daily_orchestrator.py", "--dry-run", "--run-dir", str(run_dir),
+                    "--artifact-root", str(artifact_root),
                     "--lock-file", str(Path(directory) / "lock")]
             with patch("sys.argv", argv):
                 self.assertEqual(daily_orchestrator.main(), 0)
@@ -43,7 +45,9 @@ class DailyOrchestratorTests(unittest.TestCase):
     def test_normal_run_is_collection_only_without_explicit_import_flag(self):
         with tempfile.TemporaryDirectory() as directory:
             run_dir = Path(directory) / "runs"
+            artifact_root = Path(directory) / "artifacts"
             argv = ["daily_orchestrator.py", "--run-dir", str(run_dir),
+                    "--artifact-root", str(artifact_root),
                     "--lock-file", str(Path(directory) / "lock")]
             completed = daily_orchestrator.subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="collection complete\n", stderr=""
