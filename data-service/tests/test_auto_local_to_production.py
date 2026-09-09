@@ -21,6 +21,7 @@ from scripts.auto_local_to_production import (
     symbol_run_root,
     symbol_failure_exit_code,
     parse_import_result,
+    snapshot_delta,
 )
 
 
@@ -113,6 +114,16 @@ class AutoLocalToProductionTest(unittest.TestCase):
         self.assertEqual(base_symbol('کربن3'), 'کربن')
         self.assertEqual(base_symbol('نماد۱۲'), 'نماد')
         self.assertEqual(base_symbol('ما'), 'ما')
+        self.assertEqual(base_symbol('فولادح'), 'فولاد')
+
+    def test_progress_requires_real_evidence_delta(self):
+        before={'فملی':{'status':'incomplete','fact_keys':2,'periods':1,'notices':3}}
+        unchanged={'فملی':{'status':'incomplete','fact_keys':2,'periods':1,'notices':3}}
+        changed={'فملی':{'status':'complete','fact_keys':8,'periods':2,'notices':3}}
+        self.assertEqual(snapshot_delta(before,unchanged,['فملی'])['changed_count'],0)
+        result=snapshot_delta(before,changed,['فملی'])
+        self.assertEqual(result['changed_count'],1)
+        self.assertEqual(result['fact_key_gain'],6)
 
     def test_explicit_selection_validates_active_symbols_and_deduplicates(self):
         with tempfile.TemporaryDirectory() as temp:

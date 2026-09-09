@@ -56,17 +56,15 @@ def build_pipeline_command(*, mode, db, ssh_target, from_jalali, to_jalali, limi
     limit=int(limit)
     if not 1 <= limit <= 1524:
         raise ValueError('اندازه batch باید بین ۱ و ۱۵۲۴ باشد')
-    script = 'continuous_local_completion.py' if mode == 'local' else 'auto_local_to_production.py'
-    size_flag = '--batch-size' if mode == 'local' else '--limit'
+    script = 'complete_local_then_server.py' if mode in {'local','full'} else 'auto_local_to_production.py'
+    size_flag = '--batch-size' if mode in {'local','full'} else '--limit'
     cmd=[str(ROOT/'data-service/venv/bin/python'),
          str(ROOT/'data-service/scripts'/script),
          '--db',str(Path(db).resolve()),'--ssh-target',ssh_target,
          '--from-jalali',from_jalali,'--to-jalali',to_jalali,
          size_flag,str(limit),'--run-root',str(Path(run_root).resolve())]
     if mode == 'full':
-        cmd.extend(('--apply','--allow-download'))
-    if mode == 'local':
-        cmd.append('--skip-production')
+        cmd.append('--apply-production')
     return cmd
 class State:
     def __init__(self,path):

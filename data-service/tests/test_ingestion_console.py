@@ -29,9 +29,8 @@ def test_plan_is_read_only_and_full_mode_has_explicit_write_gates(tmp_path):
     full = build_pipeline_command(mode="full", **common)
     assert "--apply" not in plan
     assert "--allow-download" not in plan
-    assert "--apply" in full
-    assert "--allow-download" in full
-    assert "--skip-production" not in full
+    assert "--apply-production" in full
+    assert full[1].endswith("complete_local_then_server.py")
 
 
 def test_local_mode_never_promotes_to_production(tmp_path):
@@ -44,10 +43,10 @@ def test_local_mode_never_promotes_to_production(tmp_path):
         limit=1,
         run_root=tmp_path / "runs",
     )
-    assert "--skip-production" in command
-    assert command[1].endswith("continuous_local_completion.py")
+    assert "--apply-production" not in command
+    assert command[1].endswith("complete_local_then_server.py")
     assert "--batch-size" in command
-    assert "--apply" not in command
+    assert "--apply-production" not in command
 
 
 def test_symbol_rows_use_standard_fact_and_period_counts(tmp_path):

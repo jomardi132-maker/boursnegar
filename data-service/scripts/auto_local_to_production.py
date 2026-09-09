@@ -226,7 +226,45 @@ def local_symbol_rows(db: Path) -> dict[str, dict[str, object]]:
         rows[row['symbol']] = dict(row)
     return rows
 
-_DERIVED_SYMBOL_RE = re.compile(r'[\d۰-۹]+$')
+def local_selected_snapshot(db: Path, symbols: list[str]) -> dict[str, dict[str, int | str]]:
+    """Return evidence counts used to decide whether a fetch made real progress."""
+    if not symbols:
+        return {}
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    placeholders = ','.join('?' for _ in symbols)
+    try:
+        rows = con.execute(
+            f"""
+            SELECT s.symbol, s.status,
+                   COUNT(DISTINCT f.fact_key) AS fact_keys,
+                   COUNT(DISTINCT CASE WHEN f.period_end_jalali <> '' THEN f.period_end_jalali END) AS periods,
+                   COUNT(DISTINCT n.tracing_no) AS notices
+            FROM symbols s
+            LEFT JOIN facts f ON f.symbol=s.symbol
+            LEFT JOIN notices n ON n.symbol=s.symbol
+            WHERE s.symbol IN ({placeholders})
+            GROUP BY s.symbol, s.status
+            """, symbols).fetchall()
+        return {r['symbol']: {'status': r['status'], 'fact_keys': r['fact_keys'],
+                'periods': r['periods'], 'notices': r['notices']} for r in rows}
+    finally:
+        con.close()
+
+def snapshot_delta(before: dict, after: dict, symbols: list[str]) -> dict:
+    changed=[]
+    for symbol in symbols:
+        old=before.get(symbol, {})
+        new=after.get(symbol, {})
+        delta={key:int(new.get(key,0))-int(old.get(key,0)) for key in ('fact_keys','periods','notices')}
+        if any(value > 0 for value in delta.values()) or old.get('status') != new.get('status'):
+            changed.append({'symbol':symbol,'before':old,'after':new,'delta':delta})
+    return {'changed_symbols':changed,'changed_count':len(changed),
+            'fact_key_gain':sum(x['delta']['fact_keys'] for x in changed),
+            'period_gain':sum(x['delta']['periods'] for x in changed),
+            'notice_gain':sum(x['delta']['notices'] for x in changed)}
+
+_DERIVED_SYMBOL_RE = re.compile(r'(?:[\d۰-۹]+|ح)$')
 
 def base_symbol(symbol: str) -> str:
     return _DERIVED_SYMBOL_RE.sub('', symbol).strip()
@@ -366,6 +404,7 @@ def main():
     p.add_argument('--symbols-file', help='newline-delimited active symbols to process instead of local-priority selection')
     p.add_argument('--apply',action='store_true'); p.add_argument('--allow-download',action='store_true')
     p.add_argument('--skip-local',action='store_true'); p.add_argument('--skip-production',action='store_true')
+    p.add_argument('--fresh-fetch', action='store_true', help='Ignore older symbol checkpoints for this bounded run')
     p.add_argument('--skip-preimport', action='store_true', help='Skip importing already downloaded local artifacts before planning')
     p.add_argument('--backup-path', help='Write the pre-import rollback dump to this local path instead of Production backups')
     p.add_argument('--report', help='Write a structured end-to-end execution report')
@@ -397,10 +436,11 @@ def main():
     if args.allow_download is False and not args.skip_local:
         raise SystemExit('Local completion may fetch data; pass --allow-download explicitly')
     symbol_failures=[]
+    before_snapshot=local_selected_snapshot(db, selected)
     if not args.skip_local:
         aggregation_roots=[]
         for symbol in selected:
-            target=symbol_run_root(run_base, symbol)/symbol
+            target=(run_root if args.fresh_fetch else symbol_run_root(run_base, symbol))/symbol
             if target.parent == run_base:
                 target=run_root/symbol
             aggregation_roots.append(target)
@@ -415,6 +455,9 @@ def main():
                 symbol_failures.append({'symbol': symbol, 'error': 'timeout'})
                 print(json.dumps({'symbol_failure': symbol, 'error': 'timeout'}, ensure_ascii=False), flush=True)
         run([PYTHON,'data-service/scripts/recalculate_local_coverage.py','--db',str(db)])
+    after_snapshot=local_selected_snapshot(db, selected)
+    local_progress=snapshot_delta(before_snapshot, after_snapshot, selected)
+    execution['local_progress']=local_progress
     # Ensure newly fetched Codalpy-first results enter the same local DB before export.
     if not args.skip_local:
         already_imported = imported_artifact_paths(db)
@@ -432,18 +475,26 @@ def main():
     events_manifest=aggregate_events(aggregate_root,run_root/'aggregate/events')
     if events_manifest['files'][0]['records']: manifests.append(events_manifest)
     if not manifests:
-        status = {'status':'no-new-normalized-records','run_root':str(run_root),'symbol_failures':symbol_failures}
+        status = {'status':'no-new-normalized-records','run_root':str(run_root),'symbol_failures':symbol_failures,
+                  'local_progress':local_progress}
         execution.update(status); execution['finished_at']=datetime.now(timezone.utc).isoformat(); write_report(report_path,execution)
         print(json.dumps(status,ensure_ascii=False))
         if symbol_failures:
             raise SystemExit(symbol_failure_exit_code(symbol_failures))
         return
     if args.skip_production:
-        status = {'status':'local-complete-production-skipped','manifests':[str(run_root/'aggregate'/manifest_kind(m)/'manifest.json') for m in manifests],'symbol_failures':symbol_failures}
+        status = {'status':'local-complete-production-skipped','manifests':[str(run_root/'aggregate'/manifest_kind(m)/'manifest.json') for m in manifests],'symbol_failures':symbol_failures,
+                  'local_progress':local_progress}
         execution.update(status); execution['finished_at']=datetime.now(timezone.utc).isoformat(); write_report(report_path,execution)
         print(json.dumps(status,ensure_ascii=False))
         if symbol_failures:
             raise SystemExit(symbol_failure_exit_code(symbol_failures))
+        return
+    if not args.skip_local and local_progress['changed_count'] == 0:
+        status={'status':'no-local-progress-production-skipped','run_root':str(run_root),
+                'symbol_failures':symbol_failures,'local_progress':local_progress}
+        execution.update(status); execution['finished_at']=datetime.now(timezone.utc).isoformat(); write_report(report_path,execution)
+        print(json.dumps(status,ensure_ascii=False))
         return
     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     if args.backup_path:

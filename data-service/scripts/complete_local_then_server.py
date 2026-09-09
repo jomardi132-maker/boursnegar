@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Complete company/fund queues locally, then sync successful batches to Production."""
+"""Evidence-driven completion: classify gaps, fetch recoverable companies, sync only gains."""
 from __future__ import annotations
 import argparse,json,subprocess,sys,time
 from datetime import datetime,timezone
@@ -10,71 +10,78 @@ sys.path.insert(0,str(ROOT/'data-service'))
 from scripts.ingestion_console import discover_remote
 from scripts.auto_local_to_production import is_fund_row,is_derived_symbol,local_symbol_rows
 
+def write_json(path,value): path.write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
+
 def stream(command,log):
-    with log.open('a',encoding='utf-8') as h:
-        h.write(json.dumps({'command':command,'started_at':datetime.now(timezone.utc).isoformat()},ensure_ascii=False)+'\n');h.flush()
-        p=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
-        assert p.stdout is not None
-        for line in p.stdout: print(line.rstrip(),flush=True);h.write(line);h.flush()
-        code=p.wait();h.write(json.dumps({'exit_code':code,'finished_at':datetime.now(timezone.utc).isoformat()})+'\n')
+    with log.open('a',encoding='utf-8') as handle:
+        handle.write(json.dumps({'command':command,'started_at':datetime.now(timezone.utc).isoformat()},ensure_ascii=False)+'\n');handle.flush()
+        process=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line.rstrip(),flush=True);handle.write(line);handle.flush()
+        code=process.wait();handle.write(json.dumps({'exit_code':code,'finished_at':datetime.now(timezone.utc).isoformat()})+'\n')
         return code
 
-def chunks(items,size): return [items[i:i+size] for i in range(0,len(items),size)]
+def chunks(items,size): return [items[start:start+size] for start in range(0,len(items),size)]
+
+def classify(remote,local):
+    queue={'recoverable_companies':[],'funds_separate_model':[],'derived_not_applicable':[],'already_sufficient':[]}
+    for row in remote:
+        symbol=str(row['symbol']); status=str(local.get(symbol,{}).get('status') or row.get('status') or 'incomplete')
+        if status!='incomplete': queue['already_sufficient'].append(symbol)
+        elif is_derived_symbol(symbol): queue['derived_not_applicable'].append(symbol)
+        elif is_fund_row(row): queue['funds_separate_model'].append(symbol)
+        else: queue['recoverable_companies'].append(symbol)
+    return queue
+
+def read_report(path):
+    try: return json.loads(path.read_text(encoding='utf-8'))
+    except Exception as exc: return {'status':'missing-or-invalid-report','error':str(exc)}
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--db',required=True);p.add_argument('--ssh-target',default='boursnegar')
-    p.add_argument('--from-jalali',default='1402/01/01');p.add_argument('--to-jalali',required=True)
-    p.add_argument('--batch-size',type=int,default=10);p.add_argument('--pause-seconds',type=int,default=30)
-    p.add_argument('--run-root',default='data-service/artifacts/auto-sync');p.add_argument('--apply-production',action='store_true')
-    a=p.parse_args();db=Path(a.db).resolve();stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--db',required=True);parser.add_argument('--ssh-target',default='boursnegar')
+    parser.add_argument('--from-jalali',default='1398/01/01');parser.add_argument('--to-jalali',required=True)
+    parser.add_argument('--batch-size',type=int,default=5);parser.add_argument('--pause-seconds',type=int,default=45)
+    parser.add_argument('--run-root',default='data-service/artifacts/auto-sync');parser.add_argument('--apply-production',action='store_true')
+    args=parser.parse_args()
+    if not 1<=args.batch_size<=25: raise SystemExit('batch-size must be between 1 and 25')
+    db=Path(args.db).resolve();stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     root=ROOT/'data-service/artifacts/database-completion'/stamp;root.mkdir(parents=True)
-    log=root/'completion.log';status=root/'status.json'
-    remote=discover_remote(a.ssh_target,lambda _:None);local=local_symbol_rows(db)
-    company=[];fund=[];derived=[]
-    for row in remote:
-        symbol=row['symbol']
-        if local.get(symbol,{}).get('status')!='incomplete':continue
-        if is_derived_symbol(symbol): derived.append(symbol)
-        elif is_fund_row(row): fund.append(symbol)
-        else: company.append(symbol)
-    queue={'company':company,'fund':fund,'derived_not_applicable':derived}
-    (root/'queue.json').write_text(json.dumps(queue,ensure_ascii=False,indent=2),encoding='utf-8')
-    state={'status':'RUNNING','phase':'local','queue_counts':{k:len(v) for k,v in queue.items()},'successful_local_batches':[],'failed_local_batches':[]}
-    status.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-    successful=[]
-    all_batches=[('company',x) for x in chunks(company,a.batch_size)]+[('fund',x) for x in chunks(fund,a.batch_size)]
-    for number,(kind,symbols) in enumerate(all_batches,1):
-        symbol_file=root/f'{number:03d}-{kind}.txt';symbol_file.write_text('\n'.join(symbols)+'\n',encoding='utf-8')
-        report=root/f'{number:03d}-{kind}-local.json'
-        command=[PYTHON,str(ROOT/'data-service/scripts/auto_local_to_production.py'),'--db',str(db),
-                 '--ssh-target',a.ssh_target,'--from-jalali',a.from_jalali,'--to-jalali',a.to_jalali,
-                 '--limit',str(len(symbols)),'--run-root',str(Path(a.run_root).resolve()),
-                 '--symbols-file',str(symbol_file),'--report',str(report),'--apply','--allow-download','--skip-production']
-        code=stream(command,log)
-        entry={'number':number,'kind':kind,'symbols':symbols,'exit_code':code,'report':str(report)}
-        (state['successful_local_batches'] if code==0 else state['failed_local_batches']).append(entry)
-        if code==0:successful.append((number,kind,symbol_file,symbols))
-        state['phase']='local';state['current_batch']=number;status.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-        if a.pause_seconds:time.sleep(a.pause_seconds)
-    if a.apply_production:
-        state['phase']='production';state['successful_production_batches']=[];state['failed_production_batches']=[]
-        status.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-        for number,kind,symbol_file,symbols in successful:
-            report=root/f'{number:03d}-{kind}-production.json'
-            command=[PYTHON,str(ROOT/'data-service/scripts/auto_local_to_production.py'),'--db',str(db),
-                     '--ssh-target',a.ssh_target,'--from-jalali',a.from_jalali,'--to-jalali',a.to_jalali,
-                     '--limit',str(len(symbols)),'--run-root',str(Path(a.run_root).resolve()),
-                     '--symbols-file',str(symbol_file),'--report',str(report),'--apply','--allow-download']
-            code=stream(command,log)
-            entry={'number':number,'kind':kind,'symbols':symbols,'exit_code':code,'report':str(report)}
-            (state['successful_production_batches'] if code==0 else state['failed_production_batches']).append(entry)
-            status.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-            if a.pause_seconds:time.sleep(a.pause_seconds)
-    failures=len(state['failed_local_batches'])+len(state.get('failed_production_batches',[]))
-    state.update({'status':'PASSED' if failures==0 else 'ATTENTION','phase':'finished',
-                  'finished_at':datetime.now(timezone.utc).isoformat(),'failures':failures})
-    status.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-    print(json.dumps({'status':state['status'],'status_file':str(status),'failures':failures},ensure_ascii=False))
+    log=root/'completion.log';status_path=root/'status.json'
+    remote_before=discover_remote(args.ssh_target,lambda _:None);local_before=local_symbol_rows(db)
+    queue=classify(remote_before,local_before);write_json(root/'queue.json',queue)
+    state={'status':'RUNNING','phase':'recoverable-companies','started_at':datetime.now(timezone.utc).isoformat(),
+           'queue_counts':{key:len(value) for key,value in queue.items()},'batches':[],
+           'net_progress':{'changed_symbols':0,'fact_key_gain':0,'period_gain':0,'notice_gain':0}}
+    write_json(status_path,state)
+    for number,symbols in enumerate(chunks(queue['recoverable_companies'],args.batch_size),1):
+        symbol_file=root/f'{number:03d}-company.txt';symbol_file.write_text('\n'.join(symbols)+'\n',encoding='utf-8')
+        report=root/f'{number:03d}-execution.json'
+        command=[PYTHON,str(ROOT/'data-service/scripts/auto_local_to_production.py'),'--db',str(db),'--ssh-target',args.ssh_target,
+                 '--from-jalali',args.from_jalali,'--to-jalali',args.to_jalali,'--limit',str(len(symbols)),
+                 '--run-root',str(Path(args.run_root).resolve()),'--symbols-file',str(symbol_file),'--report',str(report),
+                 '--apply','--allow-download','--skip-preimport','--fresh-fetch']
+        if not args.apply_production: command.append('--skip-production')
+        code=stream(command,log);result=read_report(report);progress=result.get('local_progress') or {}
+        entry={'number':number,'symbols':symbols,'exit_code':code,'result_status':result.get('status'),'progress':progress,'report':str(report)}
+        state['batches'].append(entry)
+        for key in state['net_progress']:
+            source='changed_count' if key=='changed_symbols' else key
+            state['net_progress'][key]+=int(progress.get(source) or 0)
+        state['current_batch']=number;write_json(status_path,state)
+        if args.pause_seconds: time.sleep(args.pause_seconds)
+    subprocess.run([PYTHON,str(ROOT/'data-service/scripts/recalculate_local_coverage.py'),'--db',str(db),'--export',str(root/'final-local-coverage.csv')],cwd=ROOT,check=True)
+    local_after=local_symbol_rows(db);remote_after=discover_remote(args.ssh_target,lambda _:None)
+    final_queue=classify(remote_after,local_after);write_json(root/'final-classification.json',final_queue)
+    hard_failures=[batch for batch in state['batches'] if batch['exit_code']!=0];unresolved=final_queue['recoverable_companies']
+    state.update({'status':'COMPLETE' if not hard_failures and not unresolved else 'ATTENTION','phase':'finished',
+                  'finished_at':datetime.now(timezone.utc).isoformat(),'hard_failures':hard_failures,
+                  'final_counts':{key:len(value) for key,value in final_queue.items()},
+                  'unresolved_recoverable_companies':unresolved,
+                  'meaning':'COMPLETE means no recoverable company remains; funds and derived instruments are classified separately.'})
+    write_json(status_path,state)
+    print(json.dumps({'status':state['status'],'status_file':str(status_path),'net_progress':state['net_progress'],'unresolved':len(unresolved)},ensure_ascii=False))
+    if hard_failures: raise SystemExit(2)
 
-if __name__=='__main__':main()
+if __name__=='__main__': main()
