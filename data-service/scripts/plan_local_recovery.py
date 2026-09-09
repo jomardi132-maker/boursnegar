@@ -36,6 +36,10 @@ def main() -> None:
           updated_at TEXT NOT NULL DEFAULT ''
         );
     """)
+    try:
+        db.execute("ALTER TABLE symbols ADD COLUMN completion_state TEXT NOT NULL DEFAULT 'UNKNOWN'")
+    except sqlite3.OperationalError:
+        pass
     exclusion_path = Path(a.exclusions)
     exclusions = {line.strip() for line in exclusion_path.read_text(encoding='utf-8').splitlines()
                   if line.strip() and not line.lstrip().startswith('#')} if exclusion_path.exists() else set()
@@ -51,7 +55,8 @@ def main() -> None:
         """SELECT symbol, COALESCE(industry,'نامشخص'), status,
                   standard_count, period_count, gap_summary
            FROM symbols
-           WHERE (:include_complete = 1 OR status <> 'complete')
+           WHERE (:include_complete = 1 OR (status NOT IN ('complete','not_applicable')
+                  AND completion_state NOT IN ('SOURCE_EXHAUSTED','FUND_MISSING','FUND_PARTIAL')))
            ORDER BY CASE
                       WHEN gap_summary LIKE '%دوره مقایسه%' THEN 0
                       WHEN gap_summary LIKE '%fact%' OR gap_summary LIKE '%صورت%' THEN 1

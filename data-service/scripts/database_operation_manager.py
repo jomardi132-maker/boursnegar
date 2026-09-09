@@ -38,7 +38,9 @@ def summary():
     try: elapsed=max(0,(datetime.now(timezone.utc)-datetime.fromisoformat(value['started_at'])).total_seconds())
     except Exception: pass
     if elapsed and done and total>done: eta=round(elapsed/done*(total-done))
-    return {'active':bool(active),'pids':[x['pid'] for x in active],'status':value.get('status'),'phase':value.get('phase'),
+    display_status=value.get('status');audit_path=Path(value.get('run_dir',''))/'smart-gap-audit.json'
+    if display_status=='ATTENTION' and audit_path.is_file(): display_status='CLASSIFIED_NO_ACTIONABLE_COMPANY_RETRY'
+    return {'active':bool(active),'pids':[x['pid'] for x in active],'status':display_status,'phase':value.get('phase'),
             'done_symbols':done,'total_symbols':total,'remaining_symbols':max(0,total-done),'eta_seconds':eta,
             'net_progress':value.get('net_progress',{}),'run_dir':value.get('run_dir')}
 
@@ -82,6 +84,17 @@ def cleanup_collector_chrome():
             except ProcessLookupError: pass
     return stopped
 
+def audit_finished_attention():
+    value=load_status()
+    if not value or value.get('status')!='ATTENTION' or process_rows(): return None
+    run_dir=Path(value['run_dir']);output=run_dir/'smart-gap-audit.json'
+    if output.exists(): return str(output)
+    config=value.get('configuration') or {};db=config.get('db') or str(ROOT/'data-service/artifacts/local-ingestion.sqlite3')
+    subprocess.run([str(PYTHON),str(ROOT/'data-service/scripts/recalculate_local_coverage.py'),'--db',db],cwd=ROOT,check=True)
+    subprocess.run([str(PYTHON),str(ROOT/'data-service/scripts/smart_gap_audit.py'),'--db',db,
+                    '--completion-status',str(run_dir/'status.json'),'--out',str(output)],cwd=ROOT,check=True)
+    return str(output)
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--watch',action='store_true');parser.add_argument('--resume',action='store_true');parser.add_argument('--status',action='store_true');parser.add_argument('--interval',type=int,default=60)
     args=parser.parse_args()
@@ -90,10 +103,10 @@ def main():
         try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError: return
         while True:
-            result=resume_interrupted();cleanup_collector_chrome()
+            result=resume_interrupted();audit_finished_attention();cleanup_collector_chrome()
             (COMPLETIONS/'manager-status.json').write_text(json.dumps({'at':datetime.now(timezone.utc).isoformat(),'result':result},ensure_ascii=False,indent=2),encoding='utf-8')
             time.sleep(max(15,args.interval))
-    result=resume_interrupted() if args.resume else summary();result['collector_chrome_stopped']=cleanup_collector_chrome()
+    result=resume_interrupted() if args.resume else summary();result['gap_audit']=audit_finished_attention();result['collector_chrome_stopped']=cleanup_collector_chrome()
     print(json.dumps(result,ensure_ascii=False,indent=2))
 
 if __name__=='__main__': main()

@@ -133,10 +133,10 @@ class State:
         try: result=fn(); self.db.execute('UPDATE runs SET finished_at=?,status=?,summary=? WHERE id=?',(now(),'PASSED',json.dumps(result,ensure_ascii=False),rid)); self.db.commit(); return result
         except Exception as exc: self.db.execute('UPDATE runs SET finished_at=?,status=?,summary=? WHERE id=?',(now(),'FAILED',str(exc),rid)); self.db.commit(); raise
     def overview(self):
-        symbols=self.db.execute('SELECT COUNT(*), SUM(status="complete"), SUM(status="comparable"), SUM(status="incomplete") FROM symbols').fetchone()
+        symbols=self.db.execute('SELECT COUNT(*), SUM(status="complete"), SUM(status="comparable"), SUM(status="incomplete"), SUM(status="not_applicable") FROM symbols').fetchone()
         latest=self.db.execute('SELECT started_at,finished_at,status,stage,summary FROM runs ORDER BY id DESC LIMIT 1').fetchone()
         return {'symbols':int(symbols[0] or 0),'complete':int(symbols[1] or 0),'comparable':int(symbols[2] or 0),
-                'incomplete':int(symbols[3] or 0),'latest':latest}
+                'incomplete':int(symbols[3] or 0),'not_applicable':int(symbols[4] or 0),'latest':latest}
     def recent_runs(self,limit=50):
         return self.db.execute('SELECT id,started_at,finished_at,status,stage,summary FROM runs ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
 def command(args, log):
@@ -190,7 +190,8 @@ class App:
         notebook=ttk.Notebook(root); notebook.pack(fill='both',expand=True,padx=8,pady=8); operations_tab=ttk.Frame(notebook); symbols_tab=ttk.Frame(notebook); files_tab=ttk.Frame(notebook); notebook.add(operations_tab,text=fa('مرکز عملیات')); notebook.add(symbols_tab,text=fa('وضعیت نمادها')); notebook.add(files_tab,text=fa('دفترکل فایل‌های محلی'))
         self.build_operations_tab(operations_tab)
         filters=ttk.Frame(symbols_tab); filters.pack(fill='x',padx=8,pady=(8,2)); ttk.Label(filters,text='جست‌وجوی نماد:').pack(side='right'); search=ttk.Entry(filters,textvariable=self.search_var,width=18); search.pack(side='right',padx=5); search.bind('<KeyRelease>',lambda _e:self.refresh()); ttk.Label(filters,text='صنعت:').pack(side='right',padx=(8,2)); self.industry_box=ttk.Combobox(filters,textvariable=self.industry_var,state='readonly',width=20); self.industry_box.pack(side='right'); self.industry_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='وضعیت:').pack(side='right',padx=(8,2)); self.status_box=ttk.Combobox(filters,textvariable=self.status_var,state='readonly',values=('همه وضعیت‌ها','کامل','قابل‌مقایسه','ناقص'),width=13); self.status_box.pack(side='right'); self.status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(filters,text='کمبود:').pack(side='right',padx=(8,2)); self.gap_box=ttk.Combobox(filters,textvariable=self.gap_var,state='readonly',width=18); self.gap_box.pack(side='right'); self.gap_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh()); ttk.Label(symbols_tab,textvariable=self.summary_var,anchor='e',font=self.bold).pack(fill='x',padx=8,pady=3)
-        self.tree=ttk.Treeview(symbols_tab,columns=('symbol','industry','status','percent','facts','periods','gaps','error','ready','conflicts','unlinked'),show='headings',style='Persian.Treeview'); self.tree.tag_configure('complete',foreground='#198754'); self.tree.tag_configure('comparable',foreground='#9a6700'); self.tree.tag_configure('incomplete',foreground='#b42318')
+        self.status_box['values']=('همه وضعیت‌ها','کامل','قابل‌مقایسه','ناقص','غیرقابل‌اعمال')
+        self.tree=ttk.Treeview(symbols_tab,columns=('symbol','industry','status','percent','facts','periods','gaps','error','ready','conflicts','unlinked'),show='headings',style='Persian.Treeview'); self.tree.tag_configure('complete',foreground='#198754'); self.tree.tag_configure('comparable',foreground='#9a6700'); self.tree.tag_configure('not_applicable',foreground='#64748b'); self.tree.tag_configure('incomplete',foreground='#b42318')
         for c,t,w in zip(self.tree['columns'],('نماد','صنعت','وضعیت لوکال','تکمیل','fact معتبر','تعداد دوره','کمبودها','خطا','آماده','تعارض','بی‌اتصال'),(110,180,120,75,90,90,240,260,80,80,80)): self.tree.heading(c,text=fa(t),anchor='e'); self.tree.column(c,anchor='e',width=w)
         self.tree.pack(fill='both',expand=True,padx=8,pady=8); bar=ttk.Frame(symbols_tab); bar.pack(fill='x',padx=8,pady=4); ttk.Button(bar,text='بررسی سرور',command=self.discover).pack(side='right'); ttk.Button(bar,text='تکمیل محلی از کدال',command=lambda:self.run_pipeline('local')).pack(side='right',padx=5); ttk.Button(bar,text='تکمیل و ارسال به سرور',command=lambda:self.run_pipeline('full')).pack(side='right',padx=5); ttk.Button(bar,text='خروجی CSV',command=self.export_rows).pack(side='left'); ttk.Label(bar,text='اطلاعات فقط پس از کنترل کیفیت ارسال می‌شود.').pack(side='left',padx=12)
         file_filters=ttk.Frame(files_tab); file_filters.pack(fill='x',padx=8,pady=8); ttk.Label(file_filters,text='جست‌وجوی مسیر:').pack(side='right'); file_search=ttk.Entry(file_filters,textvariable=self.file_search_var,width=36); file_search.pack(side='right',padx=5); file_search.bind('<KeyRelease>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='نوع:').pack(side='right'); self.file_role_box=ttk.Combobox(file_filters,textvariable=self.file_role_var,state='readonly',width=14); self.file_role_box.pack(side='right',padx=5); self.file_role_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Label(file_filters,text='وضعیت:').pack(side='right'); self.file_status_box=ttk.Combobox(file_filters,textvariable=self.file_status_var,state='readonly',width=14); self.file_status_box.pack(side='right',padx=5); self.file_status_box.bind('<<ComboboxSelected>>',lambda _e:self.refresh_artifacts()); ttk.Button(file_filters,text='بازخوانی دفترکل',command=self.scan_artifacts).pack(side='left'); ttk.Button(file_filters,text='ممیزی Excelهای بی‌مرجع',command=self.audit_orphans).pack(side='left',padx=5); ttk.Button(file_filters,text='خروجی صف بررسی',command=self.export_candidate_review).pack(side='left',padx=5)
@@ -225,8 +226,8 @@ class App:
             self.run_tree.heading(c,text=fa(t),anchor='e'); self.run_tree.column(c,anchor='e',width=w)
         self.run_tree.pack(fill='both',expand=True)
     def refresh_operations(self):
-        overview=self.state.overview(); total=overview['symbols']; complete=overview['complete']; incomplete=overview['incomplete']
-        self.local_status_var.set(fa(f'دیتابیس: {self.state.path}\nنمادها: {total} | کامل: {complete} | ناقص: {incomplete}'))
+        overview=self.state.overview(); total=overview['symbols']; complete=overview['complete']; incomplete=overview['incomplete'];na=overview['not_applicable']
+        self.local_status_var.set(fa(f'دیتابیس: {self.state.path}\nنمادها: {total} | کامل: {complete} | ناقص: {incomplete} | غیرقابل‌اعمال: {na}'))
         latest=overview['latest']
         self.last_run_var.set(fa('هنوز اجرایی ثبت نشده' if not latest else f'{latest[3]} | {latest[2]}\nشروع: {latest[0]}'))
         try:
@@ -282,14 +283,14 @@ class App:
         for row in rows:
             if query and query not in (row[0] or '').casefold(): continue
             if selected!='همه صنایع' and (row[1] or 'نامشخص')!=selected: continue
-            if selected_status!='همه وضعیت‌ها' and {'کامل':'complete','قابل‌مقایسه':'comparable','ناقص':'incomplete'}.get(selected_status)!=row[2]: continue
+            if selected_status!='همه وضعیت‌ها' and {'کامل':'complete','قابل‌مقایسه':'comparable','ناقص':'incomplete','غیرقابل‌اعمال':'not_applicable'}.get(selected_status)!=row[2]: continue
             if selected_gap!='همه کمبودها' and selected_gap not in (row[5] or ''): continue
             visible.append(row)
-        labels={'complete':'کامل','comparable':'قابل‌مقایسه','incomplete':'ناقص','unknown':'نامشخص'}
+        labels={'complete':'کامل','comparable':'قابل‌مقایسه','incomplete':'ناقص','not_applicable':'غیرقابل‌اعمال','unknown':'نامشخص'}
         for row in visible:
             status=row[2]; values=list(row); values[2]=labels.get(status,values[2]); standard=max(0,int(row[3] or 0)); periods=max(0,int(row[4] or 0)); values.insert(3,f'{min(100,round(standard*70/7+periods*30/2))}%'); self.tree.insert('', 'end', values=tuple(fa(value) for value in values), tags=(status,))
-        counts={key:sum(1 for r in rows if r[2]==key) for key in ('complete','comparable','incomplete')}; total=len(rows); pct=(counts['complete']*100/total) if total else 0
-        self.summary_var.set(fa(f'پوشش دیتابیس لوکال — کل: {total}  |  کامل: {counts["complete"]}  |  قابل‌مقایسه: {counts["comparable"]}  |  ناقص: {counts["incomplete"]}  |  تکمیل کامل: {pct:.1f}%  |  نمایش: {len(visible)}'))
+        counts={key:sum(1 for r in rows if r[2]==key) for key in ('complete','comparable','incomplete','not_applicable')}; total=len(rows); applicable=total-counts['not_applicable']; pct=(counts['complete']*100/applicable) if applicable else 0
+        self.summary_var.set(fa(f'پوشش دیتابیس لوکال — کل: {total}  |  کامل: {counts["complete"]}  |  قابل‌مقایسه: {counts["comparable"]}  |  ناقص: {counts["incomplete"]}  |  غیرقابل‌اعمال: {counts["not_applicable"]}  |  تکمیل موارد قابل‌اعمال: {pct:.1f}%  |  نمایش: {len(visible)}'))
     def refresh_artifacts(self):
         for item in self.file_tree.get_children(): self.file_tree.delete(item)
         rows=self.state.artifact_rows(); roles=sorted({r[1] for r in rows}); statuses=sorted({r[2] for r in rows}); self.file_role_box['values']=['همه انواع']+roles; self.file_status_box['values']=['همه وضعیت‌ها']+statuses

@@ -211,10 +211,13 @@ def local_symbol_rows(db: Path) -> dict[str, dict[str, object]]:
     con = sqlite3.connect(db)
     con.row_factory = sqlite3.Row
     rows = {}
+    columns={row[1] for row in con.execute('PRAGMA table_info(symbols)')}
+    completion="COALESCE(s.completion_state, 'UNKNOWN')" if 'completion_state' in columns else "'UNKNOWN'"
     for row in con.execute(
-        """
+        f"""
         SELECT s.symbol,
                s.status,
+               {completion} AS completion_state,
                COALESCE(s.standard_count, 0) AS standard_count,
                COALESCE(s.period_count, 0) AS period_count,
                COUNT(DISTINCT n.tracing_no) AS notice_count

@@ -25,10 +25,12 @@ def stream(command,log):
 def chunks(items,size): return [items[start:start+size] for start in range(0,len(items),size)]
 
 def classify(remote,local):
-    queue={'recoverable_companies':[],'funds_separate_model':[],'derived_not_applicable':[],'already_sufficient':[]}
+    queue={'recoverable_companies':[],'source_exhausted':[],'funds_separate_model':[],'derived_not_applicable':[],'already_sufficient':[]}
     for row in remote:
         symbol=str(row['symbol']); status=str(local.get(symbol,{}).get('status') or row.get('status') or 'incomplete')
-        if status!='incomplete': queue['already_sufficient'].append(symbol)
+        completion=str(local.get(symbol,{}).get('completion_state') or '')
+        if completion=='SOURCE_EXHAUSTED': queue['source_exhausted'].append(symbol)
+        elif status!='incomplete': queue['already_sufficient'].append(symbol)
         elif is_derived_symbol(symbol): queue['derived_not_applicable'].append(symbol)
         elif is_fund_row(row): queue['funds_separate_model'].append(symbol)
         else: queue['recoverable_companies'].append(symbol)
