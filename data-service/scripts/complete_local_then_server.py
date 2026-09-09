@@ -44,13 +44,20 @@ def main():
     parser.add_argument('--from-jalali',default='1398/01/01');parser.add_argument('--to-jalali',required=True)
     parser.add_argument('--batch-size',type=int,default=5);parser.add_argument('--pause-seconds',type=int,default=45)
     parser.add_argument('--run-root',default='data-service/artifacts/auto-sync');parser.add_argument('--apply-production',action='store_true')
+    parser.add_argument('--symbols-file', help='Optional resume queue; only listed recoverable companies are processed')
     args=parser.parse_args()
     if not 1<=args.batch_size<=25: raise SystemExit('batch-size must be between 1 and 25')
     db=Path(args.db).resolve();stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     root=ROOT/'data-service/artifacts/database-completion'/stamp;root.mkdir(parents=True)
     log=root/'completion.log';status_path=root/'status.json'
     remote_before=discover_remote(args.ssh_target,lambda _:None);local_before=local_symbol_rows(db)
-    queue=classify(remote_before,local_before);write_json(root/'queue.json',queue)
+    queue=classify(remote_before,local_before)
+    if args.symbols_file:
+        requested=[line.strip() for line in Path(args.symbols_file).read_text(encoding='utf-8').splitlines() if line.strip()]
+        recoverable=set(queue['recoverable_companies']);unknown=[symbol for symbol in requested if symbol not in recoverable]
+        if unknown: raise SystemExit('Resume symbols are not recoverable active companies: '+', '.join(unknown))
+        queue['recoverable_companies']=list(dict.fromkeys(requested))
+    write_json(root/'queue.json',queue)
     state={'status':'RUNNING','phase':'recoverable-companies','started_at':datetime.now(timezone.utc).isoformat(),
            'queue_counts':{key:len(value) for key,value in queue.items()},'batches':[],
            'net_progress':{'changed_symbols':0,'fact_key_gain':0,'period_gain':0,'notice_gain':0}}
