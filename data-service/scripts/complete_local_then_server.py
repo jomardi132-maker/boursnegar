@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Evidence-driven completion: classify gaps, fetch recoverable companies, sync only gains."""
 from __future__ import annotations
-import argparse,json,subprocess,sys,time
+import argparse,fcntl,json,subprocess,sys,time
 from datetime import datetime,timezone
 from pathlib import Path
 
@@ -47,6 +47,10 @@ def main():
     parser.add_argument('--symbols-file', help='Optional resume queue; only listed recoverable companies are processed')
     args=parser.parse_args()
     if not 1<=args.batch_size<=25: raise SystemExit('batch-size must be between 1 and 25')
+    lock_path=ROOT/'data-service/artifacts/database-completion/.operation.lock';lock_path.parent.mkdir(parents=True,exist_ok=True)
+    lock_handle=lock_path.open('w');
+    try: fcntl.flock(lock_handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError: raise SystemExit('another database completion operation is already running')
     db=Path(args.db).resolve();stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     root=ROOT/'data-service/artifacts/database-completion'/stamp;root.mkdir(parents=True)
     log=root/'completion.log';status_path=root/'status.json'
@@ -59,6 +63,9 @@ def main():
         queue['recoverable_companies']=list(dict.fromkeys(requested))
     write_json(root/'queue.json',queue)
     state={'status':'RUNNING','phase':'recoverable-companies','started_at':datetime.now(timezone.utc).isoformat(),
+           'configuration':{'db':str(db),'ssh_target':args.ssh_target,'from_jalali':args.from_jalali,
+                            'to_jalali':args.to_jalali,'batch_size':args.batch_size,'pause_seconds':args.pause_seconds,
+                            'run_root':str(Path(args.run_root).resolve()),'apply_production':args.apply_production},
            'queue_counts':{key:len(value) for key,value in queue.items()},'batches':[],
            'net_progress':{'changed_symbols':0,'fact_key_gain':0,'period_gain':0,'notice_gain':0}}
     write_json(status_path,state)
