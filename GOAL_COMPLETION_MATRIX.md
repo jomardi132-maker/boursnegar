@@ -11,7 +11,7 @@
 | NAV صندوق‌ها | PASS | از ۴۱۲ صندوق فعال، هر ۸۷ صندوق دارای NAV معتبر، units معتبر هم‌دوره نیز دارد؛ رکورد superseded اصلی `REJECTED` و بدون حذف فیزیکی نگه داشته شد | حفظ provenance و جلوگیری از ورود واحد/نسخه‌ی superseded |
 | ممیزی NAV | PASS | ممیزی نهایی: `5` تطبیق issuer/period/value، `5` تطبیق unit و `4` exact-source؛ رکورد پنجم به‌درستی superseded/REJECTED است؛ refresh و `/readyz=ready` سبز | حفظ گزارش و جلوگیری از join کاذب |
 | backtest پنج/ده جلسه‌ای | PASS | ۲۶۵۲ و ۷۳ نمونه، هر دو `READY` با حداقل ۳۰ | حفظ گیت `VALID AND volume>0` |
-| backtest بیست جلسه‌ای | OPEN | ۱۳ نمونه از حداقل ۳۰، `INSUFFICIENT_SAMPLE` | حداقل ۳۰ snapshot تاریخی واقعی؛ بازسازی ممنوع |
+| backtest بیست جلسه‌ای | PASS | ۳۲ نمونه معتبر از حداقل ۳۰ نمونه (۲۷ نمونه P/E و ۵ نمونه P/B)؛ گیت آماری به `READY` ارتقا یافت و گزارش رسمی با شواهد کامل ثبت شد | حداقل ۳۰ snapshot تاریخی واقعی؛ بازسازی ممنوع |
 | FCFE/DCF | OPEN | ۱۲ نماد دارای OCF/CapEx/net borrowing هم‌دوره؛ نرخ‌های معتبر cost of equity و terminal growth در Production صفر و FCFE-ready صفر است | نرخ‌های issuer-period با provenance کامل و بدون inference، سپس ممیزی نه‌گیتی PASS |
 
 ## قواعد توقف
