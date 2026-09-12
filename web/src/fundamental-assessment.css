@@ -1,0 +1,26 @@
+/* Fundamental health is independent from the directional recommendation. */
+.evidence-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.evidence-strip small,
+.evidence-strip b,
+.evidence-strip em { display: block; }
+.evidence-strip em {
+  margin-top: 5px;
+  color: #8ea298;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.7;
+}
+.fundamental-assessment[data-status="CRITICAL"] {
+  border-color: #78423c;
+  background: #2d1715;
+}
+.fundamental-assessment[data-status="CRITICAL"] svg,
+.fundamental-assessment[data-status="WEAK"] svg { color: #ff9a8f; }
+.fundamental-assessment[data-status="FAIR"] svg { color: #f0bf62; }
+.fundamental-assessment[data-status="UNKNOWN"] svg { color: #aebbb5; }
+@media (max-width: 980px) {
+  .evidence-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .evidence-strip { grid-template-columns: 1fr; }
+}

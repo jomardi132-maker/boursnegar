@@ -3,7 +3,7 @@ import json
 from math import isfinite
 from datetime import datetime, timedelta, timezone
 
-from app.analytics.engine import Policy, core_questions, decide
+from app.analytics.engine import Policy, core_questions, decide, fundamental_assessment
 from app.analytics.industry_valuation import health_score, value_company
 from app.ingestion.market_history import model_family
 
@@ -60,8 +60,11 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     confidence = 70.0 if audited else 55.0
     if raw.get("live_price_error"):
         confidence -= 10
-    if raw.get("financial_metrics_missing"):
-        confidence -= min(20, len(raw["financial_metrics_missing"]) * 3)
+    # Confidence and coverage must use the same required-metric contract.
+    # Parser diagnostics also list optional fields (for example operating
+    # profit); penalising those made 100%-covered snapshots look insufficient.
+    if missing_metrics:
+        confidence -= min(20, len(missing_metrics) * 3)
     confidence = max(0.0, round(confidence, 2))
 
     references = raw.get("references") or {}
@@ -173,7 +176,10 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     )
     if fund_model_required:
         decision = "INSUFFICIENT_DATA"
-    if (market_closure_regime or market_fundamental_divergence or turnaround_candidate or capital_action_data_gap) and not critical_warning:
+    # Non-standard market/fundamental states are uncertainty gates even when a
+    # critical financial warning is present. Keep the warning visible, but do
+    # not let it bypass the evidence required for a directional recommendation.
+    if market_closure_regime or market_fundamental_divergence or turnaround_candidate or capital_action_data_gap:
         decision = "INSUFFICIENT_DATA"
     if ratio_anomalies:
         decision = "INSUFFICIENT_DATA"
@@ -193,6 +199,9 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         "reportMode": report_mode,
         "decision": decision,
         "healthScore": score,
+        "fundamentalAssessment": fundamental_assessment(
+            score, critical_warning=critical_warning
+        ),
         "healthDimensions": dimensions,
         "dataCoverage": coverage,
         "dataStatus": data_status,

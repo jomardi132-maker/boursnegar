@@ -1,5 +1,46 @@
 # وضعیت فعلی بورس‌نگار
 
+## 2026-09-10 - رفع داده ناکافی کاذب confidence و قرارداد سلامت بانک
+
+- علت‌های انحصاری ۱۵۲۴ نماد ممیزی شد: `696 NON_STANDARD_ANALYSIS_STATE`، `562 NO_IMPORTED_FINANCIAL_REPORT`، `145 FUND_NAV_REQUIRED`، `79 VALUATION_INPUTS_MISSING`، `15 LOW_CONFIDENCE`، `13 INVALID_RATIO`، `5 LOW_COVERAGE`، `2 OTHER_EVIDENCE_GATE` و `7 ACTIONABLE` در snapshot مرجع پیش از اصلاح confidence.
+- confidence قبلاً به‌اشتباه بابت فیلدهای اختیاری parser کم می‌شد. نسخه `fundamental-engine-v1.3.2` فقط فقدان هفت metric الزامی را جریمه می‌کند. backup `/var/backups/boursnegar/20260910T060201Z-confidence-contract-before.dump` با SHA-256=`39d1ac969d4ca20b8e70671b624d3dbd602a268e614025de5266b17a3009496d` ثبت شد.
+- refresh هدفمند ۱۵ نماد `15/15` موفق بود: ۱۱ `SELL`، سه `HOLD` و فقط `وسالت` با پوشش `71.43` و confidence=`49` به‌درستی ناکافی ماند.
+- برای بانک، نبود operating cash flow دیگر شرط شرکت عملیاتی تحمیل نمی‌کند؛ ROE و ROA دو بُعد اختصاصی با حداقل evidence weight برابر ۵۰ هستند. نسخه `v1.3.3` برای `وبملت3` و `وپارس3` منتشر و refresh `2/2` موفق شد: اولی `STRONG/SELL` و دومی `WEAK/SELL`، هر دو با valuation آماده.
+- تست داده `197 passed + 6 subtests` و `BOURSNEGAR_OBSERVER=PASS` و `REMOTE_FINAL_GATE=PASS` تأیید شدند. `وثخوز` به‌دلیل ratio anomaly واقعی و هشدار بحرانی عمداً گیت‌شده باقی ماند.
+
+## 2026-09-10 - اصلاح قرارداد confidence و کاهش داده ناکافی کاذب
+
+- ممیزی انحصاری ۱۵۲۴ نماد علت‌های `INSUFFICIENT_DATA` را مشخص کرد: `722 MARKET_CLOSURE_REGIME`، `562 NO_IMPORTED_FINANCIAL_REPORT`، `145 FUND_MODEL_REQUIRED`، `33 MARKET_FUNDAMENTAL_DIVERGENCE`، `16 CAPITAL_ACTION_DATA_GAP`، `38 STANDARD` و `1 TURNAROUND_CANDIDATE`؛ این گروه‌ها همپوشانی ندارند.
+- در زیرگروه STANDARD، موتور به‌اشتباه missingهای اختیاری parser را از confidence کم می‌کرد، هرچند هفت معیار الزامی و پوشش ۱۰۰٪ کامل بودند. قرارداد confidence با همان `REQUIRED_METRICS` پوشش یکسان شد و نسخه موتور به `fundamental-engine-v1.3.2` رسید.
+- backup پیش از انتشار: `/var/backups/boursnegar/20260910T060201Z-confidence-contract-before.dump` با SHA-256=`39d1ac969d4ca20b8e70671b624d3dbd602a268e614025de5266b17a3009496d`. release فعال: `/var/www/boursnegar-data-releases/20260910T060201Z-confidence-contract-v1.3.2`.
+- refresh هدفمند ۱۵ نماد `15 ok / 0 errors` بود: ۱۱ SELL، ۳ HOLD و فقط `وسالت` به‌علت پوشش `71.43` و confidence `49` همچنان ناکافی ماند. دانلود یا refresh سراسری تکرار نشد.
+- تست‌ها `196 passed + 6 subtests` و وب `75 passed`، سپس `BOURSNEGAR_OBSERVER=PASS` و `REMOTE_FINAL_GATE=PASS` تأیید شدند.
+
+## 2026-09-10 - جداسازی وضعیت بنیاد از توصیه معاملاتی
+
+- موتور `fundamental-engine-v1.3.1` یک `fundamentalAssessment` مستقل با وضعیت‌های `CRITICAL/WEAK/FAIR/STRONG/UNKNOWN` تولید می‌کند؛ این طبقه‌بندی فقط سلامت صورت مالی را توضیح می‌دهد و هیچ خرید/فروشی را القا نمی‌کند.
+- UI تحلیل کامل وضعیت بنیاد، امتیاز سلامت، پوشش داده و اطمینان را در چهار کارت معنایی جدا نمایش می‌دهد؛ زبان بصری موجود حفظ شد و layout در عرض‌های ۹۸۰ و ۷۶۰ پیکسل به ۲ و ۱ ستون می‌شکند.
+- releaseهای اتمیک data و web در `/var/www/boursnegar-data-releases/20260910T054750Z-fundamental-assessment` و `/var/www/boursnegar-releases/20260910T054750Z-fundamental-assessment` فعال شدند؛ releaseهای پیشین مسیر rollback هستند.
+- refresh هدفمند فقط ۹۶۲ نماد قابل تحلیل را اجرا کرد: `955 ok` و `7 HTTP 404` فاقد گزارش؛ همراه با نمونه فولاد، `956` snapshot نسخه جدید ثبت شد. آخرین توزیع قابل محاسبه: `STRONG=237`، `FAIR=287`، `WEAK=75`، `CRITICAL=135` و `UNKNOWN=221`؛ موارد `MISSING=578` متعلق به snapshotهای coverage/قدیمی فاقد ورودی تحلیل‌اند.
+- داده `195 passed + 6 subtests`، وب `75 passed`، build، رندر واقعی دسکتاپ و موبایل ۳۷۵px بدون overflow/خطای console، `BOURSNEGAR_OBSERVER=PASS` و `REMOTE_FINAL_GATE=PASS` تأیید شدند.
+
+## 2026-09-10 - گیت کالیبراسیون ضرایب صنایع
+
+- ابزار read-only و deterministic به نام `audit_industry_policy_calibration.py` اضافه شد؛ هیچ policy را تغییر نمی‌دهد و حداقل‌های صریح `200 observation`، `30 instrument` و `20 day` را برای پیشنهاد review-only الزام می‌کند.
+- ممیزی روی داده واقعی Production اجرا شد: `families=14`، `ready_for_review=0` و `insufficient_evidence=14`. بیشترین تاریخچه معتبر مربوط به فلزات با ۱۳ روز است؛ در نتیجه تغییر ضرایب فعلی overfit تشخیص داده شد و انجام نشد.
+- خانواده‌های P/B و NAV عمداً از calibration مبتنی بر P/E کنار گذاشته شدند و تا ساخت مشاهده point-in-time متناسب، گیت می‌مانند. artifact در `data-service/artifacts/audits/boursnegar-industry-policy-calibration-20260910.json` با SHA-256=`74c1274d917385d03b32d470e27298fe3a798b9d2d5fc02da8ad6acc4ca47c03` ثبت شد.
+- suite کامل data-service پس از ثبت CLI در registry برابر `194 passed` و `6 subtests passed` است؛ Production در این مرحله write یا deploy جدیدی دریافت نکرد.
+
+## 2026-09-10 - انتشار کنترل‌شده گیت توصیه و سناریوهای ارزش‌گذاری
+
+- موتور محلی به `recommendation-v1.3.0` و `fundamental-engine-v1.3.0` ارتقا یافت: هشدار بنیادی بدون ارزش‌گذاری معتبر دیگر به‌تنهایی `SELL` تولید نمی‌کند و وضعیت‌های غیر استاندارد بازار/بنیاد حتی در حضور هشدار بحرانی در `INSUFFICIENT_DATA` می‌مانند.
+- خطای سناریوهای `price_to_book` اصلاح شد؛ کران‌های ۴ و ۸ برابری عمومی که مقدار پایه ۰.۹ تا ۱ را بیرون بازه قرار می‌دادند حذف و با downside/upside نسخه‌دار هر خانواده جایگزین شدند. نسخه مدل‌های policy به `v1.1.0` رسید.
+- راستی‌آزمایی محلی: suite سرویس داده `191 passed` به‌علاوه `6 subtests`، suite وب `75 passed`، build تولیدی وب و `git diff --check` موفق‌اند.
+- ممیزی پیش از انتشار نشان داد از ۸۶ فروش قبلی، ۷۴ مورد به‌علت `valuationGate=REVIEW` یا `analysisState` غیر استاندارد باید متوقف شوند. backup پیش از انتشار در `/var/backups/boursnegar/20260910T052224Z-analysis-policy-v1.3-before.dump` با SHA-256=`5ca3bf2f4693544156de6390e902a5c8d33b41da7f8b1cb5098627ac0aaabace` ثبت شد.
+- release اتمیک `/var/www/boursnegar-data-releases/20260910T052224Z-analysis-policy-v1.3` فعال شد؛ release قبلی `/var/www/boursnegar-data-releases/20260907T184251Z-main-fdcec7067-sync` مسیر rollback کد است.
+- refresh checkpointed هر ۱۵۲۴ نماد را بررسی کرد: `962 ok` و `562 HTTP 404` که همگی صریحاً فاقد گزارش واردشده بودند؛ خطای شبکه یا 5xx وجود نداشت و retry بیهوده انجام نشد.
+- پس از انتشار فقط ۷ خروجی `SELL` باقی ماند و همگی `valuationGate=READY` و `analysisState=STANDARD` دارند. `BOURSNEGAR_OBSERVER=PASS`، `REMOTE_FINAL_GATE=PASS`، health/ready عمومی سالم و مصرف دیسک ۶۹٪ تأیید شد.
+
 ## کارت اجرای سریع — نقطهٔ شروع هر نوبت
 
 - ابتدا [BOURSNEGAR_EXECUTION_CARD.md](BOURSNEGAR_EXECUTION_CARD.md) را بخوان؛ سپس فقط آخرین entry و جدیدترین report را بررسی کن.

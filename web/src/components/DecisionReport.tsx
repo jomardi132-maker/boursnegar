@@ -5,6 +5,11 @@ export type AnalysisPayload = {
   companyName: string | null;
   decision: "BUY" | "HOLD" | "SELL" | "INSUFFICIENT_DATA";
   healthScore: number | null;
+  fundamentalAssessment?: {
+    status: "CRITICAL" | "WEAK" | "FAIR" | "STRONG" | "UNKNOWN";
+    label: string;
+    reason: string;
+  };
   dataCoverage: number;
   confidence: number;
   valuation: null | {
@@ -104,6 +109,7 @@ export function DecisionReport({ report }: { report: AnalysisPayload }) {
     {conditionalReview&&report.analysisState==="STANDARD"&&<div className="report-basis-note"><ShieldCheck/><span><b>بررسی مشروط:</b> داده‌های پایه و ارزش‌گذاری سناریویی موجود است، اما اطمینان یا کفایت شواهد برای صدور خرید، نگهداری یا فروش قطعی کافی نیست؛ محدوده‌ها برای بررسی اولیه نمایش داده شده‌اند.</span></div>}
     {report.monthlyActivity?.available&&<div className="report-basis-note"><TrendingUp/><span><b>روند گزارش ماهانه:</b> {report.monthlyActivity.monthlySales?.growthPercent!=null?`رشد مبلغ فروش ماه جاری نسبت به ماه مشابه سال قبل ${precisePercent(report.monthlyActivity.monthlySales.growthPercent)}`:`رشد تجمعی مبلغ فروش نسبت به دوره مشابه ${precisePercent(report.monthlyActivity.ytdSales?.growthPercent??null)}`}. منبع: {report.monthlyActivity.source||"گزارش فعالیت ماهانه کدال"}.</span></div>}
     <div className="evidence-strip">
+      <article className="fundamental-assessment" data-status={report.fundamentalAssessment?.status || "UNKNOWN"}><ShieldCheck/><span><small>وضعیت مستقل بنیاد</small><b>{report.fundamentalAssessment?.label || "سلامت بنیادی نامشخص"}</b><em>{report.fundamentalAssessment?.reason || "شواهد کافی برای طبقه‌بندی موجود نیست."}</em></span></article>
       <article><ShieldCheck/><span><small>امتیاز سلامت</small><b>{number(report.healthScore, " از ۱۰۰")}</b></span></article>
       <article><Database/><span><small>پوشش داده</small><b>{number(report.dataCoverage, "٪")}</b></span></article>
       <article><CheckCircle2/><span><small>اطمینان محاسبه</small><b>{number(report.confidence, "٪")}</b></span></article>

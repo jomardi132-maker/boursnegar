@@ -1,8 +1,16 @@
 import unittest
-from app.analytics.engine import Policy, core_questions, decide
+from app.analytics.engine import Policy, core_questions, decide, fundamental_assessment
 from app.ingestion.codal import discover_pages, sha256_bytes
 
 class EngineV1Tests(unittest.TestCase):
+    def test_fundamental_assessment_never_implies_a_trade(self):
+        self.assertEqual(fundamental_assessment(85, critical_warning=False)["status"], "STRONG")
+        self.assertEqual(fundamental_assessment(55, critical_warning=False)["status"], "FAIR")
+        self.assertEqual(fundamental_assessment(20, critical_warning=False)["status"], "WEAK")
+        critical = fundamental_assessment(90, critical_warning=True)
+        self.assertEqual(critical["status"], "CRITICAL")
+        self.assertNotIn("فروش", critical["label"] + critical["reason"])
+
     def test_current_market_pe_takes_precedence_for_earnings_yield(self):
         result = core_questions(ttm_eps=5945, price=18980, pe=18.4, bank_rate=20.5)
         self.assertAlmostEqual(result["earnings_vs_bank"]["value"], 100 / 18.4)
@@ -20,7 +28,8 @@ class EngineV1Tests(unittest.TestCase):
         self.assertEqual(decide(**{**base,"coverage":69}),"INSUFFICIENT_DATA")
         self.assertEqual(decide(**{**base,"industry_model_ready":False}),"INSUFFICIENT_DATA")
         self.assertEqual(decide(**{**base,"health_score":23.81,"industry_model_ready":False,
-                                   "fair_value_low":None,"fair_value_base":None,"fair_value_high":None}),"SELL")
+                                   "fair_value_low":None,"fair_value_base":None,"fair_value_high":None}),"INSUFFICIENT_DATA")
+        self.assertEqual(decide(**{**base,"health_score":23.81,"critical_warning":True}),"SELL")
     def test_pagination_dedup_checkpoint_revision_checksum(self):
         pages={1:{"Page":2,"Letters":[{"TracingNo":1,"Title":"اصل"}]},2:{"Page":2,"Letters":[{"TracingNo":1,"Title":"اصل"},{"TracingNo":2,"Title":"اصلاحیه"}]}}
         checkpoints=[]; rows=list(discover_pages(lambda p:pages[p],checkpoint=checkpoints.append))

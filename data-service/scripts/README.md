@@ -39,6 +39,7 @@
 - `analysis_coverage_audit.py` — ممیزی coverage و ریسک تصمیم.
 - `audit_nav_consistency.py` — تطبیق NAV خام و promoted؛ DB را تغییر نمی‌دهد.
 - `audit_orphan_financial_documents.py` — parse سندهای orphan بدون promotion.
+- `audit_industry_policy_calibration.py` — ممیزی read-only تاریخچهٔ point-in-time ضرایب صنایع؛ پیشنهاد فقط پس از عبور از حداقل مشاهده، نماد و روز و بدون تغییر policy.
 - `audit_promotion_reports.py` — ممیزی reportهای promotion.
 - `audit_valuation_input_gates.py` — ممیزی گیت NAV/FCFE/DCF.
 - `backtest_valuation_models.py` — ارزیابی forward؛ بازار فعلاً خارج از محدوده است.
@@ -64,6 +65,7 @@
 - `repair_browser_period_lengths.py` — repair فقط از عنوان رسمی disclosure.
 - `repair_cashflow_output_types.py` — migration یک‌بارمصرف نوع OCF؛ مقادیر را تغییر نمی‌دهد.
 - `repair_financial_period_lengths.py` — audit/repair دوره فقط از عنوان رسمی.
+- `repair_fund_industry_from_disclosures.py` — اصلاح idempotent صنعت صندوق فقط برای issuerهای unclassified دارای عنوان صریح صندوق در disclosure واردشده؛ پیش‌فرض dry-run و write فقط با `--apply`.
 - `sync_corporate_action_notices.py` — ثبت رویداد سرمایه فقط با lineage کامل.
 
 ## بازار — فعلاً خارج از محدوده

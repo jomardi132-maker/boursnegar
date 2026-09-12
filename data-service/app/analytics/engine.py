@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from typing import Literal
 
 Decision = Literal["BUY", "HOLD", "SELL", "INSUFFICIENT_DATA"]
+FundamentalStatus = Literal["CRITICAL", "WEAK", "FAIR", "STRONG", "UNKNOWN"]
 
 @dataclass(frozen=True)
 class Policy:
-    version: str = "recommendation-v1.2.0"
-    model_version: str = "fundamental-engine-v1.2.0"
+    version: str = "recommendation-v1.3.0"
+    model_version: str = "fundamental-engine-v1.3.3"
     minimum_coverage: float = 70.0
     minimum_confidence: float = 65.0
     cash_quality_threshold: float = 80.0
@@ -16,6 +17,23 @@ class Policy:
 def ratio(numerator: float | None, denominator: float | None) -> float | None:
     if numerator is None or denominator in (None, 0): return None
     return numerator / denominator
+
+def fundamental_assessment(health_score: float | None, *, critical_warning: bool) -> dict:
+    """Describe financial health without implying a trading recommendation."""
+    if critical_warning:
+        return {"status": "CRITICAL", "label": "هشدار بنیادی بحرانی",
+                "reason": "در آخرین صورت مالی زیان یا حقوق صاحبان سهام نامثبت مشاهده شده است."}
+    if health_score is None:
+        return {"status": "UNKNOWN", "label": "سلامت بنیادی نامشخص",
+                "reason": "ابعاد معتبر برای محاسبه امتیاز سلامت کافی نیستند."}
+    if health_score < 40:
+        return {"status": "WEAK", "label": "سلامت بنیادی ضعیف",
+                "reason": "امتیاز سلامت بنیادی کمتر از ۴۰ است."}
+    if health_score >= 70:
+        return {"status": "STRONG", "label": "سلامت بنیادی قوی",
+                "reason": "امتیاز سلامت بنیادی دست‌کم ۷۰ است."}
+    return {"status": "FAIR", "label": "سلامت بنیادی میانه",
+            "reason": "امتیاز سلامت بنیادی بین ۴۰ و ۷۰ است."}
 
 def core_questions(*, ttm_eps=None, price=None, pe=None, bank_rate=None,
                    operating_cash_flow=None, net_profit=None,
@@ -46,18 +64,19 @@ def decide(*, health_score, coverage, confidence, current_price=None,
         confidence_floor = min(confidence_floor, 50.0)
     if coverage < policy.minimum_coverage or confidence < confidence_floor:
         return "INSUFFICIENT_DATA"
-    # Strong sourced downside evidence does not require a fair-value model.
-    # Positive/neutral recommendations remain gated on a complete industry
-    # valuation so missing model assumptions can never create a BUY/HOLD.
     if health_score is None:
         return "INSUFFICIENT_DATA"
-    if critical_warning or health_score < 40:
-        return "SELL"
+    # A critical financial warning is evidence about business health, not a
+    # substitute for valuation. Directional recommendations of every kind are
+    # gated on a complete industry valuation so a loss alone cannot be
+    # presented as a sourced SELL at an unknown price-to-value relationship.
     if not industry_model_ready:
         return "INSUFFICIENT_DATA"
     if None in (current_price, fair_value_low, fair_value_base, fair_value_high):
         return "INSUFFICIENT_DATA"
     if not (fair_value_low <= fair_value_base <= fair_value_high) or current_price <= 0: return "INSUFFICIENT_DATA"
+    if critical_warning or health_score < 40:
+        return "SELL"
     if current_price > fair_value_high * (1 + policy.sell_overvaluation): return "SELL"
     if health_score >= 70 and current_price <= fair_value_base * (1 - policy.buy_margin_of_safety): return "BUY"
     return "HOLD"

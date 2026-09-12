@@ -126,7 +126,11 @@ def health_score(metrics: dict, ratios: dict, family: str, inflation: float | No
     weights = {"profitability": 30, "cash_quality": 25, "margin": 15,
                "asset_efficiency": 20, "leverage": 20, "real_growth": 10}
     available = sum(weights[key] for key in dimensions)
-    if available < 55:
+    # Banks use ROE and ROA as their two dedicated health dimensions. Requiring
+    # operating-company cash flow merely to cross the generic evidence floor
+    # made otherwise complete bank snapshots unevaluable.
+    minimum_available = 50 if family == "bank" else 55
+    if available < minimum_available:
         return None, dimensions
     score = sum(dimensions.values()) / available * 100
     return round(min(100, max(0, score)), 2), {key: round(value, 2) for key, value in dimensions.items()}
@@ -184,25 +188,27 @@ def value_company(raw: dict) -> dict | None:
                 per_share_basis = profit * 1_000_000 / shares
         if not per_share_basis or per_share_basis <= 0:
             return None
-    base_multiple = (
-        max(4.0, min(8.0, spec.multiple))
-        if spec.method == "price_to_book"
-        else spec.multiple
-    )
+    base_multiple = spec.multiple
     base = per_share_basis * base_multiple
     if spec.method in {"normalized_pe", "price_to_book"}:
-        # User-facing policy scenarios: 4 is conservative and 8 optimistic
-        # for both earnings and book-value multiples. The family multiple is
-        # retained as the internal base case between those bounds.
-        low, high = per_share_basis * 4.0, per_share_basis * 8.0
-        scenario_multiples = {"bear": 4.0, "base": base_multiple, "bull": 8.0}
+        # Scenario bounds are family policy deltas around the base multiple.
+        # Reusing P/E multiples (4x/8x) for P/B made the base fall below the
+        # alleged bear case and rendered financial-sector valuations invalid.
+        bear_multiple = base_multiple * (1 - spec.downside)
+        bull_multiple = base_multiple * (1 + spec.upside)
+        low, high = per_share_basis * bear_multiple, per_share_basis * bull_multiple
+        scenario_multiples = {
+            "bear": round(bear_multiple, 4),
+            "base": base_multiple,
+            "bull": round(bull_multiple, 4),
+        }
     else:
         low, high = base * (1 - spec.downside), base * (1 + spec.upside)
         scenario_multiples = {"bear": 1 - spec.downside, "base": 1.0, "bull": 1 + spec.upside}
     return {
         "family": family,
         "method": spec.method,
-        "modelVersion": f"{family}-v1.0.0",
+        "modelVersion": f"{family}-v1.1.0",
         "fairValueLow": round(low),
         "fairValueBase": round(base),
         "fairValueHigh": round(high),

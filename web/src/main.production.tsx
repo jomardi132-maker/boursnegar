@@ -5,4 +5,5 @@ import './stock.css';
 import './production.css';
 import './modern-theme.css';
 import './redesign.css';
+import './fundamental-assessment.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AppProduction /></React.StrictMode>);

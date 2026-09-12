@@ -41,11 +41,13 @@ class IndustryValuationTests(unittest.TestCase):
             "financial_metrics": {"total_equity": 2_000},
         })
         self.assertEqual(value["method"], "price_to_book")
-        self.assertEqual(value["fairValueBase"], 8000)
-        self.assertEqual(value["fairValueLow"], 8000)
-        self.assertEqual(value["fairValueHigh"], 16000)
-        self.assertEqual(value["assumptions"]["scenarioMultiples"]["bear"], 4.0)
-        self.assertEqual(value["assumptions"]["scenarioMultiples"]["bull"], 8.0)
+        self.assertEqual(value["fairValueBase"], 2000)
+        self.assertEqual(value["fairValueLow"], 1600)
+        self.assertEqual(value["fairValueHigh"], 2300)
+        self.assertEqual(value["assumptions"]["scenarioMultiples"]["bear"], 0.8)
+        self.assertEqual(value["assumptions"]["scenarioMultiples"]["bull"], 1.15)
+        self.assertLessEqual(value["fairValueLow"], value["fairValueBase"])
+        self.assertLessEqual(value["fairValueBase"], value["fairValueHigh"])
 
     def test_values_real_estate_with_explicit_book_value_proxy(self):
         value = value_company({
@@ -63,8 +65,29 @@ class IndustryValuationTests(unittest.TestCase):
         })
         self.assertEqual(value["family"], "holding")
         self.assertEqual(value["method"], "price_to_book")
-        self.assertEqual(value["fairValueBase"], 8000)
+        self.assertEqual(value["fairValueBase"], 2000)
+        self.assertEqual(value["fairValueLow"], 1400)
+        self.assertEqual(value["fairValueHigh"], 2400)
         self.assertEqual(value["assumptions"]["basisSource"], "book_value_proxy")
+
+    def test_all_policy_scenarios_are_ordered_around_the_base(self):
+        category_by_family = {
+            "metals": "فلزات اساسی",
+            "pharmaceutical": "مواد و محصولات دارویی",
+            "bank": "بانک‌ها و موسسات اعتباری",
+            "real_estate": "انبوه‌سازی، املاک و مستغلات",
+            "holding": "شرکت‌های چند رشته‌ای صنعتی",
+            "financial": "سرمایه‌گذاری‌ها",
+        }
+        for family, category in category_by_family.items():
+            with self.subTest(family=family):
+                value = value_company({
+                    "live_price": {"market_category": category, "total_shares": 1_000_000},
+                    "financial_metrics": {"eps_basic": 200, "total_equity": 2_000},
+                })
+                self.assertIsNotNone(value)
+                self.assertLessEqual(value["fairValueLow"], value["fairValueBase"])
+                self.assertLessEqual(value["fairValueBase"], value["fairValueHigh"])
 
     def test_holding_uses_nav_when_official_nav_is_supplied(self):
         value = value_company({
@@ -140,6 +163,13 @@ class IndustryValuationTests(unittest.TestCase):
             "net_margin_percent": 20, "debt_ratio_percent": 30,
         }, "metals", 40, 60)
         self.assertGreaterEqual(score, 70)
+
+    def test_bank_health_uses_roe_and_roa_without_operating_cash_flow(self):
+        score, dimensions = health_score({}, {
+            "roe_percent": 20, "roa_percent": 1.5,
+        }, "bank", None, None)
+        self.assertEqual(score, 100)
+        self.assertEqual(set(dimensions), {"profitability", "asset_efficiency"})
 
 
 if __name__ == "__main__":

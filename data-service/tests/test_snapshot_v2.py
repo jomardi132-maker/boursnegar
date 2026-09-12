@@ -200,6 +200,23 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertFalse(payload["report"]["audited"])
         self.assertLess(payload["confidence"], 65)
 
+    def test_optional_missing_metrics_do_not_reduce_confidence(self):
+        payload = build_snapshot_payload({
+            "symbol": "کامل",
+            "report_used": {"title": "صورت‌های مالی ۶ ماهه حسابرسی نشده"},
+            "live_price": {"last_price": 1000, "market_category": "فلزات اساسی", "eps": 100},
+            "financial_metrics": {"revenue": 1000, "net_profit": 100,
+                "operating_cash_flow": 90, "total_assets": 3000,
+                "total_liabilities": 1000, "total_equity": 2000, "eps_basic": 100},
+            "financial_metrics_missing": ["operating_profit", "gross_profit", "finance_cost"],
+            "ratios": {"roe_percent": 10, "net_margin_percent": 10,
+                "debt_ratio_percent": 33, "cash_to_profit_ratio_percent": 90, "pe_ratio": 10},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+        }, "latest_codal")
+        self.assertEqual(payload["dataCoverage"], 100)
+        self.assertEqual(payload["confidence"], 55)
+        self.assertIn(payload["decision"], {"BUY", "HOLD", "SELL"})
+
     def test_strong_price_rise_with_one_financial_period_blocks_categorical_sell(self):
         raw = {
             "symbol": "چرخش", "company_name": "نمونه چرخش سودآوری",
@@ -236,6 +253,26 @@ class SnapshotV2Tests(unittest.TestCase):
         self.assertEqual(payload["analysisState"], "MARKET_CLOSURE_REGIME")
         self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
         self.assertLessEqual(payload["confidence"], 60)
+
+    def test_market_closure_blocks_sell_even_with_critical_warning(self):
+        raw = {
+            "symbol": "توقف زیانده",
+            "report_used": {"title": "صورت‌های مالی ۱۲ ماهه حسابرسی شده"},
+            "live_price": {"last_price": 1000, "market_category": "فلزات اساسی", "eps": -100},
+            "financial_metrics": {"revenue": 2000, "operating_profit": -100, "net_profit": -200,
+                "operating_cash_flow": -180, "total_assets": 3000, "total_liabilities": 1000,
+                "total_equity": 2000, "eps_basic": -100},
+            "financial_metrics_missing": [],
+            "ratios": {"roe_percent": -10, "operating_margin_percent": -5,
+                "debt_ratio_percent": 33, "cash_to_profit_ratio_percent": 90},
+            "references": {"bankDepositRate": 20.5, "inflationRate": 40},
+            "analysis_context": {"market_closure_regime": True, "closure_gap_return_percent": -8.5},
+        }
+        payload = build_snapshot_payload(raw, "audited")
+        self.assertEqual(payload["analysisState"], "MARKET_CLOSURE_REGIME")
+        self.assertEqual(payload["decision"], "INSUFFICIENT_DATA")
+        self.assertIn("زیان", payload["criticalWarning"])
+        self.assertEqual(payload["fundamentalAssessment"]["status"], "CRITICAL")
 
     def test_real_growth_and_profit_improvement_marks_turnaround_candidate(self):
         raw = {
