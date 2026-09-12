@@ -1,5 +1,13 @@
 # وضعیت فعلی بورس‌نگار
 
+## 2026-09-12 - رفع خطای سرویس‌های سیستم‌دی، پاکسازی آرتیفکت‌های ناقص و همگام‌سازی کامل
+
+- خطای سرویس `boursnegar-backup-retention.service` به‌علت فقدان `production-backup-retention.sh` در ریلز جاری سرور برطرف شد؛ اسکریپت به سرور منتقل و مجوز اجرایی گرفت. اجرای سرویس با موفقیت `SUCCESS` (خروجی: ۲ دامپ معتبر نگهداری‌شده در حالت dry-run) پایان یافت.
+- سرویس `boursnegar-coverage-audit.service` از وابستگی سفت (`Requires=`) به وابستگی نرم (`Wants=`) تغییر کرد تا وقفه احتمالی upstream کدال مانع ممیزی مستقل پروداکشن نشود. ممیزی با موفقیت اجرا شد: ۱۵۲۴ نماد فعال، ۱۸۳۱۹ دوره مالی، ۷۲۶۷۲ فکت مالی، و وضعیت سرور `/healthz=ok` و `/readyz=ready` تأیید گردید.
+- تعداد ۵ فایل دانلود ناقص `.crdownload` در `data-service/artifacts/daily-codal/` که باعث خطای `BLOCKED` در `validate_artifacts` می‌شدند به پوشه قرنطینه `incomplete-downloads/` تفکیک شدند؛ اعتبارسنجی آرتیفکت‌ها با `Issues: 0` و `Valid: True` سبز شد.
+- در آرشیو تاریخی `Boursnegar-artifacts-archive-20260906` تعداد ۲۲ فایل ناقص `.crdownload` (۲۶۰ مگابایت) پاکسازی شد و دیتابیس `logs_2.sqlite` با `VACUUM` بهینه‌سازی گردید.
+- تست‌های کامل مخزن (۱۹۷ تست داده و ۷۵ تست وب و `typecheck` با صفر خطا) تأیید و تغییرات با کامیت `b163e78e6` تثبیت شدند.
+
 ## 2026-09-10 - رفع داده ناکافی کاذب confidence و قرارداد سلامت بانک
 
 - علت‌های انحصاری ۱۵۲۴ نماد ممیزی شد: `696 NON_STANDARD_ANALYSIS_STATE`، `562 NO_IMPORTED_FINANCIAL_REPORT`، `145 FUND_NAV_REQUIRED`، `79 VALUATION_INPUTS_MISSING`، `15 LOW_CONFIDENCE`، `13 INVALID_RATIO`، `5 LOW_COVERAGE`، `2 OTHER_EVIDENCE_GATE` و `7 ACTIONABLE` در snapshot مرجع پیش از اصلاح confidence.
