@@ -17,6 +17,13 @@ REQUIRED_METRICS = (
     "total_equity",
     "eps_basic",
 )
+NON_OPERATING_REQUIRED_METRICS = (
+    "revenue",
+    "net_profit",
+    "total_assets",
+    "total_liabilities",
+    "total_equity",
+)
 
 
 def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy()) -> dict:
@@ -48,9 +55,15 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         ratios["ratio_quality"] = "INVALID"
         ratios["ratio_anomalies"] = ratio_anomalies
     live = raw.get("live_price") or {}
-    present = sum(metrics.get(key) is not None for key in REQUIRED_METRICS)
-    coverage = round(present / len(REQUIRED_METRICS) * 100, 2)
-    missing_metrics = [key for key in REQUIRED_METRICS if metrics.get(key) is None]
+    family = model_family(live.get("market_category"))
+    required_metrics = (
+        NON_OPERATING_REQUIRED_METRICS
+        if family in {"bank", "financial"}
+        else REQUIRED_METRICS
+    )
+    present = sum(metrics.get(key) is not None for key in required_metrics)
+    coverage = round(present / len(required_metrics) * 100, 2)
+    missing_metrics = [key for key in required_metrics if metrics.get(key) is None]
     data_status = "READY" if not missing_metrics else "PARTIAL_DATA"
 
     report = raw.get("report_used") or {}
@@ -72,7 +85,6 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
     inflation = references.get("inflationRate")
     context = raw.get("analysis_context") or {}
     comparison = raw.get("period_comparison") or {}
-    family = model_family(live.get("market_category"))
     fund_model_required = family == "fund"
     if fund_model_required:
         data_status = "FUND_MODEL_REQUIRED"
@@ -204,6 +216,7 @@ def build_snapshot_payload(raw: dict, report_mode: str, policy: Policy = Policy(
         ),
         "healthDimensions": dimensions,
         "dataCoverage": coverage,
+        "requiredMetrics": list(required_metrics),
         "dataStatus": data_status,
         "missingMetrics": missing_metrics,
         "confidence": confidence,

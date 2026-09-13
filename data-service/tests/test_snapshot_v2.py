@@ -4,6 +4,22 @@ from app.analytics.snapshot_v2 import build_snapshot_payload
 
 
 class SnapshotV2Tests(unittest.TestCase):
+    def test_bank_coverage_uses_bank_relevant_metrics(self):
+        payload = build_snapshot_payload({
+            "symbol": "وبانک",
+            "report_used": {"title": "صورت‌های مالی ۶ ماهه حسابرسی نشده"},
+            "live_price": {"market_category": "بانک‌ها و موسسات اعتباری"},
+            "financial_metrics": {
+                "revenue": 100, "net_profit": 20, "total_assets": 500,
+                "total_liabilities": 350, "total_equity": 150,
+                "operating_cash_flow": None, "eps_basic": None,
+            },
+        }, "latest_codal")
+        self.assertEqual(payload["dataCoverage"], 100)
+        self.assertEqual(payload["missingMetrics"], [])
+        self.assertNotIn("operating_cash_flow", payload["requiredMetrics"])
+        self.assertNotIn("eps_basic", payload["requiredMetrics"])
+
     def test_valuation_input_provenance_is_exposed(self):
         lineage = [{"inputKey": "nav_per_share", "source": "browser/codal.ir"}]
         payload = build_snapshot_payload({
