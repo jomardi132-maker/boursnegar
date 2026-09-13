@@ -1161,6 +1161,7 @@ def get_analysis_v2(analysis_id: str, db: Session = Depends(get_db)):
             FROM analytical_snapshots s
             JOIN recommendation_results r ON r.snapshot_id=s.id
             WHERE s.id=:id
+              AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
             """
         ),
         {"id": analysis_id},
@@ -1182,6 +1183,7 @@ def get_symbol_v2(symbol: str, db: Session = Depends(get_db)):
             JOIN analytical_snapshots s ON s.instrument_id=i.id
             JOIN recommendation_results r ON r.snapshot_id=s.id
             WHERE a.symbol=:symbol AND a.valid_to IS NULL
+              AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
             ORDER BY s.calculated_at DESC LIMIT 20
             """
         ),
@@ -1201,6 +1203,7 @@ def get_symbol_lineage_v2(symbol: str, db: Session = Depends(get_db)):
             JOIN instruments i ON i.id=a.instrument_id
             JOIN analytical_snapshots s ON s.instrument_id=i.id
             WHERE a.symbol=:symbol AND a.valid_to IS NULL
+              AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
             ORDER BY s.calculated_at DESC LIMIT 20
             """
         ),

@@ -33,6 +33,7 @@ WITH observations AS (
   JOIN issuers iss ON iss.id=ins.issuer_id
   JOIN industries ind ON ind.id=iss.industry_id
   WHERE coalesce(a.quality_summary->>'ratioQuality','VALID')='VALID'
+    AND coalesce(a.quality_summary->>'evidenceQuarantined','false') <> 'true'
     AND coalesce(a.quality_summary->>'analysisState','STANDARD')='STANDARD'
     AND a.coverage>=70
     AND a.quality_summary->'keyMetrics'->>'pe' IS NOT NULL

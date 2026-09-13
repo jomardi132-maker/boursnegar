@@ -27,6 +27,7 @@ WITH aliases AS (
   FROM analytical_snapshots s
   JOIN valuation_results vr ON vr.snapshot_id=s.id
   WHERE vr.fair_value_base > 0
+    AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
 ), priced AS (
   SELECT sn.*, a.symbol,
          p0.adjusted_close AS entry_price,

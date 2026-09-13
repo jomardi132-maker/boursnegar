@@ -742,6 +742,7 @@ app.post(
        JOIN analytical_snapshots s ON s.instrument_id=a.instrument_id
        JOIN recommendation_results r ON r.snapshot_id=s.id
        WHERE a.symbol=$1 AND a.valid_to IS NULL AND s.report_mode=$2
+         AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
          AND s.calculated_at >= now() - interval '6 hours'
          AND s.quality_summary IS NOT NULL
          AND s.quality_summary ? 'keyMetrics'

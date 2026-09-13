@@ -66,6 +66,8 @@
 - `repair_cashflow_output_types.py` — migration یک‌بارمصرف نوع OCF؛ مقادیر را تغییر نمی‌دهد.
 - `repair_financial_period_lengths.py` — audit/repair دوره فقط از عنوان رسمی.
 - `repair_fund_industry_from_disclosures.py` — اصلاح idempotent صنعت صندوق فقط برای issuerهای unclassified دارای عنوان صریح صندوق در disclosure واردشده؛ پیش‌فرض dry-run و write فقط با `--apply`.
+- `quarantine_child_entity_facts.py` — انتقال غیرحذفی factهای قدیمی متعلق به شرکت زیرمجموعه از `VALID` به `REVIEW`؛ پیش‌فرض dry-run و write فقط با `--apply`.
+- `audit_homepage_fundamentals.py` — ممیزی read-only خروجی عمومی و سلامت snapshot انتخابی برای فهرست صریح نمادهای صفحه اصلی.
 - `sync_corporate_action_notices.py` — ثبت رویداد سرمایه فقط با lineage کامل.
 
 ## بازار — فعلاً خارج از محدوده

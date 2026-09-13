@@ -160,7 +160,7 @@ export function installPlatformRoutes(app: express.Express) {
           LEFT JOIN fact_coverage fc ON fc.issuer_id=ir.id
           LEFT JOIN LATERAL (SELECT coalesce(p.adjusted_close,p.close) AS price FROM daily_prices p WHERE p.instrument_id=l.instrument_id AND p.trading_date<=l.trading_date-interval '1 month' AND p.quality_status='VALID' AND p.volume>0 ORDER BY p.trading_date DESC LIMIT 1) month ON true
           LEFT JOIN moving ON moving.instrument_id=l.instrument_id
-          LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
+          LEFT JOIN LATERAL (SELECT s.quality_summary FROM analytical_snapshots s WHERE s.instrument_id=l.instrument_id AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true' ORDER BY s.calculated_at DESC LIMIT 1) snap ON true
           WHERE sa.symbol !~ '[0-9۰-۹]$' AND ir.legal_name NOT LIKE 'ح .%'
             AND coalesce(ind.title_fa,'') <> 'صندوق سرمایه‌گذاری قابل معامله'
         ), filtered AS (SELECT * FROM universe WHERE ($1='' OR symbol ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%') AND ($2='' OR industry=$2) AND ($3='' OR decision=$3) AND ($4::numeric IS NULL OR return_1m >= $4) AND ($5::numeric IS NULL OR pe <= $5) AND ($6::numeric IS NULL OR roe >= $6) AND ($7::numeric IS NULL OR volume >= $7) AND ($8='' OR ($8='above_ma20' AND price>ma20) OR ($8='above_ma50' AND price>ma50)))
@@ -313,7 +313,9 @@ export function installPlatformRoutes(app: express.Express) {
            LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
            LEFT JOIN health_score_results h ON h.snapshot_id=s.id
            LEFT JOIN valuation_results v ON v.snapshot_id=s.id
-           WHERE s.instrument_id=$1 ORDER BY s.calculated_at DESC LIMIT 1`,
+           WHERE s.instrument_id=$1
+             AND coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
+           ORDER BY s.calculated_at DESC LIMIT 1`,
           [stock.instrument_id],
         ),
         pool.query(`SELECT report_id,title,subtitle,report_date,fiscal_year,pdf_url,text_status,source_status,collected_at FROM rahavard_public_reports WHERE symbol=$1 ORDER BY report_date DESC NULLS LAST,collected_at DESC LIMIT 8`,[stock.symbol]),
@@ -324,6 +326,7 @@ export function installPlatformRoutes(app: express.Express) {
            ), latest_snapshot AS (
              SELECT DISTINCT ON (s.instrument_id) s.instrument_id,s.quality_summary,r.decision
              FROM analytical_snapshots s LEFT JOIN recommendation_results r ON r.snapshot_id=s.id
+             WHERE coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
              ORDER BY s.instrument_id,s.calculated_at DESC
            )
            SELECT sa.symbol,ir.legal_name,lp.price,

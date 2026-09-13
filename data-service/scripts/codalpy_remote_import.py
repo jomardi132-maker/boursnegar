@@ -6,6 +6,7 @@ from pathlib import Path
 from sqlalchemy import text
 from app.database import engine
 from app.ingestion.market_history import jalali_to_gregorian
+from app.services.codal_excel_parser import has_child_entity_qualifier
 
 SOURCES={'codalpy/codal.ir','browser/codal.ir'}; SCHEMA='boursnegar-codalpy-jsonl-v1'; NOTICE_SCHEMA='boursnegar-codal-notices-v1'
 def months_between(start, end):
@@ -57,7 +58,7 @@ def main():
      inserted += db.execute(text("""INSERT INTO codal_notice_events(source,symbol,tracing_no,title,notice_type,published_at_jalali,period_end_jalali,raw_payload,content_checksum) VALUES(:source,:symbol,:tracing_no,:title,:notice_type,:published_at_jalali,:period_end_jalali,CAST(:raw_payload AS jsonb),:content_checksum) ON CONFLICT(source,symbol,tracing_no) DO NOTHING"""),{**record,'raw_payload':json.dumps(record['raw_payload'],ensure_ascii=False)}).rowcount
   print(json.dumps({'symbol':args.symbol,'files':len(files),'inserted':inserted,'standard_facts':0,'validation_errors':invalid},ensure_ascii=False)); return
  files=[x for x in manifest.get('files',[]) if args.symbol=='*' or x.get('symbol') in (None, '*', args.symbol)]
- inserted=0; standard=0; invalid=[]
+ inserted=0; standard=0; invalid=[]; skipped_child_entities=[]
  with engine.begin() as db:
   if not db.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended('boursnegar:codalpy-import',0))")).scalar(): raise SystemExit('advisory lock is held')
   for item in files:
@@ -73,6 +74,10 @@ def main():
      record_result = db.execute(text("""INSERT INTO codalpy_records(source,symbol,output_type,source_action_id,tracing_no,period_end_jalali,fact_key,source_label,value,raw_value,unit,payload) VALUES(:source,:symbol,:output_type,:source_action_id,:tracing_no,:period_end_jalali,:fact_key,:source_label,:value,:raw_value,:unit,CAST(:payload AS jsonb)) ON CONFLICT(source,source_action_id) DO UPDATE SET symbol=excluded.symbol,output_type=excluded.output_type,tracing_no=excluded.tracing_no,period_end_jalali=excluded.period_end_jalali,fact_key=excluded.fact_key,source_label=excluded.source_label,value=excluded.value,raw_value=excluded.raw_value,unit=excluded.unit,payload=excluded.payload RETURNING (xmax = 0) AS was_inserted"""), {**record,'payload':json.dumps(record['payload'],ensure_ascii=False)})
      inserted += int(bool(record_result.scalar()))
      if record.get('output_type') != 'monthly_activity' and record.get('fact_key') and record.get('period_end_jalali') and record.get('from_jalali'):
+      title=record['payload'].get('title',record['output_type'])
+      if has_child_entity_qualifier(title):
+       skipped_child_entities.append({'symbol':record['symbol'],'tracing_no':record.get('tracing_no'),'title':title})
+       continue
       issuer = db.execute(text("SELECT i.id AS instrument_id,i.issuer_id FROM symbol_aliases sa JOIN instruments i ON i.id=sa.instrument_id WHERE sa.symbol=:symbol AND sa.valid_to IS NULL"), {'symbol':record['symbol']}).mappings().first()
       if not issuer: continue
       source_id=f"{record['tracing_no']}:{record['output_type']}"
@@ -90,5 +95,5 @@ def main():
       parser=db.execute(text("""INSERT INTO parser_versions(parser_name,version,document_type,active) VALUES(:name,:version,'datasource',true) ON CONFLICT(parser_name,version,document_type) DO UPDATE SET active=true RETURNING id"""),{'name':parser_name,'version':parser_version}).scalar_one()
       unit='IRR' if record['fact_key']=='eps_basic' else (record.get('unit') or 'UNKNOWN'); quality='VALID' if unit != 'UNKNOWN' else 'UNIT_UNKNOWN'
       standard += db.execute(text("""INSERT INTO financial_facts(issuer_id,period_id,fact_key,raw_value,normalized_value,raw_unit,normalized_unit,unit_multiplier,parser_version_id,quality_status) VALUES(:issuer,:period,:key,:value,:value,:unit,:unit,1,:parser,:quality) ON CONFLICT(period_id,fact_key,parser_version_id) DO UPDATE SET raw_value=excluded.raw_value,normalized_value=excluded.normalized_value,raw_unit=excluded.raw_unit,normalized_unit=excluded.normalized_unit,quality_status=excluded.quality_status WHERE (financial_facts.raw_value,financial_facts.normalized_value,financial_facts.raw_unit,financial_facts.normalized_unit,financial_facts.quality_status) IS DISTINCT FROM (excluded.raw_value,excluded.normalized_value,excluded.raw_unit,excluded.normalized_unit,excluded.quality_status)"""), {'issuer':issuer['issuer_id'],'period':period,'key':record['fact_key'],'value':record['value'],'unit':unit,'quality':quality,'parser':parser}).rowcount
- print(json.dumps({'symbol':args.symbol,'files':len(files),'inserted':inserted,'standard_facts':standard,'validation_errors':invalid},ensure_ascii=False))
+ print(json.dumps({'symbol':args.symbol,'files':len(files),'inserted':inserted,'standard_facts':standard,'skipped_child_entities':skipped_child_entities,'validation_errors':invalid},ensure_ascii=False))
 if __name__=='__main__': main()

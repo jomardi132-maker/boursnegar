@@ -94,6 +94,7 @@ WITH current_alias AS (
     s.calculated_at,r.decision
   FROM analytical_snapshots s
   JOIN recommendation_results r ON r.snapshot_id=s.id
+  WHERE coalesce(s.quality_summary->>'evidenceQuarantined','false') <> 'true'
   ORDER BY s.instrument_id,s.calculated_at DESC
 )
 SELECT
