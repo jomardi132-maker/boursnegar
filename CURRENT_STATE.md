@@ -1,5 +1,11 @@
 # وضعیت فعلی بورس‌نگار
 
+## 2026-09-13 - اجرای نهایی برنامه تکمیل Local تا Production
+
+- مسیر واقعی `complete_local_then_server.py` با `--apply-production`، بازه `1398/01/01..1405/06/22` و DB canonical اجرا شد. برنامه تمام `1524` نماد را طبقه‌بندی کرد: `1445 already_sufficient`، `9 source_exhausted`، `70 funds_separate_model` و `0 recoverable_companies`.
+- اجرای نهایی `COMPLETE` و بدون batch بود؛ چون delta واقعی وجود نداشت، دانلود، backup و write روی Production انجام نشد. این توقف رفتار صحیح گیت است، نه خطای خاموش. report در `data-service/artifacts/database-completion/20260913T092646Z/status.json` ثبت شد.
+- سلامت SQLite لوکال `quick_check=ok` است و شامل `1524 symbols`، `78104 facts`، `19948 notices` و `1362 runs` است. Production نیز `healthz=ok`، `readyz=ready` و data service فعال باقی ماند.
+
 ## 2026-09-13 - حذف اجرای تکراری collector و قرنطینه خودکار partial
 
 - وابستگی ممیزی پوشش به collector محلی حذف شد؛ collector اکنون فقط یک‌بار در پنجره روزانه خودش اجرا می‌شود و coverage مستقل می‌ماند. exit codeهای صریح `BLOCKED/REVIEW/ALREADY_RUNNING` در systemd نتیجه ثبت‌شده محسوب می‌شوند، نه crash؛ وضعیت واقعی همچنان در JSON report حفظ می‌شود.
