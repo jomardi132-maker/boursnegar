@@ -81,6 +81,39 @@ ORDER BY calculated_at, symbol
 """)
 
 
+def summarize_horizon(rows: list[dict], horizon: int) -> dict:
+    """Summarize independent outcomes instead of repeated snapshots."""
+    comparable = [row for row in rows if row[f"exit_{horizon}_price"] is not None]
+    independent: dict[tuple, dict] = {}
+    for row in comparable:
+        key = (row["symbol"], row["model_type"], row["entry_date"])
+        current = independent.get(key)
+        if current is None or row["calculated_at"] > current["calculated_at"]:
+            independent[key] = row
+    samples = list(independent.values())
+    by_model = {}
+    for row in samples:
+        key = row["model_type"]
+        bucket = by_model.setdefault(key, {"samples": 0, "mean_value_gap_pct": None,
+                                           "mean_forward_return_pct": None})
+        bucket["samples"] += 1
+        bucket.setdefault("_gaps", []).append(float(row["value_gap_pct"]))
+        bucket.setdefault("_returns", []).append(
+            round((float(row[f"exit_{horizon}_price"]) / float(row["entry_price"]) - 1) * 100, 2)
+        )
+    for bucket in by_model.values():
+        bucket["mean_value_gap_pct"] = round(sum(bucket.pop("_gaps")) / bucket["samples"], 2)
+        bucket["mean_forward_return_pct"] = round(sum(bucket.pop("_returns")) / bucket["samples"], 2)
+    return {
+        "comparable_snapshots": len(comparable),
+        "independent_samples": len(samples),
+        "statistical_gate": "READY" if len(samples) >= 30 else "INSUFFICIENT_SAMPLE",
+        "minimum_required": 30,
+        "sample_key": "symbol+model_type+entry_date",
+        "by_model": by_model,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
@@ -88,26 +121,7 @@ def main() -> None:
     args = parser.parse_args()
     with engine.begin() as connection:
         rows = [dict(row) for row in connection.execute(SQL, {"symbol": args.symbol}).mappings()]
-    horizons = {}
-    for horizon in (5, 10, 20):
-        comparable = [row for row in rows if row[f"exit_{horizon}_price"] is not None]
-        by_model = {}
-        for row in comparable:
-            key = row["model_type"]
-            bucket = by_model.setdefault(key, {"snapshots": 0, "mean_value_gap_pct": None,
-                                               "mean_forward_return_pct": None})
-            bucket["snapshots"] += 1
-            bucket.setdefault("_gaps", []).append(float(row["value_gap_pct"]))
-            bucket.setdefault("_returns", []).append(round((float(row[f"exit_{horizon}_price"]) / float(row["entry_price"]) - 1) * 100, 2))
-        for bucket in by_model.values():
-            bucket["mean_value_gap_pct"] = round(sum(bucket.pop("_gaps")) / bucket["snapshots"], 2)
-            bucket["mean_forward_return_pct"] = round(sum(bucket.pop("_returns")) / bucket["snapshots"], 2)
-        horizons[str(horizon)] = {
-            "comparable_snapshots": len(comparable),
-            "statistical_gate": "READY" if len(comparable) >= 30 else "INSUFFICIENT_SAMPLE",
-            "minimum_required": 30,
-            "by_model": by_model,
-        }
+    horizons = {str(horizon): summarize_horizon(rows, horizon) for horizon in (5, 10, 20)}
     result = {
         "method": "forward_valid_sessions",
         "source_gate": "quality_status=VALID AND volume>0",

@@ -1,5 +1,14 @@
 # وضعیت فعلی بورس‌نگار
 
+## 2026-09-13 - راستی‌آزمایی تغییرات Antigravity و اصلاح گیت بک‌تست
+
+- چهار commit محلی بررسی شد؛ کد موتور مستقر با commit محلی checksum یکسان داشت و APIهای `healthz` و `readyz` سبز بودند.
+- ممیزی مستقیم Production، `418` صندوق فعال و `87` صندوق دارای NAV و units معتبر هم‌دوره را تأیید کرد. عدد `87` درست بود، ولی baseline مستندشدهٔ `412` به `418` اصلاح شد.
+- گزارش قبلی ۲۰جلسه‌ای snapshotهای تکراری یک نماد/مدل/جلسه ورود را مستقل شمرده بود. در ممیزی زنده، `52` snapshot فقط `29` رخداد مستقل ساخت؛ ابزار اکنون هر کلید `symbol+model_type+entry_date` را یک نمونه می‌شمارد و گیت به‌درستی `INSUFFICIENT_SAMPLE` باقی می‌ماند. گزارش بازتولیدشده در `data-service/artifacts/audits/backtest-independent-20260913.json` با SHA-256=`001bcd90c770f6622649b26eee793462372ff6cb4f3dc46385833972602f6577` ثبت شد.
+- دو dump صفر‌بایتی که retention را متوقف کرده بودند به `/var/backups/boursnegar-invalid-quarantine/20260913-zero-byte/` منتقل شدند. اجرای مجدد retention موفق بود: `VALID_DUMPS=4` و `KEPT=2`؛ فایل‌های صفر‌بایتی حذف نشدند.
+- آزمون‌های محلی پس از اصلاح موفق‌اند: data-service برابر `199 passed + 6 subtests`، وب برابر `75 passed` و TypeScript بدون خطا است.
+- پس از رفع retention، failed-state قدیمی observer پاک و اجرای واقعی مجدد موفق شد: `BOURSNEGAR_OBSERVER=PASS` با disk=`70%` و `REMOTE_FINAL_GATE=PASS`.
+
 ## 2026-09-12 - رفع خطای سرویس‌های سیستم‌دی، پاکسازی آرتیفکت‌های ناقص و همگام‌سازی کامل
 
 - خطای سرویس `boursnegar-backup-retention.service` به‌علت فقدان `production-backup-retention.sh` در ریلز جاری سرور برطرف شد؛ اسکریپت به سرور منتقل و مجوز اجرایی گرفت. اجرای سرویس با موفقیت `SUCCESS` (خروجی: ۲ دامپ معتبر نگهداری‌شده در حالت dry-run) پایان یافت.
