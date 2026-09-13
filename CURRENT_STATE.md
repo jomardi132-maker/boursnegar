@@ -1,5 +1,13 @@
 # وضعیت فعلی بورس‌نگار
 
+## 2026-09-13 - حذف اجرای تکراری collector و قرنطینه خودکار partial
+
+- وابستگی ممیزی پوشش به collector محلی حذف شد؛ collector اکنون فقط یک‌بار در پنجره روزانه خودش اجرا می‌شود و coverage مستقل می‌ماند. exit codeهای صریح `BLOCKED/REVIEW/ALREADY_RUNNING` در systemd نتیجه ثبت‌شده محسوب می‌شوند، نه crash؛ وضعیت واقعی همچنان در JSON report حفظ می‌شود.
+- partial رهاشدهٔ `14050622` بدون حذف به `browser/incomplete-downloads/` منتقل شد و اعتبارسنجی کل artifact root برابر `valid=true`, `issues=0`, `manifests=14` شد.
+- orchestrator اکنون پیش از اجرای تازه، partialهای رهاشده قدیمی‌تر از یک ساعت را خودکار و بدون حذف قرنطینه می‌کند؛ partial همان اجرای تازه همچنان گیت را می‌بندد. این رفتار با تست stale/recent پوشش داده شد.
+- اجرای مستقل coverage موفق بود: `1524` نماد فعال، `721 CORE_READY`، `418 FUND_MODEL_REQUIRED`، `384 MISSING_COMPARABLE_PERIODS` و فقط `1 MISSING_CORE_FACTS`. بررسی غیرمخرب retention نیز موفق شد.
+- suite داده پس از این تغییر `202 passed + 6 subtests` و dry-run orchestrator برابر `PASS` است.
+
 ## 2026-09-13 - راستی‌آزمایی تغییرات Antigravity و اصلاح گیت بک‌تست
 
 - چهار commit محلی بررسی شد؛ کد موتور مستقر با commit محلی checksum یکسان داشت و APIهای `healthz` و `readyz` سبز بودند.

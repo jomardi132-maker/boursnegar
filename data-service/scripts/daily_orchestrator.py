@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -82,6 +83,30 @@ def validate_artifacts(root: Path, *, latest_only: bool = False) -> dict:
             "valid": not issues}
 
 
+def quarantine_stale_partials(root: Path, *, minimum_age_seconds: int = 3600,
+                              now: float | None = None) -> list[dict]:
+    """Move abandoned Chrome partials aside without deleting evidence."""
+    now = time.time() if now is None else now
+    moved = []
+    if not root.exists():
+        return moved
+    for partial in root.rglob("*.crdownload"):
+        if "incomplete-downloads" in partial.parts:
+            continue
+        age = now - partial.stat().st_mtime
+        if age < minimum_age_seconds:
+            continue
+        destination_dir = partial.parent / "incomplete-downloads"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / partial.name
+        if destination.exists():
+            destination = destination_dir / f"{partial.name}.{partial.stat().st_mtime_ns}"
+        partial.replace(destination)
+        moved.append({"source": str(partial), "destination": str(destination),
+                      "age_seconds": round(age)})
+    return moved
+
+
 def classify(returncode: int, supervisor_returncode: int, plan_returncode: int, *, no_notices: bool = False, artifact_valid: bool = True) -> str:
     if not artifact_valid:
         return "BLOCKED"
@@ -141,6 +166,9 @@ def main() -> int:
             "provenance_policy": "official-evidence-only-no-fabrication",
             "commands": [supervisor],
         }
+        plan["stale_partial_quarantine"] = (
+            [] if args.dry_run else quarantine_stale_partials(Path(args.artifact_root))
+        )
         supervisor_result = subprocess.CompletedProcess(supervisor, 0, "dry-run: supervisor not executed\n", "")
         plan_returncode = 0
         if not args.dry_run and args.allow_production_import:

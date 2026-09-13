@@ -1,0 +1,9 @@
+[Unit]
+Description=Boursnegar authoritative Production coverage audit
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/king/Projects/boursnegar
+ExecStart=/home/king/Projects/boursnegar/data-service/venv/bin/python data-service/scripts/scheduled_coverage_audit.py
+Nice=15
+TimeoutStartSec=30m

@@ -28,6 +28,32 @@ class DailyOrchestratorTests(unittest.TestCase):
             self.assertTrue(any("checksum-mismatch" in issue for issue in result["issues"]))
             self.assertTrue(any("incomplete-download" in issue for issue in result["issues"]))
 
+    def test_stale_partial_is_quarantined_without_deletion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stale = root / "run" / "download.xls.crdownload"
+            stale.parent.mkdir()
+            stale.write_bytes(b"partial evidence")
+            moved = daily_orchestrator.quarantine_stale_partials(
+                root, minimum_age_seconds=3600, now=stale.stat().st_mtime + 3601
+            )
+            self.assertEqual(len(moved), 1)
+            self.assertFalse(stale.exists())
+            destination = Path(moved[0]["destination"])
+            self.assertEqual(destination.read_bytes(), b"partial evidence")
+            self.assertTrue(daily_orchestrator.validate_artifacts(root)["valid"])
+
+    def test_recent_partial_remains_a_blocking_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            recent = root / "download.xls.crdownload"
+            recent.write_bytes(b"partial")
+            moved = daily_orchestrator.quarantine_stale_partials(
+                root, minimum_age_seconds=3600, now=recent.stat().st_mtime + 10
+            )
+            self.assertEqual(moved, [])
+            self.assertFalse(daily_orchestrator.validate_artifacts(root)["valid"])
+
     def test_dry_run_writes_non_production_report(self):
         with tempfile.TemporaryDirectory() as directory:
             run_dir = Path(directory) / "runs"

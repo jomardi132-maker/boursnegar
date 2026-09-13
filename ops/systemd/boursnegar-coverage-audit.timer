@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Boursnegar coverage audit
+
+[Timer]
+OnCalendar=*-*-* 10:30:00 Asia/Tehran
+Persistent=true
+RandomizedDelaySec=15m
+Unit=boursnegar-coverage-audit.service
+
+[Install]
+WantedBy=timers.target

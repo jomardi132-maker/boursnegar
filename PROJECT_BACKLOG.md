@@ -4,7 +4,7 @@
 
 ## فعال
 
-- [x] collector محلی Codal فعال، canonical و idempotent است؛ اجرای واقعی محدود با Chrome و manifest validation موفق بوده است.
+- [x] collector محلی Codal canonical و idempotent است؛ فقط یک‌بار روزانه اجرا می‌شود، partial قدیمی را بدون حذف قرنطینه می‌کند و دیگر توسط coverage دوباره trigger نمی‌شود.
 - [ ] promotion روزانهٔ local-to-production عمداً خودکار نیست: فقط وقتی manifest غیرخالی و تازه وجود دارد باید workflow مستقل manifest/checksum/backup/import/replay/refresh اجرا شود. آخرین normalized artifact صفر بایت بود و مجوز import نداد.
 - [x] مسیرهای پیش‌فرض monitor با artifact registry canonical هم‌راستا شد و dry-run default معتبر است.
 - [x] defaultهای orchestrator و unit systemd نیز با همان artifact root canonical هم‌راستا شدند؛ dry-run و تست‌های مسیر موفق‌اند.

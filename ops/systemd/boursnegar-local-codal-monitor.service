@@ -7,5 +7,8 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/home/king/Projects/boursnegar
 ExecStart=/home/king/Projects/boursnegar/data-service/venv/bin/python data-service/scripts/daily_orchestrator.py --batch-size 3 --local-db /home/king/Projects/boursnegar/data-service/artifacts/local-ingestion.sqlite3 --artifact-root /home/king/Projects/boursnegar/data-service/artifacts/daily-codal --run-dir /home/king/Projects/boursnegar/data-service/artifacts/daily-orchestrator
+# Explicit BLOCKED/REVIEW/ALREADY_RUNNING reports are recorded outcomes rather
+# than process crashes. Inspect latest.json for the actual workflow state.
+SuccessExitStatus=1 2 3
 Nice=10
 TimeoutStartSec=2h
