@@ -108,6 +108,22 @@ ORDER BY a.symbol,pk.end_date,pk.audited DESC,pk.scope
 """)
 
 
+REPORTED_FACT_GATES = (
+    'shares_gate', 'ocf_gate', 'capex_gate', 'net_borrowing_gate',
+    'equity_gate', 'sustainable_profit_gate', 'unit_gate',
+)
+POLICY_ASSUMPTION_GATES = ('cost_of_equity_gate', 'terminal_growth_gate')
+
+
+def classify_readiness(row: dict) -> str:
+    """Separate issuer-reported facts from sourced model assumptions."""
+    if all(bool(row[gate]) for gate in REPORTED_FACT_GATES + POLICY_ASSUMPTION_GATES):
+        return 'INTRINSIC_READY'
+    if all(bool(row[gate]) for gate in REPORTED_FACT_GATES):
+        return 'CASH_FLOW_READY_RATE_POLICY_MISSING'
+    return 'REPORTED_FACTS_INCOMPLETE'
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', required=True)
@@ -127,15 +143,22 @@ def main() -> None:
     )
     for row in rows:
         passed = sum(bool(row[g]) for g in gates)
-        row['status'] = 'PASS' if passed == len(gates) else 'REVIEW'
+        row['readiness'] = classify_readiness(row)
+        row['status'] = 'PASS' if row['readiness'] == 'INTRINSIC_READY' else 'REVIEW'
         row['passed_gates'] = passed
     result = {'method':'same_period_fcfe_input_gate_audit','gates':list(gates),
+              'gate_groups': {'reported_facts': list(REPORTED_FACT_GATES),
+                              'policy_assumptions': list(POLICY_ASSUMPTION_GATES)},
               'current_period_key_fields':['symbol','issuer_id','end_date','end_date_jalali',
                                            'length_months','audited','scope'],
               'current_period_keys':current_period_keys,
               'rows':rows,'summary':{'symbols':len(rows),
               'current_period_keys':len(current_period_keys),
               'pass':sum(r['status']=='PASS' for r in rows),
+              'cash_flow_ready_rate_policy_missing':sum(
+                  r['readiness']=='CASH_FLOW_READY_RATE_POLICY_MISSING' for r in rows),
+              'reported_facts_incomplete':sum(
+                  r['readiness']=='REPORTED_FACTS_INCOMPLETE' for r in rows),
               'review':sum(r['status']=='REVIEW' for r in rows)}}
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

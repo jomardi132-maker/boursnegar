@@ -9,6 +9,13 @@
 - آزمون‌های محلی پس از اصلاح موفق‌اند: data-service برابر `199 passed + 6 subtests`، وب برابر `75 passed` و TypeScript بدون خطا است.
 - پس از رفع retention، failed-state قدیمی observer پاک و اجرای واقعی مجدد موفق شد: `BOURSNEGAR_OBSERVER=PASS` با disk=`70%` و `REMOTE_FINAL_GATE=PASS`.
 
+## 2026-09-13 - تفکیک شواهد FCFE از فرض‌های نرخ
+
+- ممیزی زنده Production روی ۱۵۲۴ نماد اجرا شد: OCF=`567`، CapEx=`14`، net borrowing=`14`، cost of equity=`0` و terminal growth=`0`. چهارده نماد سه جزء جریان نقدی را دارند؛ دوازده نماد همه هفت گیت فکت گزارش‌شده را پاس می‌کنند.
+- auditor اکنون `reported_facts` را از `policy_assumptions` جدا و readiness را با سه حالت صریح ثبت می‌کند. دوازده نماد `CASH_FLOW_READY_RATE_POLICY_MISSING` هستند و هیچ نمادی `INTRINSIC_READY` نیست؛ بنابراین نرخ حدسی وارد نشد. گزارش در `data-service/artifacts/audits/fcfe-gates-grouped-20260913.json` با SHA-256=`1fdda4485a8b40a0e977c0d9e316d91fd0b7c38c81a807afd05a2e1a0e1e3278` ثبت شد؛ suite داده `200 passed + 6 subtests` است.
+- ابزارهای اصلاح‌شده با release اتمیک `/var/www/boursnegar-data-releases/20260913T0900Z-audit-integrity` فعال شدند؛ release قبلی مسیر rollback است. پس از restart، `BOURSNEGAR_OBSERVER=PASS` و `REMOTE_FINAL_GATE=PASS` تأیید شدند.
+- ابزارهای اصلاح‌شدهٔ بک‌تست و ممیزی FCFE در release اتمیک `/var/www/boursnegar-data-releases/20260913T0900Z-audit-integrity` مستقر شدند؛ release قبلی مسیر rollback است. پس از restart، `/readyz=ready`، `BOURSNEGAR_OBSERVER=PASS` و `REMOTE_FINAL_GATE=PASS` تأیید شد.
+
 ## 2026-09-12 - رفع خطای سرویس‌های سیستم‌دی، پاکسازی آرتیفکت‌های ناقص و همگام‌سازی کامل
 
 - خطای سرویس `boursnegar-backup-retention.service` به‌علت فقدان `production-backup-retention.sh` در ریلز جاری سرور برطرف شد؛ اسکریپت به سرور منتقل و مجوز اجرایی گرفت. اجرای سرویس با موفقیت `SUCCESS` (خروجی: ۲ دامپ معتبر نگهداری‌شده در حالت dry-run) پایان یافت.

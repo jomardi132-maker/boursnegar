@@ -12,7 +12,7 @@
 | ممیزی NAV | PASS | ممیزی نهایی: `5` تطبیق issuer/period/value، `5` تطبیق unit و `4` exact-source؛ رکورد پنجم به‌درستی superseded/REJECTED است؛ refresh و `/readyz=ready` سبز | حفظ گزارش و جلوگیری از join کاذب |
 | backtest پنج/ده جلسه‌ای | PASS | ممیزی زنده ۱۴۰۵/۰۶/۲۲: به‌ترتیب ۱۶۸۱ و ۹۷۳ نمونه مستقل، هر دو `READY` با حداقل ۳۰ | حفظ گیت `VALID AND volume>0` و کلید استقلال نمونه |
 | backtest بیست جلسه‌ای | OPEN | ممیزی زنده ۱۴۰۵/۰۶/۲۲: ۵۲ snapshot قابل‌مقایسه فقط ۲۹ رخداد مستقل نماد/مدل/جلسه ورود می‌سازند؛ گیت صحیح `INSUFFICIENT_SAMPLE` است | حداقل ۳۰ نمونه مستقل تاریخی واقعی؛ snapshot تکراری و بازسازی ممنوع |
-| FCFE/DCF | OPEN | ۱۲ نماد دارای OCF/CapEx/net borrowing هم‌دوره؛ نرخ‌های معتبر cost of equity و terminal growth در Production صفر و FCFE-ready صفر است | نرخ‌های issuer-period با provenance کامل و بدون inference، سپس ممیزی نه‌گیتی PASS |
+| FCFE/DCF | OPEN | ممیزی زنده ۱۴۰۵/۰۶/۲۲: ۱۴ نماد دارای سه جزء جریان نقدی هم‌دوره‌اند؛ ۱۲ نماد همه گیت‌های فکت گزارش‌شده را دارند، اما نرخ‌های سیاستی معتبر صفر و intrinsic-ready صفر است | سیاست نرخ تنزیل/رشد نسخه‌دار با provenance مستقل از فکت ناشر، سپس ممیزی کامل PASS |
 
 ## قواعد توقف
 

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from scripts.audit_valuation_input_gates import classify_readiness
+
 
 SOURCE = (Path(__file__).parents[1] / "scripts" / "audit_valuation_input_gates.py").read_text(
     encoding="utf-8"
@@ -28,3 +30,15 @@ def test_fcfe_audit_exports_exact_current_period_identity():
     assert "current_period_keys" in SOURCE
     for field in ("issuer_id", "end_date_jalali", "length_months", "audited", "scope"):
         assert field in SOURCE
+
+
+def test_fcfe_audit_distinguishes_reported_facts_from_rate_policy():
+    row = {
+        "shares_gate": True, "ocf_gate": True, "capex_gate": True,
+        "net_borrowing_gate": True, "equity_gate": True,
+        "sustainable_profit_gate": True, "unit_gate": True,
+        "cost_of_equity_gate": False, "terminal_growth_gate": False,
+    }
+    assert classify_readiness(row) == "CASH_FLOW_READY_RATE_POLICY_MISSING"
+    row["cost_of_equity_gate"] = row["terminal_growth_gate"] = True
+    assert classify_readiness(row) == "INTRINSIC_READY"
